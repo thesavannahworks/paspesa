@@ -59,6 +59,29 @@ export async function updateRechargeSenderDefaults(
   });
 }
 
+/**
+ * Reset the simulated airtime balance to zero (interim: nothing consumes airtime yet).
+ * Does not touch the M-PESA balance or any transaction; the reset amount is accumulated so the
+ * airtime balance stays reconcilable against own-number airtime purchases.
+ */
+export async function resetAirtimeBalance(deps: EngineDeps): Promise<Ok<{ account: Account; amountReset: number }> | Failure> {
+  return deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+    if (account.airtimeBalance === 0) return { ok: true as const, account, amountReset: 0 };
+    const now = deps.clock.now();
+    const updated: Account = {
+      ...account,
+      airtimeBalance: 0,
+      airtimeResetTotal: account.airtimeResetTotal + account.airtimeBalance,
+      updatedAt: now,
+    };
+    await tx.putAccount(updated);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    return { ok: true as const, account: updated, amountReset: account.airtimeBalance };
+  });
+}
+
 /** Manually save a favourite. The counterparty is validated with the same rules as the transaction. */
 export async function addFavourite(
   deps: EngineDeps,

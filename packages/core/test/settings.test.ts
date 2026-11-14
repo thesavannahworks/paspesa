@@ -7,6 +7,7 @@ import {
   processSimulation as coreProcess,
   reconcileAccount,
   removeFavourite,
+  resetAirtimeBalance,
   setPin,
   setupAccount,
   updateRechargeSenderDefaults,
@@ -87,6 +88,32 @@ describe('simulated airtime balance (cap KSh 1,000)', () => {
     const exact = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 100, counterparty: {} });
     expect(exact.ok && exact.account.airtimeBalance).toBe(1_000);
     expect((await store.getAccount())!.currentBalanceCache).toBe(4_000);
+  });
+});
+
+describe('airtime balance reset (interim, until airtime has a use)', () => {
+  it('zeroes the airtime balance only, allows topping up again, and stays reconcilable', async () => {
+    const { deps, store } = await makeAccount(5_000);
+    await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 1_000, counterparty: {} });
+    const blocked = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 1, counterparty: {} });
+    expect(!blocked.ok && blocked.error.code).toBe('AIRTIME_BALANCE_LIMIT');
+
+    const txBefore = (await store.listTransactions()).length;
+    const reset = await resetAirtimeBalance(deps);
+    expect(reset.ok && reset.amountReset).toBe(1_000);
+    const account = (await store.getAccount())!;
+    expect(account).toMatchObject({ airtimeBalance: 0, airtimeResetTotal: 1_000, currentBalanceCache: 4_000 });
+    expect((await store.listTransactions()).length).toBe(txBefore);
+    expect((await reconcileAccount(store)).issues).toEqual([]);
+
+    const again = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 250, counterparty: {} });
+    expect(again.ok && again.account.airtimeBalance).toBe(250);
+    expect((await reconcileAccount(store)).issues).toEqual([]);
+  });
+  it('resetting a zero balance is a no-op', async () => {
+    const { deps } = await makeAccount(0);
+    const r = await resetAirtimeBalance(deps);
+    expect(r.ok && r.amountReset).toBe(0);
   });
 });
 

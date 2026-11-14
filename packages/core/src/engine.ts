@@ -318,6 +318,7 @@ export async function setupAccount(deps: EngineDeps, request: SetupAccountReques
         openingBalance: request.openingBalance,
         currentBalanceCache: request.openingBalance,
         airtimeBalance: 0,
+        airtimeResetTotal: 0,
         rechargeSenderDefaults: null,
         pin,
         currency: 'KES',

@@ -59,8 +59,10 @@ export async function reconcileAccount(store: StoreReader): Promise<Reconciliati
   const ownAirtime = transactions
     .filter((t) => t.type === 'AIRTIME' && t.variant === 'OWN' && t.status === 'SUCCESSFUL')
     .reduce((sum, t) => sum + t.amount, 0);
-  if (account.airtimeBalance !== ownAirtime) {
-    issues.push(`Airtime balance ${account.airtimeBalance} differs from own-number airtime purchases ${ownAirtime}`);
+  if (account.airtimeBalance !== ownAirtime - account.airtimeResetTotal) {
+    issues.push(
+      `Airtime balance ${account.airtimeBalance} differs from own-number purchases ${ownAirtime} minus resets ${account.airtimeResetTotal}`,
+    );
   }
 
   for (const tx of transactions) {

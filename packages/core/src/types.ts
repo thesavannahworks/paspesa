@@ -51,6 +51,11 @@ export interface Account {
   currentBalanceCache: number;
   /** Simulated airtime balance: sum of own-number airtime purchases, capped by config.maxAirtimeBalance. */
   airtimeBalance: number;
+  /**
+   * Cumulative airtime removed by user resets (interim mechanism while nothing consumes airtime).
+   * Invariant: airtimeBalance = sum(own-number airtime purchases) − airtimeResetTotal.
+   */
+  airtimeResetTotal: number;
   /** User-configured default sender for General Operations recharge; null = use config default (Paspesa). */
   rechargeSenderDefaults: { name: string; phone: string } | null;
   /** Simulated Paspesa PIN (never the real M-PESA PIN). Null when no PIN has been set. */
