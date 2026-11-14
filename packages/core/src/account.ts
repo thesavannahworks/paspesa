@@ -1,0 +1,159 @@
+/**
+ * Account settings and favourites. These change preferences, never money:
+ * nothing here creates a transaction or a balance movement.
+ */
+import { counterpartyKey, describeCounterparty, getDefinition, type CounterpartyInput } from './catalogue';
+import { checkPin, type EngineDeps } from './engine';
+import { normalizeKenyanPhone } from './phone';
+import type { Account, Counterparty, Favourite, SimulationType, TransactionRecord } from './types';
+import { PIN_PATTERN, fail, outboxEntry, type Failure } from './util';
+
+type Ok<T> = { ok: true } & T;
+
+/** Set or change the simulated Paspesa PIN. Changing an existing PIN requires the current one. */
+export async function setPin(
+  deps: EngineDeps,
+  input: { newPin: string; currentPin?: string },
+): Promise<Ok<{ account: Account }> | Failure> {
+  if (!PIN_PATTERN.test(input.newPin)) return fail('VALIDATION', 'Choose a 4-digit Paspesa PIN', { pin: 'Enter 4 digits' });
+  return deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+    if (account.pin) {
+      const failure = await checkPin({ ...deps, config: { ...deps.config, pinMode: 'USER_PIN' } }, account, input.currentPin);
+      if (failure) return failure;
+    }
+    const salt = deps.ids.uuid();
+    const now = deps.clock.now();
+    const updated: Account = { ...account, pin: { salt, hash: await deps.pinHasher.hash(input.newPin, salt) }, updatedAt: now };
+    await tx.putAccount(updated);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    return { ok: true as const, account: updated };
+  });
+}
+
+/** User-configurable default recharge sender. Pass null to return to the Paspesa default. */
+export async function updateRechargeSenderDefaults(
+  deps: EngineDeps,
+  input: { name: string; phone: string } | null,
+): Promise<Ok<{ account: Account }> | Failure> {
+  let defaults: Account['rechargeSenderDefaults'] = null;
+  if (input) {
+    const name = input.name.replace(/\s+/g, ' ').trim();
+    const phone = normalizeKenyanPhone(input.phone);
+    const errors: Record<string, string> = {};
+    if (!name) errors.name = 'Sender name is required';
+    else if (name.length > 60) errors.name = 'Sender name must be at most 60 characters';
+    if (!phone) errors.phone = 'Enter a valid Kenyan mobile number';
+    if (Object.keys(errors).length) return fail('VALIDATION', 'Please correct the highlighted fields', errors);
+    defaults = { name, phone: phone! };
+  }
+  return deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+    const now = deps.clock.now();
+    const updated: Account = { ...account, rechargeSenderDefaults: defaults, updatedAt: now };
+    await tx.putAccount(updated);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    return { ok: true as const, account: updated };
+  });
+}
+
+/** Manually save a favourite. The counterparty is validated with the same rules as the transaction. */
+export async function addFavourite(
+  deps: EngineDeps,
+  input: { type: SimulationType; variant?: string; counterparty: CounterpartyInput; label?: string },
+): Promise<Ok<{ favourite: Favourite }> | Failure> {
+  return deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+    const def = getDefinition(input.type);
+    const { counterparty, variant, errors } = def.normalize(input.counterparty, { account, config: deps.config, variant: input.variant });
+    if (Object.keys(errors).length) return fail('VALIDATION', 'Please correct the highlighted fields', errors);
+    const key = counterpartyKey(input.type, variant, counterparty);
+    if (!key) return fail('VALIDATION', 'This transaction type cannot be saved as a favourite');
+    const now = deps.clock.now();
+    const favourite: Favourite = {
+      id: deps.ids.uuid(),
+      accountId: account.id,
+      type: input.type,
+      key,
+      label: (input.label ?? '').trim() || describeCounterparty({ type: input.type, variant, counterparty }).title,
+      counterparty,
+      createdAt: now,
+    };
+    await tx.upsertFavourite(favourite);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favourite.id, 'UPSERT_FAVOURITE', now));
+    return { ok: true as const, favourite };
+  });
+}
+
+export async function removeFavourite(deps: EngineDeps, favouriteId: string): Promise<{ ok: true } | Failure> {
+  return deps.store.runAtomic(async (tx) => {
+    const now = deps.clock.now();
+    await tx.deleteFavourite(favouriteId);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favouriteId, 'DELETE_FAVOURITE', now));
+    return { ok: true as const };
+  });
+}
+
+export interface FavouriteSuggestion {
+  type: SimulationType;
+  key: string;
+  label: string;
+  counterparty: Counterparty;
+  /** MANUAL = saved by the user; FREQUENT = used at least config.frequentThreshold times. */
+  origin: 'MANUAL' | 'FREQUENT';
+  useCount: number;
+  lastUsedAt: string | null;
+}
+
+/**
+ * Favourites shown on a transaction form = manual favourites ∪ frequent counterparties,
+ * for the given types. Manual ones first, then frequent ones by use count.
+ */
+export function favouritesFor(
+  types: SimulationType[],
+  manual: Favourite[],
+  transactions: TransactionRecord[],
+  frequentThreshold: number,
+): FavouriteSuggestion[] {
+  const usage = new Map<string, { count: number; last: TransactionRecord }>();
+  for (const tx of transactions) {
+    if (tx.status !== 'SUCCESSFUL' || !types.includes(tx.type as SimulationType)) continue;
+    const key = counterpartyKey(tx.type, tx.variant, tx.counterparty);
+    if (!key) continue;
+    const id = `${tx.type}|${key}`;
+    const entry = usage.get(id);
+    if (!entry) usage.set(id, { count: 1, last: tx });
+    else {
+      entry.count++;
+      if (tx.sequence > entry.last.sequence) entry.last = tx;
+    }
+  }
+
+  const result: FavouriteSuggestion[] = [];
+  const seen = new Set<string>();
+  for (const fav of manual.filter((f) => types.includes(f.type))) {
+    const id = `${fav.type}|${fav.key}`;
+    seen.add(id);
+    const u = usage.get(id);
+    result.push({
+      type: fav.type, key: fav.key, label: fav.label, counterparty: fav.counterparty, origin: 'MANUAL',
+      useCount: u?.count ?? 0, lastUsedAt: u?.last.completedAt ?? null,
+    });
+  }
+  const frequent = [...usage.entries()]
+    .filter(([id, u]) => !seen.has(id) && u.count >= frequentThreshold)
+    .sort(([, a], [, b]) => b.count - a.count || b.last.sequence - a.last.sequence)
+    .map(([, u]) => ({
+      type: u.last.type as SimulationType,
+      key: counterpartyKey(u.last.type, u.last.variant, u.last.counterparty)!,
+      label: describeCounterparty(u.last).title,
+      counterparty: u.last.counterparty,
+      origin: 'FREQUENT' as const,
+      useCount: u.count,
+      lastUsedAt: u.last.completedAt,
+    }));
+  return [...result, ...frequent];
+}

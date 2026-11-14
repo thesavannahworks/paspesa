@@ -1,0 +1,13 @@
+{
+  "name": "paspesa",
+  "private": true,
+  "description": "Paspesa — mobile-money transaction simulator (monorepo)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
