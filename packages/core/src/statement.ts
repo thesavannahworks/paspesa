@@ -47,6 +47,16 @@ export interface Statement {
   closingBalance: number | null;
 }
 
+/** Statement-list amount style from the references: "-KSH.3", "+KSH.180", "-KSH.2,000". */
+export function formatStatementAmount(signedAmount: number): string {
+  return `${signedAmount < 0 ? '-' : '+'}KSH.${formatAmount(Math.abs(signedAmount)).replace(/\.00$/, '')}`;
+}
+
+/** Type chip shown on the transaction detail card. */
+export function typeLabelFor(type: TransactionType): string {
+  return type === 'OPENING_BALANCE' ? 'Opening Balance' : getDefinition(type).displayName;
+}
+
 export function categoryFor(type: TransactionType): string {
   return type === 'OPENING_BALANCE' ? 'Opening Balance' : getDefinition(type).statementCategory;
 }

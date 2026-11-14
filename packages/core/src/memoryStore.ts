@@ -105,11 +105,27 @@ class MemoryAccess implements StoreWriter {
   }
 }
 
+export interface MemoryStoreOptions {
+  /**
+   * Durably saves the complete new state. Called once per atomic unit, BEFORE the new state
+   * becomes visible. If it throws, the unit is rolled back and the error propagates
+   * (the engine then reports STORAGE_FAILURE and nothing is committed).
+   */
+  persist?: (state: MemoryState) => Promise<void>;
+}
+
+/** Fills in collections added after a state was first saved (forward-compatible loading). */
+export function normalizeState(raw: Partial<MemoryState> | null | undefined): MemoryState {
+  return { ...emptyState(), ...(raw ?? {}) };
+}
+
 export class MemoryStore extends MemoryAccess implements LocalStore {
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly persist: MemoryStoreOptions['persist'];
 
-  constructor(initial?: MemoryState) {
-    super(initial ? clone(initial) : emptyState());
+  constructor(initial?: Partial<MemoryState>, options: MemoryStoreOptions = {}) {
+    super(normalizeState(initial ? clone(initial) : undefined));
+    this.persist = options.persist;
   }
 
   /** Test hook: inject a failure into the next atomic unit after N writes. */
@@ -120,7 +136,8 @@ export class MemoryStore extends MemoryAccess implements LocalStore {
       const working = clone(this.state);
       const access = this.failAfterWrites === null ? new MemoryAccess(working) : this.faultyAccess(working, this.failAfterWrites);
       const result = await work(access);
-      this.state = working; // commit
+      if (this.persist) await this.persist(clone(working)); // durable first…
+      this.state = working; // …then visible
       return result;
     };
     const next = this.queue.then(run, run);

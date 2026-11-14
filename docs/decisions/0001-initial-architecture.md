@@ -29,6 +29,18 @@ ledger entry shown on statements; simulations are free (`UNMETERED`) until the m
 5. Balance = sum of movements (the opening balance is the first movement). `reconcileAccount` verifies this.
 6. Each record stores the fee schedule ID and version, so later tariff changes never rewrite history.
 
+## Local persistence (v1)
+The app keeps the local ledger in a `MemoryStore` and persists the **complete committed state as one
+document** after each atomic unit, before the change becomes visible:
+- Android/iOS: `expo-sqlite` (`paspesa.db`, table `kv`), single `INSERT OR REPLACE`.
+- Web: IndexedDB (`paspesa` / `kv`); the write resolves on transaction `complete`.
+
+If the save fails, the unit rolls back and the engine reports `STORAGE_FAILURE`. Retrying with the same `operationId` is then safe.
+This keeps commits truly atomic on both platforms with very little code. **Known limit:** each save
+rewrites the whole ledger, which is fine for thousands of records but should be replaced by a
+table-per-entity SQLite/IndexedDB adapter (same `LocalStore` port) before heavy usage.
+Web avoids `expo-sqlite` because it requires COOP/COEP headers (SharedArrayBuffer).
+
 ## OPEN items
 - Default Paspesa recharge sender phone number (placeholder `254700000000`).
 - Final message wording and branding (templates are `REFERENCE_DERIVED`; withdraw is `PROVISIONAL`).

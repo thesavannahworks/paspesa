@@ -54,3 +54,12 @@ describe('statements derive from the ledger (§22)', () => {
     expect(buildStatement(txs, { ...opts, search: 'nobody-matches' }).rowCount).toBe(0);
   });
 });
+
+describe('statement amount format', () => {
+  it('matches the reference list style', async () => {
+    const { formatStatementAmount } = await import('../src');
+    expect(formatStatementAmount(-3)).toBe('-KSH.3');
+    expect(formatStatementAmount(180)).toBe('+KSH.180');
+    expect(formatStatementAmount(-2000)).toBe('-KSH.2,000');
+  });
+});

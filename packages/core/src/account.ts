@@ -82,6 +82,16 @@ export async function resetAirtimeBalance(deps: EngineDeps): Promise<Ok<{ accoun
   });
 }
 
+/** Marks all unread messages as read (opening the messages thread). */
+export async function markAllMessagesRead(deps: EngineDeps): Promise<number> {
+  return deps.store.runAtomic(async (tx) => {
+    const now = deps.clock.now();
+    const unread = (await tx.listMessages()).filter((m) => !m.readAt);
+    for (const m of unread) await tx.markMessageRead(m.id, now);
+    return unread.length;
+  });
+}
+
 /** Manually save a favourite. The counterparty is validated with the same rules as the transaction. */
 export async function addFavourite(
   deps: EngineDeps,
