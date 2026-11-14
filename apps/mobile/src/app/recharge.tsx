@@ -16,6 +16,7 @@ import { Avatar, Field, PrimaryButton, Screen, ScreenHeader, T } from '@/compone
 import { useAccount, useAppState } from '@/services/AppState';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 type Step = 'form' | 'confirm' | 'pin' | 'success';
 
@@ -114,7 +115,7 @@ export default function RechargeScreen() {
   if (step === 'confirm' && quote?.ok) {
     return (
       <ConfirmView
-        badge={<Avatar name={sender.name ?? 'Paspesa'} size={48} fontSize={18} />}
+        badge={<Avatar name={sender.name ?? 'Paspesa'} size={64} fontSize={24} />}
         title="Recharge account"
         rows={[
           { label: 'Amount', value: formatKsh(quote.quote.amount) },
@@ -143,8 +144,8 @@ export default function RechargeScreen() {
         hint={`Balance: ${formatKsh(account.currentBalanceCache)}`}
       />
 
-      <T variant="label" style={{ marginTop: 26, fontWeight: '700' }}>Sender</T>
-      <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+      <T variant="label" style={{ marginTop: s(26), fontWeight: '700' }}>Sender</T>
+      <View style={{ flexDirection: 'row', gap: s(12), marginTop: s(12) }}>
         <SenderOption selected={!custom} title={defaults.name} subtitle={toLocalPhone(defaults.phone)} caption="Default" onPress={() => { setCustom(false); submission.reset(); }} />
         <SenderOption selected={custom} title="Custom sender" subtitle="Enter name and number" onPress={() => { setCustom(true); submission.reset(); }} />
       </View>
@@ -156,7 +157,7 @@ export default function RechargeScreen() {
         </>
       ) : null}
 
-      <T variant="caption" color={colors.textMuted} style={{ marginTop: 22, lineHeight: 18 }}>
+      <T variant="caption" color={colors.textMuted} style={{ marginTop: s(22), lineHeight: s(18) }}>
         The amount is added to your current simulated balance and recorded as an incoming transaction. This is not real money.
       </T>
     </Screen>
@@ -174,14 +175,14 @@ function SenderOption({ selected, title, subtitle, caption, onPress }: { selecte
     >
       {selected ? <View style={[styles.corner, { borderTopColor: colors.green }]} /> : null}
       <T variant="bodyStrong" numberOfLines={1}>{title}</T>
-      <T variant="caption" color={colors.textSecondary} style={{ marginTop: 4 }}>{subtitle}</T>
-      {caption ? <T variant="caption" color={colors.green} style={{ marginTop: 4 }}>{caption}</T> : null}
+      <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(4) }}>{subtitle}</T>
+      {caption ? <T variant="caption" color={colors.green} style={{ marginTop: s(4) }}>{caption}</T> : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  option: { flex: 1, borderWidth: 1.4, borderRadius: 10, padding: 14, minHeight: 92, overflow: 'hidden' },
+  option: { flex: 1, borderWidth: 1.4, borderRadius: s(10), padding: s(14), minHeight: s(92), overflow: 'hidden' },
   corner: {
     position: 'absolute', top: 0, right: 0, width: 0, height: 0,
     borderTopWidth: 26, borderLeftWidth: 26, borderLeftColor: 'transparent',

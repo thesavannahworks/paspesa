@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,19 +19,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeftIcon } from '@/icons';
 import { AVATAR_COLORS } from '@/theme/colors';
 import { useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
+
+/** Browsers draw a focus ring around inputs; the reference shows only the green border. */
+export const WEB_NO_OUTLINE = (Platform.OS === 'web' ? { outlineStyle: 'none' } : {}) as TextStyle;
 
 // ---------------------------------------------------------------- text
 
 type Variant = 'title' | 'heading' | 'body' | 'bodyStrong' | 'label' | 'caption' | 'amount';
 
 const VARIANTS: Record<Variant, TextStyle> = {
-  title: { fontSize: 20, fontWeight: '500' },
-  heading: { fontSize: 18, fontWeight: '700' },
-  body: { fontSize: 16 },
-  bodyStrong: { fontSize: 16, fontWeight: '700' },
-  label: { fontSize: 15 },
-  caption: { fontSize: 13 },
-  amount: { fontSize: 30, fontWeight: '700' },
+  title: { fontSize: s(22), fontWeight: '500' },
+  heading: { fontSize: s(20), fontWeight: '700' },
+  body: { fontSize: s(18) },
+  bodyStrong: { fontSize: s(18), fontWeight: '700' },
+  label: { fontSize: s(17) },
+  caption: { fontSize: s(15) },
+  amount: { fontSize: s(36), fontWeight: '700' },
 };
 
 export function T({
@@ -54,18 +59,18 @@ export function Screen({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'bottom']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[{ paddingHorizontal: 16, paddingBottom: 24 }, contentStyle]} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[{ paddingHorizontal: s(16), paddingBottom: s(24) }, contentStyle]} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
       ) : (
-        <View style={[{ flex: 1, paddingHorizontal: 16 }, contentStyle]}>{children}</View>
+        <View style={[{ flex: 1, paddingHorizontal: s(16) }, contentStyle]}>{children}</View>
       )}
-      {footer ? <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>{footer}</View> : null}
+      {footer ? <View style={{ paddingHorizontal: s(12), paddingBottom: s(12) }}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
 
-export function CircleButton({ onPress, children, size = 40, label }: { onPress?: () => void; children: ReactNode; size?: number; label: string }) {
+export function CircleButton({ onPress, children, size = 50, label }: { onPress?: () => void; children: ReactNode; size?: number; label: string }) {
   const { colors } = useTheme();
   return (
     <Pressable
@@ -74,7 +79,7 @@ export function CircleButton({ onPress, children, size = 40, label }: { onPress?
       onPress={onPress}
       hitSlop={8}
       style={({ pressed }) => ({
-        width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center',
+        width: s(size), height: s(size), borderRadius: s(size) / 2, alignItems: 'center', justifyContent: 'center',
         backgroundColor: colors.mode === 'dark' ? colors.surface : colors.raised, opacity: pressed ? 0.7 : 1,
       })}
     >
@@ -88,10 +93,10 @@ export function ScreenHeader({ title, onBack, right }: { title?: string; onBack?
   return (
     <View style={styles.header}>
       <CircleButton label="Back" onPress={onBack ?? (() => router.back())}>
-        <ChevronLeftIcon color={colors.text} size={22} />
+        <ChevronLeftIcon color={colors.text} size={26} />
       </CircleButton>
       <T variant="title" style={styles.headerTitle} numberOfLines={1}>{title ?? ''}</T>
-      <View style={{ minWidth: 40, alignItems: 'flex-end' }}>{right}</View>
+      <View style={{ minWidth: s(40), alignItems: 'flex-end' }}>{right}</View>
     </View>
   );
 }
@@ -114,7 +119,7 @@ export function PrimaryButton({ title, onPress, disabled, loading, style }: { ti
       ]}
     >
       {loading ? <ActivityIndicator color="#FFFFFF" /> : (
-        <Text style={{ color: disabled ? colors.buttonDisabledText : '#FFFFFF', fontSize: 17, fontWeight: '600' }}>{title}</Text>
+        <Text style={{ color: disabled ? colors.buttonDisabledText : '#FFFFFF', fontSize: s(19), fontWeight: '600' }}>{title}</Text>
       )}
     </Pressable>
   );
@@ -124,7 +129,7 @@ export function OutlineButton({ title, onPress }: { title: string; onPress?: () 
   const { colors } = useTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.green, opacity: pressed ? 0.7 : 1 }]}>
-      <Text style={{ color: colors.green, fontSize: 17, fontWeight: '500' }}>{title}</Text>
+      <Text style={{ color: colors.green, fontSize: s(19), fontWeight: '500' }}>{title}</Text>
     </Pressable>
   );
 }
@@ -150,8 +155,8 @@ export function Field({
   const [focused, setFocused] = useState(false);
   const borderColor = error ? colors.red : focused && focusedBorder ? colors.inputBorderFocused : colors.inputBorder;
   return (
-    <View style={{ marginTop: 18 }}>
-      {label ? <T variant="label" style={{ marginBottom: 10 }}>{label}</T> : null}
+    <View style={{ marginTop: s(18) }}>
+      {label ? <T variant="label" style={{ marginBottom: s(14), fontSize: s(18) }}>{label}</T> : null}
       <View style={[styles.input, { borderColor, borderWidth: focused && !error && focusedBorder ? 2 : 1.2, backgroundColor: input.editable === false ? colors.raised : 'transparent' }]}>
         {left}
         <TextInput
@@ -159,17 +164,17 @@ export function Field({
           {...input}
           onFocus={(e) => { setFocused(true); input.onFocus?.(e); }}
           onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
-          style={[{ flex: 1, fontSize: 17, color: colors.text, paddingVertical: 0 }, input.style]}
+          style={[{ flex: 1, fontSize: s(19), color: colors.text, paddingVertical: 0 }, WEB_NO_OUTLINE, input.style]}
         />
         {right}
       </View>
-      {error ? <T variant="caption" color={colors.red} style={{ marginTop: 6 }}>{error}</T> : null}
-      {!error && hint ? <T variant="caption" color={colors.textSecondary} style={{ marginTop: 6 }}>{hint}</T> : null}
+      {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(6) }}>{error}</T> : null}
+      {!error && hint ? <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(6) }}>{hint}</T> : null}
     </View>
   );
 }
 
-export function SegmentedTabs<K extends string>({ tabs, value, onChange }: { tabs: Array<{ key: K; label: string; inert?: boolean }>; value: K; onChange: (k: K) => void }) {
+export function SegmentedTabs<K extends string>({ tabs, value, onChange, compact }: { tabs: { key: K; label: string; inert?: boolean }[]; value: K; onChange: (k: K) => void; compact?: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.segment, { backgroundColor: colors.segmentTrack }]}>
@@ -181,9 +186,9 @@ export function SegmentedTabs<K extends string>({ tabs, value, onChange }: { tab
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             onPress={() => !t.inert && onChange(t.key)}
-            style={[styles.segmentItem, active && { backgroundColor: colors.greenTab }]}
+            style={[styles.segmentItem, compact && { height: s(46) }, active && { backgroundColor: colors.greenTab }]}
           >
-            <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '500', color: active ? '#FFFFFF' : colors.text }}>{t.label}</Text>
+            <Text numberOfLines={1} style={{ fontSize: s(compact ? 17 : 19), fontWeight: '500', color: active ? '#FFFFFF' : colors.text }}>{t.label}</Text>
           </Pressable>
         );
       })}
@@ -210,8 +215,8 @@ export function Avatar({ name, size = 56, fontSize }: { name: string; size?: num
   const palette = AVATAR_COLORS[colors.mode];
   const [bg, fg] = palette[hash(name) % palette.length]!;
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: fg, fontSize: fontSize ?? size * 0.36, fontWeight: '600' }}>{initialsOf(name)}</Text>
+    <View style={{ width: s(size), height: s(size), borderRadius: s(size) / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: fg, fontSize: s(fontSize ?? size * 0.36), fontWeight: '600' }}>{initialsOf(name)}</Text>
     </View>
   );
 }
@@ -219,7 +224,7 @@ export function Avatar({ name, size = 56, fontSize }: { name: string; size?: num
 export function IconCircle({ children, size = 56 }: { children: ReactNode; size?: number }) {
   const { colors } = useTheme();
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: s(size), height: s(size), borderRadius: s(size) / 2, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
       {children}
     </View>
   );
@@ -229,10 +234,10 @@ export function IconCircle({ children, size = 56 }: { children: ReactNode; size?
 export function BadgeCard({ badge, children, style }: { badge: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors } = useTheme();
   return (
-    <View style={[{ marginTop: 66 }, style]}>
+    <View style={[{ marginTop: s(76) }, style]}>
       <View style={[styles.badgeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <LinearGradient colors={colors.edgeGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.topEdge} />
-        <View style={{ paddingTop: 72 }}>{children}</View>
+        <View style={{ paddingTop: s(84) }}>{children}</View>
       </View>
       <View style={[styles.badge, { backgroundColor: colors.mode === 'dark' ? colors.raised : colors.raised, borderColor: colors.mode === 'dark' ? '#424C58' : '#D5DCE2' }]}>
         {badge}
@@ -247,7 +252,7 @@ export function EdgeCard({ children, style }: { children: ReactNode; style?: Sty
   return (
     <View style={[styles.edgeCard, { backgroundColor: colors.surface }, style]}>
       <LinearGradient colors={['#1EEB2C', '#27B9C8']} style={styles.leftEdge} />
-      <View style={{ flex: 1, padding: 24, paddingLeft: 28 }}>{children}</View>
+      <View style={{ flex: 1, padding: s(24), paddingLeft: s(28) }}>{children}</View>
     </View>
   );
 }
@@ -255,24 +260,24 @@ export function EdgeCard({ children, style }: { children: ReactNode; style?: Sty
 export function Row({ label, value, last }: { label: string; value: ReactNode; last?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={{ paddingVertical: 14, borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth * 2, borderBottomColor: colors.divider }}>
-      <T variant="caption" color={colors.textSecondary}>{label}</T>
-      {typeof value === 'string' ? <T variant="bodyStrong" style={{ marginTop: 4, fontSize: 18 }}>{value}</T> : value}
+    <View style={{ paddingVertical: s(16), borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth * 2, borderBottomColor: colors.divider }}>
+      <T variant="caption" color={colors.textSecondary} style={{ fontSize: s(16) }}>{label}</T>
+      {typeof value === 'string' ? <T variant="bodyStrong" style={{ marginTop: s(6), fontSize: s(21) }}>{value}</T> : value}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
-  headerTitle: { flex: 1, textAlign: 'center', marginHorizontal: 8 },
-  primaryButton: { height: 52, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  outlineButton: { height: 48, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 56, borderRadius: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  segment: { flexDirection: 'row', borderRadius: 30, padding: 4 },
-  segmentItem: { flex: 1, height: 44, borderRadius: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  badgeCard: { borderRadius: 14, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  topEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
-  badge: { position: 'absolute', top: -32, alignSelf: 'center', width: 66, height: 66, borderRadius: 33, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  edgeCard: { borderRadius: 18, overflow: 'hidden', flexDirection: 'row' },
-  leftEdge: { width: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: s(10) },
+  headerTitle: { flex: 1, textAlign: 'center', marginHorizontal: s(8) },
+  primaryButton: { height: s(60), borderRadius: s(10), alignItems: 'center', justifyContent: 'center' },
+  outlineButton: { height: s(60), borderRadius: s(10), borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  input: { minHeight: s(72), borderRadius: s(12), paddingHorizontal: s(20), flexDirection: 'row', alignItems: 'center', gap: s(10) },
+  segment: { flexDirection: 'row', borderRadius: s(40), padding: s(6) },
+  segmentItem: { flex: 1, height: s(62), borderRadius: s(32), alignItems: 'center', justifyContent: 'center', paddingHorizontal: s(6) },
+  badgeCard: { borderRadius: s(14), overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  topEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: s(3) },
+  badge: { position: 'absolute', top: s(-46), alignSelf: 'center', width: s(94), height: s(94), borderRadius: s(47), borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  edgeCard: { borderRadius: s(18), overflow: 'hidden', flexDirection: 'row' },
+  leftEdge: { width: s(4) },
 });

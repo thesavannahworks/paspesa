@@ -7,6 +7,7 @@ import { Avatar, Inert, Screen, ScreenHeader, T } from '@/components/ui';
 import { CameraIcon, ChevronLeftIcon, FingerprintIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, ShareIcon, SunIcon, WalletIcon } from '@/icons';
 import { useAccount } from '@/services/AppState';
 import { useTheme, type ThemeChoice } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 /**
  * Profile (reference: 02-profile-settings). Only items that concern Paspesa are kept;
@@ -21,7 +22,7 @@ export default function ProfileScreen() {
   return (
     <Screen background="page">
       <ScreenHeader title="Profile" />
-      <View style={[styles.card, { backgroundColor: colors.surface, marginTop: 40 }]}>
+      <View style={[styles.card, { backgroundColor: colors.surface, marginTop: s(40) }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View>
             <Avatar name={account.accountName} size={88} />
@@ -29,22 +30,22 @@ export default function ProfileScreen() {
               <CameraIcon size={22} />
             </Inert>
           </View>
-          <T variant="title" style={{ marginLeft: 30, fontSize: 26 }} numberOfLines={2}>{account.accountName}</T>
+          <T variant="title" style={{ marginLeft: s(30), fontSize: s(26) }} numberOfLines={2}>{account.accountName}</T>
         </View>
-        <View style={{ flexDirection: 'row', marginTop: 18 }}>
+        <View style={{ flexDirection: 'row', marginTop: s(18) }}>
           <Stat label="Phone No." value={toLocalPhone(account.phoneNumber)} />
           <Stat label="Status" value="Active" />
           <Stat label="Tariff" value="Prepaid" />
         </View>
       </View>
 
-      <T variant="heading" style={{ marginTop: 34, fontSize: 22 }}>Quick actions</T>
+      <T variant="heading" style={{ marginTop: s(34), fontSize: s(22) }}>Quick actions</T>
       <View style={styles.tileRow}>
         <Tile icon={<SunIcon size={28} />} label="Appearance" onPress={() => setThemeOpen(true)} wide />
         <Tile icon={<FingerprintIcon size={28} />} label={'Biometric\nAuthentication'} wide />
       </View>
 
-      <T variant="heading" style={{ marginTop: 34, fontSize: 22 }}>Account and Settings</T>
+      <T variant="heading" style={{ marginTop: s(34), fontSize: s(22) }}>Account and Settings</T>
       <View style={styles.tileRow}>
         <Tile icon={<WalletIcon size={28} />} label={'General\nOperations'} href="/general-operations" />
         <Tile icon={<LockIcon size={28} />} label="Paspesa PIN" href="/change-pin" />
@@ -54,7 +55,7 @@ export default function ProfileScreen() {
         <Tile icon={<ShareIcon size={28} />} label={'Recommend\nA Friend'} />
       </View>
 
-      <T variant="label" color={colors.textSecondary} style={{ marginTop: 30 }}>
+      <T variant="label" color={colors.textSecondary} style={{ marginTop: s(30) }}>
         App Version {Constants.expoConfig?.version ?? '1.0.0'}
       </T>
 
@@ -67,8 +68,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   const { colors } = useTheme();
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
-      <T variant="label" color={colors.textSecondary} style={{ fontSize: 17 }}>{label}</T>
-      <T variant="label" style={{ fontSize: 18, marginTop: 8 }}>{value}</T>
+      <T variant="label" color={colors.textSecondary} style={{ fontSize: s(17) }}>{label}</T>
+      <T variant="label" style={{ fontSize: s(18), marginTop: s(8) }}>{value}</T>
     </View>
   );
 }
@@ -78,7 +79,7 @@ function Tile({ icon, label, onPress, href, wide }: { icon: ReactNode; label: st
   const content = (
     <View style={[styles.tile, { backgroundColor: colors.surface }]}>
       <View style={[styles.tileIcon, { backgroundColor: colors.raised }]}>{icon}</View>
-      <T variant="label" style={{ fontSize: 16, lineHeight: 22 }}>{label}</T>
+      <T variant="label" style={{ fontSize: s(16), lineHeight: s(22) }}>{label}</T>
     </View>
   );
   const action = onPress ?? (href ? () => router.push(href) : undefined);
@@ -92,7 +93,7 @@ function Tile({ icon, label, onPress, href, wide }: { icon: ReactNode; label: st
 
 function ThemeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors, choice, setChoice } = useTheme();
-  const options: Array<{ key: ThemeChoice; label: string; icon: ReactNode }> = [
+  const options: { key: ThemeChoice; label: string; icon: ReactNode }[] = [
     { key: 'light', label: 'Light Mode', icon: <SunIcon size={30} /> },
     { key: 'dark', label: 'Dark Mode', icon: <MoonIcon size={30} color={colors.mode === 'dark' ? '#CFCFCF' : '#555555'} /> },
     { key: 'system', label: 'System', icon: <GearIcon size={30} color={colors.mode === 'dark' ? '#CFCFCF' : '#555555'} /> },
@@ -102,13 +103,13 @@ function ThemeSheet({ visible, onClose }: { visible: boolean; onClose: () => voi
       <Pressable style={{ flex: 1, backgroundColor: colors.overlay }} onPress={onClose} accessibilityLabel="Close" />
       <View style={[styles.sheet, { backgroundColor: colors.mode === 'dark' ? '#1B1B1B' : colors.screen }]}>
         <View style={[styles.grabber, { backgroundColor: colors.textMuted }]} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: s(18) }}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Back" style={[styles.sheetBack, { backgroundColor: colors.raised }]}>
             <ChevronLeftIcon color={colors.text} size={22} />
           </Pressable>
-          <T variant="title" style={{ flex: 1, textAlign: 'center', marginRight: 48 }}>Theme</T>
+          <T variant="title" style={{ flex: 1, textAlign: 'center', marginRight: s(48) }}>Theme</T>
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 28, marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: s(28), marginBottom: s(20) }}>
           {options.map((o) => (
             <Pressable key={o.key} accessibilityRole="radio" accessibilityState={{ checked: choice === o.key }} onPress={() => setChoice(o.key)} style={{ alignItems: 'center' }}>
               <View style={[styles.themeCircle, { borderColor: colors.mode === 'dark' ? '#3A3A3A' : '#E3E3E3', backgroundColor: colors.mode === 'dark' ? '#262626' : colors.raised }]}>
@@ -117,7 +118,7 @@ function ThemeSheet({ visible, onClose }: { visible: boolean; onClose: () => voi
                   <View style={[styles.check, { backgroundColor: colors.green }]}><T variant="caption" color="#FFFFFF" style={{ fontWeight: '700' }}>✓</T></View>
                 ) : null}
               </View>
-              <T variant="body" style={{ marginTop: 14, fontSize: 18 }}>{o.label}</T>
+              <T variant="body" style={{ marginTop: s(14), fontSize: s(18) }}>{o.label}</T>
             </Pressable>
           ))}
         </View>
@@ -127,14 +128,14 @@ function ThemeSheet({ visible, onClose }: { visible: boolean; onClose: () => voi
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 16, padding: 22 },
-  cameraBadge: { position: 'absolute', right: -14, bottom: -6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
-  tileRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  tile: { borderRadius: 14, padding: 14, minHeight: 150, justifyContent: 'space-between' },
-  tileIcon: { width: 46, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  sheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: 20, paddingBottom: 30 },
-  grabber: { alignSelf: 'center', width: 56, height: 5, borderRadius: 3, marginTop: 10 },
-  sheetBack: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  themeCircle: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  check: { position: 'absolute', top: 0, right: 2, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  card: { borderRadius: s(16), padding: s(22) },
+  cameraBadge: { position: 'absolute', right: s(-14), bottom: s(-6), width: s(44), height: s(44), borderRadius: s(22), alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
+  tileRow: { flexDirection: 'row', gap: s(12), marginTop: s(16) },
+  tile: { borderRadius: s(14), padding: s(14), minHeight: s(150), justifyContent: 'space-between' },
+  tileIcon: { width: s(46), height: s(46), borderRadius: s(10), alignItems: 'center', justifyContent: 'center', marginBottom: s(20) },
+  sheet: { borderTopLeftRadius: s(26), borderTopRightRadius: s(26), paddingHorizontal: s(20), paddingBottom: s(30) },
+  grabber: { alignSelf: 'center', width: s(56), height: s(5), borderRadius: s(3), marginTop: s(10) },
+  sheetBack: { width: s(48), height: s(48), borderRadius: s(24), alignItems: 'center', justifyContent: 'center' },
+  themeCircle: { width: s(110), height: s(110), borderRadius: s(55), borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  check: { position: 'absolute', top: 0, right: s(2), width: s(28), height: s(28), borderRadius: s(14), alignItems: 'center', justifyContent: 'center' },
 });

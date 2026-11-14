@@ -7,6 +7,7 @@ import { AppStateProvider } from '@/services/AppState';
 import { PreferencesProvider } from '@/services/preferences';
 import { createRuntime, type Runtime } from '@/services/runtime';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 function ThemedStack() {
   const { colors } = useTheme();
@@ -31,7 +32,7 @@ export default function RootLayout() {
 
   if (error) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#121212' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: s(24), backgroundColor: '#121212' }}>
         <Text style={{ color: '#FFFFFF', textAlign: 'center' }}>{error}</Text>
       </View>
     );

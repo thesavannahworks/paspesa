@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 const digits = (v: string) => v.replace(/\D/g, '').slice(0, 4);
 
@@ -32,7 +33,7 @@ export default function ChangePinScreen() {
   return (
     <Screen footer={<PrimaryButton title="Save PIN" onPress={save} loading={busy} disabled={next.length !== 4 || confirm.length !== 4} />}>
       <ScreenHeader title="Paspesa PIN" />
-      <T variant="body" color={colors.textSecondary} style={{ marginTop: 12, lineHeight: 22 }}>
+      <T variant="body" color={colors.textSecondary} style={{ marginTop: s(12), lineHeight: s(22) }}>
         {anyPin
           ? 'PIN checking is currently switched off by configuration: any 4 digits are accepted. You can still set a PIN for when it is switched on.'
           : 'Your Paspesa PIN confirms simulations. Never use your real M-PESA PIN.'}
@@ -42,7 +43,7 @@ export default function ChangePinScreen() {
       ) : null}
       <Field label="New PIN" value={next} onChangeText={(v) => { setNext(digits(v)); setError(null); }} keyboardType="number-pad" secureTextEntry maxLength={4} />
       <Field label="Confirm new PIN" value={confirm} onChangeText={(v) => { setConfirm(digits(v)); setError(null); }} keyboardType="number-pad" secureTextEntry maxLength={4} />
-      {error ? <T variant="caption" color={colors.red} style={{ marginTop: 14 }}>{error}</T> : null}
+      {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(14) }}>{error}</T> : null}
     </Screen>
   );
 }

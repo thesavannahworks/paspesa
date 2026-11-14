@@ -31,8 +31,14 @@ export function AppStateProvider({ deps, children }: { deps: EngineDeps; childre
   const [snapshot, setSnapshot] = useState<LedgerSnapshot | null>(null);
   const refresh = useCallback(async () => setSnapshot(await read(deps)), [deps]);
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let live = true;
+    void read(deps).then((s) => {
+      if (live) setSnapshot(s);
+    });
+    return () => {
+      live = false;
+    };
+  }, [deps]);
   if (!snapshot) return null;
   return <AppStateContext.Provider value={{ ...snapshot, deps, refresh }}>{children}</AppStateContext.Provider>;
 }

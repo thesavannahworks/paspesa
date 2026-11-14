@@ -5,6 +5,7 @@
  * Brand marks (M-PESA, PATA MORE, ZiiDi, Shiriki Pay, Bonga, Safaricom) are NOT reproduced;
  * neutral `Placeholder*` icons hold their positions (White Paper §40).
  */
+import { s } from '@/theme/scale';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 export const ICON_GREEN = '#36A839';
@@ -26,7 +27,7 @@ function make(render: (c: string, a: string) => React.ReactNode, defaults: { col
     const c = color ?? defaults.color ?? ICON_GREEN;
     const a = accent ?? defaults.accent ?? ICON_RED;
     return (
-      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24" fill="none">
         <G strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
           {render(c, a)}
         </G>
@@ -360,7 +361,7 @@ export const GlobalAirtimeIcon = make((c, a) => (
 export function EmptyActivityArt({ width = 120 }: { width?: number }) {
   const h = (width * 46) / 120;
   return (
-    <Svg width={width} height={h} viewBox="0 0 120 46" fill="none">
+    <Svg width={s(width)} height={s(h)} viewBox="0 0 120 46" fill="none">
       <Rect x={22} y={2} width={70} height={10} rx={5} fill="#8E8E8E" opacity={0.25} />
       <Rect x={2} y={18} width={56} height={10} rx={5} fill="#8E8E8E" opacity={0.25} />
       <Rect x={66} y={18} width={30} height={10} rx={5} fill="#8E8E8E" opacity={0.25} />
@@ -377,7 +378,7 @@ export function EmptyActivityArt({ width = 120 }: { width?: number }) {
 /** Holds the M-PESA mark position (payment-method card, Pochi Wallet). Not the real logo. */
 export function PlaceholderWalletMark({ size = 24 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24">
       <Circle cx={12} cy={12} r={11} fill={ICON_GREEN} />
       <Path d="M7 9.4h10v6.4a1.4 1.4 0 0 1-1.4 1.4H8.4A1.4 1.4 0 0 1 7 15.8V9.4Z" fill="none" stroke="#FFFFFF" strokeWidth={1.6} strokeLinejoin="round" />
       <Path d="M9.4 9.4V8a2.6 2.6 0 0 1 5.2 0v1.4" fill="none" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" />
@@ -388,7 +389,7 @@ export function PlaceholderWalletMark({ size = 24 }: { size?: number }) {
 /** Holds a partner-logo position (PATA MORE, ZiiDi, Shiriki Pay, Bonga). Not the real logos. */
 export function PlaceholderBrandMark({ size = 24, label }: { size?: number; label: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24">
       <Circle cx={12} cy={12} r={11} fill="none" stroke={ICON_GREEN} strokeWidth={1.4} strokeDasharray="2 2" />
       <SvgText x={12} y={15.4} fontSize={label.length > 1 ? 7.5 : 10} fontWeight="700" fill={ICON_GREEN} textAnchor="middle">
         {label}

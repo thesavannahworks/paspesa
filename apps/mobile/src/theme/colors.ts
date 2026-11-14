@@ -94,7 +94,7 @@ export const light: Palette = {
 };
 
 /** Avatar initials colour pairs (background, text) seen across the references. */
-export const AVATAR_COLORS: Record<'light' | 'dark', Array<[string, string]>> = {
+export const AVATAR_COLORS: Record<'light' | 'dark', [string, string][]> = {
   dark: [
     ['#0B3A1A', '#4CC36A'], ['#2A1B5E', '#9C8CF0'], ['#4A0F33', '#F06FB5'],
     ['#5A1A12', '#FF7A45'], ['#14215A', '#7F97FF'], ['#3D0D3D', '#E07CE0'],

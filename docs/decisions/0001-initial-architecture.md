@@ -45,3 +45,8 @@ Web avoids `expo-sqlite` because it requires COOP/COEP headers (SharedArrayBuffe
 - Default Paspesa recharge sender phone number (placeholder `254700000000`).
 - Final message wording and branding (templates are `REFERENCE_DERIVED`; withdraw is `PROVISIONAL`).
 - Withdraw journey references.
+
+## UI sizing
+The reference app scales its layout with screen width. All sizes in the app are calibrated against the
+screenshots at 540 dp (`apps/mobile/src/theme/scale.ts`, `REFERENCE_WIDTH`) and scaled by `s()` to the
+device width, so a phone shows the same proportions as the references.

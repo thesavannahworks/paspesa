@@ -5,6 +5,7 @@ import { Pressable } from 'react-native';
 import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 /** User-configurable default sender for recharges (owner decision: not only back office). */
 export default function RechargeSenderScreen() {
@@ -32,13 +33,13 @@ export default function RechargeSenderScreen() {
   return (
     <Screen footer={<PrimaryButton title="Save" onPress={() => save({ name, phone })} loading={busy} />}>
       <ScreenHeader title="Default Sender" />
-      <T variant="body" color={colors.textSecondary} style={{ marginTop: 12, lineHeight: 22 }}>
-        Used for recharges when you don't enter a custom sender.
+      <T variant="body" color={colors.textSecondary} style={{ marginTop: s(12), lineHeight: s(22) }}>
+        Used for recharges when you don&apos;t enter a custom sender.
       </T>
       <Field label="Sender name" value={name} onChangeText={(v) => { setName(v); setErrors({}); }} autoCapitalize="words" error={errors.name} />
       <Field label="Sender phone number" value={phone} onChangeText={(v) => { setPhone(v); setErrors({}); }} keyboardType="phone-pad" error={errors.phone} />
       {account.rechargeSenderDefaults ? (
-        <Pressable accessibilityRole="button" onPress={() => save(null)} style={{ marginTop: 24 }}>
+        <Pressable accessibilityRole="button" onPress={() => save(null)} style={{ marginTop: s(24) }}>
           <T variant="body" color={colors.green}>Restore Paspesa default ({deps.config.defaultRechargeSender.name} · {toLocalPhone(deps.config.defaultRechargeSender.phone)})</T>
         </Pressable>
       ) : null}

@@ -18,6 +18,7 @@ import { Avatar, BadgeCard, Screen, ScreenHeader, T } from '@/components/ui';
 import { CopyIcon, ExportIcon, ReceiptIcon, ReverseIcon, StarFilledIcon, StarIcon } from '@/icons';
 import { useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
+import { s } from '@/theme/scale';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const ordinal = (n: number) => (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
@@ -34,7 +35,7 @@ export default function TransactionDetailScreen() {
     return (
       <Screen>
         <ScreenHeader />
-        <T variant="body" center style={{ marginTop: 60 }}>Transaction not found.</T>
+        <T variant="body" center style={{ marginTop: s(60) }}>Transaction not found.</T>
       </Screen>
     );
   }
@@ -70,18 +71,18 @@ export default function TransactionDetailScreen() {
   return (
     <Screen>
       <ScreenHeader />
-      <BadgeCard badge={<Avatar name={title || 'Paspesa'} size={62} fontSize={22} />} style={{ marginTop: 70 }}>
-        <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
+      <BadgeCard badge={<Avatar name={title || 'Paspesa'} size={62} fontSize={22} />} style={{ marginTop: s(70) }}>
+        <View style={{ alignItems: 'center', paddingHorizontal: s(20) }}>
           <View style={[styles.typeChip, { borderColor: colors.divider }]}>
             <T variant="label" color={colors.textSecondary}>{typeLabelFor(tx.type)}</T>
           </View>
-          <T variant="title" center style={{ marginTop: 16, fontSize: 26, fontWeight: '600', textTransform: 'uppercase' }}>{title}</T>
-          <T variant="amount" style={{ marginTop: 8 }}>{tx.direction === 'CREDIT' ? '+' : '-'} {formatKsh(tx.amount)}</T>
+          <T variant="title" center style={{ marginTop: s(16), fontSize: s(26), fontWeight: '600', textTransform: 'uppercase' }}>{title}</T>
+          <T variant="amount" style={{ marginTop: s(8) }}>{tx.direction === 'CREDIT' ? '+' : '-'} {formatKsh(tx.amount)}</T>
           <View style={[styles.categoryChip, { backgroundColor: colors.greenSoft }]}>
             <T variant="label" color={colors.green} style={{ fontWeight: '500' }}>{categoryFor(tx.type)}</T>
           </View>
         </View>
-        <View style={{ paddingHorizontal: 22, paddingBottom: 12, marginTop: 12 }}>
+        <View style={{ paddingHorizontal: s(22), paddingBottom: s(12), marginTop: s(12) }}>
           {identifier ? <DetailRow label={identifier.label} value={identifier.value} /> : null}
           <DetailRow
             label="Transaction ID"
@@ -116,7 +117,7 @@ function DetailRow({ label, value, right, last }: { label: string; value: string
     <View style={[styles.detailRow, !last && { borderBottomWidth: StyleSheet.hairlineWidth * 2, borderBottomColor: colors.border }]}>
       <View style={{ flex: 1 }}>
         <T variant="label" color={colors.textSecondary}>{label}</T>
-        <T variant="bodyStrong" style={{ fontSize: 19, marginTop: 6, fontWeight: '600' }}>{value}</T>
+        <T variant="bodyStrong" style={{ fontSize: s(19), marginTop: s(6), fontWeight: '600' }}>{value}</T>
       </View>
       {right}
     </View>
@@ -124,9 +125,9 @@ function DetailRow({ label, value, right, last }: { label: string; value: string
 }
 
 const styles = StyleSheet.create({
-  typeChip: { borderWidth: 1.2, borderRadius: 14, paddingHorizontal: 26, paddingVertical: 3 },
-  categoryChip: { marginTop: 12, borderRadius: 16, paddingHorizontal: 22, paddingVertical: 6 },
-  detailRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
-  copy: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  actions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 34 },
+  typeChip: { borderWidth: 1.2, borderRadius: s(14), paddingHorizontal: s(26), paddingVertical: s(3) },
+  categoryChip: { marginTop: s(12), borderRadius: s(16), paddingHorizontal: s(22), paddingVertical: s(6) },
+  detailRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: s(16) },
+  copy: { flexDirection: 'row', alignItems: 'center', gap: s(6), paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(10) },
+  actions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: s(34) },
 });
