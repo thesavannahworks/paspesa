@@ -20,6 +20,7 @@ import {
   quoteSimulation,
   recallNames,
   toLocalPhone,
+  withdrawalChargeFor,
   type CounterpartyInput,
   type FavouriteSuggestion,
   type SimulationRequest,
@@ -30,13 +31,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  BillManagerIcon, ContactIcon, PlaceholderBrandMark, PlusIcon, ReceiptIcon, RequestMoneyIcon, ReverseIcon, ScanIcon,
+  BillManagerIcon, ContactIcon, InvestIcon, MoneyMethodIcon, PlusIcon, PointsIcon, SharedPayIcon, ReceiptIcon, RequestMoneyIcon, ReverseIcon, ScanIcon,
   ScheduleIcon, SearchIcon, SendToManyIcon, StarFilledIcon, StarIcon,
 } from '@/icons';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
-import { s } from '@/theme/scale';
+import { FIXED_TEXT, s } from '@/theme/scale';
 import { ConfirmView, PinView, ResultAction, SuccessView } from './journey';
 import { Avatar, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T, WEB_NO_OUTLINE } from './ui';
 
@@ -109,6 +110,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const [pinError, setPinError] = useState<string | null>(null);
   const [result, setResult] = useState<TransactionRecord | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [addCharge, setAddCharge] = useState(false);
 
   const favs = useMemo(
     () => favouritesFor([type], favourites, transactions, deps.config.frequentThreshold),
@@ -136,6 +138,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
 
   const switchType = (t: PaymentType) => {
     setType(t);
+    setAddCharge(false);
     setForm(EMPTY);
     setEdited({});
     setErrors({});
@@ -162,7 +165,8 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const request = (): Omit<SimulationRequest, 'operationId'> | null => {
     const amount = parseWholeShillings(form.amount);
     if (amount === null) return null;
-    return { type, amount, counterparty: counterpartyOf(type, form) };
+    const withCharge = type === 'SEND_MONEY' && addCharge && withdrawalChargeFor(deps.config, amount) !== null;
+    return { type, amount, counterparty: counterpartyOf(type, form), ...(withCharge ? { addWithdrawalCharge: true } : {}) };
   };
   const req = request();
   const quote = req ? quoteSimulation(account, deps.config, req) : null;
@@ -211,7 +215,16 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     const cost = { label: 'Transaction cost', value: formatConfirmTransactionCost(q.fee) };
     const amount = { label: 'Amount', value: formatKsh(q.amount) };
     const spec = {
-      SEND_MONEY: { title: 'Send money to mobile number', action: 'Send', rows: [{ label: 'Send to', value: c.name ?? '' }, amount, cost] },
+      SEND_MONEY: {
+        title: 'Send money to mobile number',
+        action: 'Send',
+        rows: [
+          { label: 'Send to', value: c.name ?? '' },
+          amount,
+          ...(q.withdrawalCharge ? [{ label: 'Withdrawal charges included', value: formatKsh(q.withdrawalCharge) }] : []),
+          cost,
+        ],
+      },
       POCHI: { title: 'Pay to Pochi La Biashara', action: 'Send', rows: [amount, { label: 'Send to', value: c.name ?? '' }, cost] },
       BUY_GOODS: { title: 'Pay to Buy Goods', action: 'Pay', rows: [{ label: 'Till Number:', value: c.tillNumber ?? '' }, { label: 'Pay to', value: c.name ?? '' }, amount, cost] },
       PAYBILL: {
@@ -278,7 +291,6 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
               value={form.name}
               onChange={(v) => update({ name: v }, { name: true })}
               placeholder={type === 'POCHI' ? 'Enter Pochi business name' : 'Enter recipient name'}
-              upper
               error={errors.name}
             />
           ) : null}
@@ -346,9 +358,17 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         right={<T variant="body">Ksh</T>}
       />
       {!errors.amount ? (
-        <T variant="label" color={colors.textSecondary} style={{ marginTop: s(8), marginLeft: s(type === 'BUY_GOODS' || type === 'PAYBILL' ? 30 : 4), fontWeight: lowercaseLabels ? '600' : '400' }}>
+        <T variant="label" color={colors.textSecondary} style={{ marginTop: s(8), marginLeft: s(type === 'BUY_GOODS' || type === 'PAYBILL' ? 22 : 4), fontWeight: lowercaseLabels ? '600' : '400' }}>
           Balance: {formatKsh(account.currentBalanceCache)}{lowercaseLabels ? '  ' : ' '}- Fuliza: {formatKsh(0)}
         </T>
+      ) : null}
+
+      {type === 'SEND_MONEY' ? (
+        <WithdrawalChargeOption
+          charge={(() => { const a = parseWholeShillings(form.amount); return a === null ? null : withdrawalChargeFor(deps.config, a); })()}
+          checked={addCharge}
+          onToggle={() => { setAddCharge(!addCharge); setErrors({}); submission.reset(); }}
+        />
       ) : null}
 
       <PaymentMethods balance={account.currentBalanceCache} three={type === 'BUY_GOODS' || type === 'PAYBILL'} />
@@ -362,6 +382,32 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   );
 }
 
+/**
+ * Send Money option to also send the agent withdrawal charge (shown once the amount can be withdrawn,
+ * i.e. from Ksh 50). No reference screen was supplied for this prompt; it follows the form's style.
+ */
+function WithdrawalChargeOption({ charge, checked, onToggle }: { charge: number | null; checked: boolean; onToggle: () => void }) {
+  const { colors } = useTheme();
+  if (charge === null) return null;
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel="Add withdrawal charges"
+      onPress={onToggle}
+      style={[styles.chargeRow, { borderColor: checked ? colors.green : colors.inputBorder }]}
+    >
+      <View style={[styles.checkbox, { borderColor: checked ? colors.green : colors.textSecondary, backgroundColor: checked ? colors.green : 'transparent' }]}>
+        {checked ? <Text maxFontSizeMultiplier={FIXED_TEXT} style={styles.checkTick}>✓</Text> : null}
+      </View>
+      <View style={{ flex: 1, marginLeft: s(12) }}>
+        <T variant="body" style={{ fontSize: s(16) }}>Add withdrawal charges ({formatKsh(charge)})</T>
+        <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(2), fontSize: s(14) }}>So the recipient can withdraw the full amount</T>
+      </View>
+    </Pressable>
+  );
+}
+
 function partyNameOf(type: PaymentType, c: { name?: string; businessName?: string; accountName?: string }): string {
   if (type === 'PAYBILL') return c.accountName || c.businessName || '';
   return c.name ?? '';
@@ -370,20 +416,21 @@ function partyNameOf(type: PaymentType, c: { name?: string; businessName?: strin
 // ---------------------------------------------------------------- form pieces
 
 /** The green name line under an identifier field (where the reference shows the looked-up name). */
-function NameLine({ value, onChange, placeholder, upper, error, indent }: {
-  value: string; onChange: (v: string) => void; placeholder: string; upper?: boolean; error?: string; indent?: boolean;
+/** Names are typed in Title Case by default (keyboard auto-capitalises words; caps lock still allowed). */
+function NameLine({ value, onChange, placeholder, error, indent }: {
+  value: string; onChange: (v: string) => void; placeholder: string; error?: string; indent?: boolean;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ marginTop: s(6), marginLeft: s(indent ? 30 : 4) }}>
-      <TextInput
+    <View style={{ marginTop: s(2), marginLeft: s(indent ? 22 : 4) }}>
+      <TextInput maxFontSizeMultiplier={FIXED_TEXT}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={colors.mode === 'dark' ? '#2E6B33' : '#8CCB93'}
-        autoCapitalize={upper ? 'characters' : 'words'}
+        autoCapitalize="words"
         accessibilityLabel={placeholder}
-        style={[{ color: colors.green, fontSize: s(19), fontWeight: upper ? '700' : '500', paddingVertical: s(4) }, WEB_NO_OUTLINE]}
+        style={[{ color: colors.green, fontSize: s(16), fontWeight: '500', paddingVertical: s(2) }, WEB_NO_OUTLINE]}
       />
       {error ? <T variant="caption" color={colors.red}>{error}</T> : null}
     </View>
@@ -396,7 +443,7 @@ function FavouritesStrip({ items, onPick, onAdd }: { items: FavouriteSuggestion[
     <View style={{ marginTop: s(24) }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <T variant="heading" style={{ fontSize: s(21) }}>Favourites</T>
-        <Inert><T variant="label" color={items.length ? colors.green : colors.text} style={{ fontSize: s(18) }}>View All</T></Inert>
+        <Inert><T variant="label" color={items.length ? colors.green : colors.text} style={{ fontSize: s(16) }}>View All</T></Inert>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: s(20), marginTop: s(16) }} keyboardShouldPersistTaps="handled">
         <Pressable accessibilityRole="button" accessibilityLabel="Add favourite" onPress={onAdd} style={{ alignItems: 'center', width: s(64) }}>
@@ -421,10 +468,10 @@ function PaymentMethods({ balance, three }: { balance: number; three: boolean })
       borderColor: selected ? colors.green : colors.inputBorder,
       backgroundColor: selected ? colors.paymentCardSelected : colors.paymentCard,
     }]}>
-      {selected ? <View style={[styles.corner, { borderTopColor: colors.green }]}><Text style={styles.cornerTick}>✓</Text></View> : null}
+      {selected ? <View style={[styles.corner, { borderTopColor: colors.green }]}><Text maxFontSizeMultiplier={FIXED_TEXT} style={styles.cornerTick}>✓</Text></View> : null}
       {mark}
       <View style={three ? { alignItems: 'center', marginTop: s(8) } : { marginLeft: s(14), flex: 1 }}>
-        <T variant="body" style={{ fontSize: s(19), fontWeight: three ? '400' : '600' }} numberOfLines={1}>{title}</T>
+        <T variant="body" style={{ fontSize: s(19), fontWeight: three ? '400' : '500' }} numberOfLines={1}>{title}</T>
         <T variant="label" color={colors.textSecondary} style={{ marginTop: s(4) }} numberOfLines={1}>{sub}</T>
       </View>
     </View>
@@ -434,12 +481,12 @@ function PaymentMethods({ balance, three }: { balance: number; three: boolean })
       <T variant="bodyStrong" style={{ fontSize: s(19) }}>Select Payment Method</T>
       <View style={{ flexDirection: 'row', gap: s(three ? 14 : 16), marginTop: s(16) }}>
         <View style={{ flex: 1 }} accessibilityRole="radio" accessibilityState={{ checked: true }}>
-          {card(true, <PlaceholderBrandMark size={30} label="M" />, 'M-PESA', three ? `Ksh. ${formatAmount(balance)}` : `Bal. Ksh. ${formatAmount(balance)}`)}
+          {card(true, <MoneyMethodIcon size={30} />, 'M-PESA', three ? `Ksh. ${formatAmount(balance)}` : `Bal. Ksh. ${formatAmount(balance)}`)}
         </View>
         {three ? (
-          <Inert style={{ flex: 1 }}>{card(false, <PlaceholderBrandMark size={30} label="B" />, 'Bonga Points', 'Ksh. 0')}</Inert>
+          <Inert style={{ flex: 1 }}>{card(false, <PointsIcon size={30} />, 'Bonga Points', 'Ksh. 0')}</Inert>
         ) : null}
-        <Inert style={{ flex: 1 }}>{card(false, <PlaceholderBrandMark size={30} label="S" />, 'Shiriki Pay', 'Select')}</Inert>
+        <Inert style={{ flex: 1 }}>{card(false, <SharedPayIcon size={30} />, 'Shiriki Pay', 'Select')}</Inert>
       </View>
     </View>
   );
@@ -452,7 +499,7 @@ function DoMore({ type }: { type: PaymentType }) {
       ? [
           { icon: <SendToManyIcon size={38} />, label: 'Send to\nMany' },
           { icon: <RequestMoneyIcon size={38} />, label: 'Request\nMoney' },
-          { icon: <PlaceholderBrandMark size={36} label="Zi" />, label: 'Invest to\nZiiDi' },
+          { icon: <InvestIcon size={32} />, label: 'Invest to\nZiiDi' },
         ]
       : type === 'BUY_GOODS' || type === 'PAYBILL'
         ? [{ icon: <BillManagerIcon size={34} />, label: 'Bill Manager' }]
@@ -584,16 +631,19 @@ function ZiidiBanner() {
   const { colors } = useTheme();
   return (
     <Inert style={[styles.banner, { borderColor: colors.green }]}>
-      <PlaceholderBrandMark size={64} label="Zi" />
+      <InvestIcon size={62} />
       <T variant="body" style={{ flex: 1, marginLeft: s(14), fontSize: s(19) }}>ZiiDi Autoinvest is active</T>
       <View style={[styles.bannerButton, { backgroundColor: colors.green }]}>
-        <Text style={{ color: '#FFFFFF', fontSize: s(19), fontWeight: '600' }}>Edit Settings</Text>
+        <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: '#FFFFFF', fontSize: s(19), fontWeight: '600' }}>Edit Settings</Text>
       </View>
     </Inert>
   );
 }
 
 const styles = StyleSheet.create({
+  chargeRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: s(10), padding: s(12), marginTop: s(16) },
+  checkbox: { width: s(22), height: s(22), borderRadius: s(5), borderWidth: 1.6, alignItems: 'center', justifyContent: 'center' },
+  checkTick: { color: '#FFFFFF', fontSize: s(14), fontWeight: '700' },
   adornments: { flexDirection: 'row', alignItems: 'center', gap: s(14) },
   adornDivider: { width: 1.5, height: s(30) },
   favCircle: { width: s(48), height: s(48), borderRadius: s(24), alignItems: 'center', justifyContent: 'center' },

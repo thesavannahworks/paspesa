@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,10 +8,14 @@ import { AppStateProvider } from '@/services/AppState';
 import { PreferencesProvider } from '@/services/preferences';
 import { createRuntime, type Runtime } from '@/services/runtime';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
-import { s } from '@/theme/scale';
+import { FIXED_TEXT, s } from '@/theme/scale';
 
 function ThemedStack() {
   const { colors } = useTheme();
+  // The window behind the app (visible under the Android navigation bar) follows the theme.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(colors.page);
+  }, [colors.page]);
   return (
     <>
       <StatusBar style={colors.mode === 'dark' ? 'light' : 'dark'} />
@@ -33,7 +38,7 @@ export default function RootLayout() {
   if (error) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: s(24), backgroundColor: '#121212' }}>
-        <Text style={{ color: '#FFFFFF', textAlign: 'center' }}>{error}</Text>
+        <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: '#FFFFFF', textAlign: 'center' }}>{error}</Text>
       </View>
     );
   }

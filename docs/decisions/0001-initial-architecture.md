@@ -50,3 +50,6 @@ Web avoids `expo-sqlite` because it requires COOP/COEP headers (SharedArrayBuffe
 The reference app scales its layout with screen width. All sizes in the app are calibrated against the
 screenshots at 540 dp (`apps/mobile/src/theme/scale.ts`, `REFERENCE_WIDTH`) and scaled by `s()` to the
 device width, so a phone shows the same proportions as the references.
+Text does not grow with the phone's system font-size setting (`FIXED_TEXT`), matching the reference app:
+measured on the owner's phone, reference text stayed at its size while ours grew 10%. Sizes and weights
+were then measured element by element against the screenshots (same 1080 px phone, 2 px per unit).

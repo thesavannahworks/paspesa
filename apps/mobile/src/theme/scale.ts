@@ -15,3 +15,10 @@ export const UI_SCALE = Math.max(MIN_SCALE, width / REFERENCE_WIDTH);
 export function s(n: number): number {
   return PixelRatio.roundToNearestPixel(n * UI_SCALE);
 }
+
+/**
+ * Text keeps the reference size whatever the phone's system font-size setting, like the reference
+ * app (measured: its text does not grow with the setting, ours grew 10% on the owner's phone).
+ * Passed as `maxFontSizeMultiplier` to every Text/TextInput.
+ */
+export const FIXED_TEXT = 1;

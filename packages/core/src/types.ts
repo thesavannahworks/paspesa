@@ -96,6 +96,8 @@ export interface TransactionRecord {
   direction: Direction;
   status: BusinessStatus;
   amount: number;
+  /** Withdrawal charge the sender added to `amount` (Send Money "add withdrawal charges"). */
+  withdrawalCharge?: number;
   fee: number;
   /** amount + fee for debits; 0 for credits. */
   totalDebit: number;

@@ -10,7 +10,7 @@ import { BackspaceIcon, ChevronLeftIcon, CloseIcon, CopyIcon, ShareIcon } from '
 import { useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { BadgeCard, CircleButton, Inert, PrimaryButton, Row, Screen, ScreenHeader, T } from './ui';
-import { s } from '@/theme/scale';
+import { FIXED_TEXT, s } from '@/theme/scale';
 
 // ---------------------------------------------------------------- Confirm
 
@@ -29,7 +29,7 @@ export function ConfirmView({
   return (
     <Screen footer={<PrimaryButton title={actionLabel} onPress={onConfirm} />}>
       <ScreenHeader title="Confirm" onBack={onBack} />
-      <View style={{ height: s(170) }} />
+      <View style={{ height: s(208) }} />
       <BadgeCard badge={badge}>
         <T variant="body" center style={{ fontSize: s(21), paddingBottom: s(26) }}>{title}</T>
         <View style={{ borderTopWidth: StyleSheet.hairlineWidth * 2, borderTopColor: colors.divider, paddingHorizontal: s(28), paddingBottom: s(30), paddingTop: s(14) }}>
@@ -105,7 +105,7 @@ export function PinView({
             onPress={() => (k === 'del' ? setPin((p) => p.slice(0, -1)) : press(k))}
             style={({ pressed }) => [styles.key, pressed && k ? { opacity: 0.5 } : null]}
           >
-            {k === 'del' ? <BackspaceIcon size={30} /> : <Text style={{ fontSize: s(34), color: colors.text }}>{k}</Text>}
+            {k === 'del' ? <BackspaceIcon size={30} /> : <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(34), color: colors.text }}>{k}</Text>}
           </Pressable>
         ))}
       </View>
@@ -151,29 +151,29 @@ export function SuccessView({
         <CircleButton label="Close" onPress={onDone} size={54}><CloseIcon size={28} /></CircleButton>
         <Inert style={[styles.sharePill, { backgroundColor: colors.mode === 'dark' ? colors.surface : colors.screen, borderColor: colors.border }]}>
           <ShareIcon />
-          <T variant="bodyStrong" style={{ fontWeight: '600' }}>Share Details</T>
+          <T variant="bodyStrong" style={{ fontWeight: '500' }}>Share Details</T>
         </Inert>
       </View>
-      <BadgeCard badge={<Text style={{ fontSize: s(48) }}>🎉</Text>} style={{ marginTop: s(60) }}>
+      <BadgeCard badge={<Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(56) }}>🎉</Text>} style={{ marginTop: s(70) }} badgeSize={114}>
         <View style={{ paddingHorizontal: s(20), paddingBottom: s(26), alignItems: 'center' }}>
-          <T variant="title" center style={{ fontSize: s(33), fontWeight: '400', lineHeight: s(41), paddingHorizontal: s(30) }}>Your transaction was successful</T>
-          <T variant="label" color={colors.textSecondary} style={{ marginTop: s(20) }}>{when}</T>
-          <T variant="amount" style={{ marginTop: s(24) }}>{formatKsh(transaction.amount)}</T>
-          <T variant="label" color={colors.textSecondary} style={{ marginTop: s(24) }}>
-            Transaction cost:<Text style={{ fontWeight: '700', color: colors.textSecondary }}>{formatKsh(transaction.fee)}</Text>
+          <T variant="title" center style={{ fontSize: s(30), fontWeight: '400', lineHeight: s(38), paddingHorizontal: s(40) }}>Your transaction was successful</T>
+          <T variant="label" color={colors.textSecondary} style={{ marginTop: s(26), fontSize: s(16) }}>{when}</T>
+          <T variant="amount" style={{ marginTop: s(28) }}>{formatKsh(transaction.amount)}</T>
+          <T variant="label" color={colors.textSecondary} style={{ marginTop: s(28), fontSize: s(15.5) }}>
+            Transaction cost:<Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontWeight: '600', color: colors.textSecondary }}>{formatKsh(transaction.fee)}</Text>
           </T>
           <Pressable onPress={copy} accessibilityRole="button" accessibilityLabel="Copy transaction ID" style={[styles.idPill, { backgroundColor: colors.mode === 'light' ? colors.greenSoft : 'transparent' }]}>
-            <Text style={{ color: colors.green, fontWeight: '700', fontSize: s(20) }}>ID: {transaction.reference}</Text>
+            <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: colors.green, fontWeight: '600', fontSize: s(19) }}>ID: {transaction.reference}</Text>
             <CopyIcon size={18} />
-            <Text style={{ color: colors.green, fontSize: s(20) }}>{copied ? 'Copied' : 'Copy'}</Text>
+            <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: colors.green, fontSize: s(19) }}>{copied ? 'Copied' : 'Copy'}</Text>
           </Pressable>
           <View style={[styles.partyBox, { backgroundColor: colors.raised }]}>
-            <T variant="label">{partyLabel}</T>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(22), marginTop: s(14) }}>
+            <T variant="label" style={{ fontSize: s(15.5) }}>{partyLabel}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(20), marginTop: s(16) }}>
               {partyBadge}
               <View style={{ flex: 1 }}>
                 {partyLines.map((line, i) => (
-                  <T key={i} variant="body" color={i === 2 ? colors.textSecondary : colors.text} style={{ fontSize: s(19), marginTop: i ? s(10) : 0 }}>{line}</T>
+                  <T key={i} variant="body" color={i === 2 ? colors.textSecondary : colors.text} style={{ fontSize: s(17.5), marginTop: i ? s(8) : 0 }}>{line}</T>
                 ))}
               </View>
             </View>
@@ -192,7 +192,7 @@ export function ResultAction({ icon, label, onPress, inert }: { icon: ReactNode;
   const content = (
     <View style={{ alignItems: 'center', width: s(110) }}>
       <View style={{ width: s(54), height: s(54), borderRadius: s(27), backgroundColor: colors.mode === 'dark' ? colors.raised : colors.raised, alignItems: 'center', justifyContent: 'center' }}>{icon}</View>
-      <T variant="label" center style={{ marginTop: s(14), lineHeight: s(22) }}>{label}</T>
+      <T variant="label" center style={{ marginTop: s(14), fontSize: s(16), lineHeight: s(21) }}>{label}</T>
     </View>
   );
   if (inert || !onPress) return <Inert>{content}</Inert>;
@@ -205,9 +205,9 @@ const styles = StyleSheet.create({
   pinDot: { width: s(20), height: s(20), borderRadius: s(10) },
   keypad: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 'auto', marginBottom: s(16) },
   key: { width: '33.33%', height: s(74), alignItems: 'center', justifyContent: 'center' },
-  successTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: s(12) },
+  successTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: s(28) },
   sharePill: { flexDirection: 'row', alignItems: 'center', gap: s(14), paddingHorizontal: s(20), paddingVertical: s(14), borderRadius: s(12), borderWidth: StyleSheet.hairlineWidth },
-  idPill: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(20), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(10) },
+  idPill: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(10) },
   partyBox: { alignSelf: 'stretch', marginTop: s(36), borderRadius: s(14), padding: s(22), paddingVertical: s(26) },
   actions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: s(32) },
 });

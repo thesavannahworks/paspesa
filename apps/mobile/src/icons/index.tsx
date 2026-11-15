@@ -6,7 +6,7 @@
  * neutral `Placeholder*` icons hold their positions (White Paper §40).
  */
 import { s } from '@/theme/scale';
-import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 
 export const ICON_GREEN = '#36A839';
 export const ICON_RED = '#E92536';
@@ -373,27 +373,72 @@ export function EmptyActivityArt({ width = 120 }: { width?: number }) {
   );
 }
 
-// ---------------------------------------------------------------- brand placeholders
+// ---------------------------------------------------------------- partner/brand positions
+// The reference shows trademarked logos here (M-PESA, PATA MORE, ZiiDi, Shiriki Pay, Bonga). They are NOT
+// reproduced (White Paper §40). These are original icons that fill the same role, colour and weight.
 
-/** Holds the M-PESA mark position (payment-method card, Pochi Wallet). Not the real logo. */
-export function PlaceholderWalletMark({ size = 24 }: { size?: number }) {
+const DARK_GREEN = '#0E3B1A';
+
+/** Pochi Wallet quick action: green disc with a white wallet. */
+export function PochiWalletIcon({ size = 24 }: { size?: number }) {
   return (
     <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24">
-      <Circle cx={12} cy={12} r={11} fill={ICON_GREEN} />
-      <Path d="M7 9.4h10v6.4a1.4 1.4 0 0 1-1.4 1.4H8.4A1.4 1.4 0 0 1 7 15.8V9.4Z" fill="none" stroke="#FFFFFF" strokeWidth={1.6} strokeLinejoin="round" />
-      <Path d="M9.4 9.4V8a2.6 2.6 0 0 1 5.2 0v1.4" fill="none" stroke="#FFFFFF" strokeWidth={1.6} strokeLinecap="round" />
+      <Circle cx={12} cy={12} r={11.5} fill={ICON_GREEN} />
+      <Path d="M6.4 9.2c0-1 .8-1.8 1.8-1.8h7.6" fill="none" stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" />
+      <Rect x={6.4} y={8.6} width={11.2} height={8} rx={1.8} fill="#FFFFFF" />
+      <Rect x={13.4} y={11.3} width={4.2} height={2.6} rx={1.1} fill={ICON_RED} />
     </Svg>
   );
 }
 
-/** Holds a partner-logo position (PATA MORE, ZiiDi, Shiriki Pay, Bonga). Not the real logos. */
-export function PlaceholderBrandMark({ size = 24, label }: { size?: number; label: string }) {
+/** Buy Bundles quick action: a data bundle (box with signal waves). */
+export const BundlesIcon = make((c, a) => (
+  <>
+    <Path d="M4 9.2 12 5l8 4.2v8.6L12 22l-8-4.2V9.2Z" stroke={c} />
+    <Path d="M4 9.2 12 13.4l8-4.2M12 13.4V22" stroke={c} />
+    <Path d="M9.2 3.4a4 4 0 0 1 5.6 0M7.6 1.8a6.3 6.3 0 0 1 8.8 0" stroke={a} />
+  </>
+));
+
+/** M-PESA payment-method position: phone with a red cash note. */
+export function MoneyMethodIcon({ size = 24 }: { size?: number }) {
   return (
-    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24">
-      <Circle cx={12} cy={12} r={11} fill="none" stroke={ICON_GREEN} strokeWidth={1.4} strokeDasharray="2 2" />
-      <SvgText x={12} y={15.4} fontSize={label.length > 1 ? 7.5 : 10} fontWeight="700" fill={ICON_GREEN} textAnchor="middle">
-        {label}
-      </SvgText>
+    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24" fill="none">
+      <Rect x={6} y={2.5} width={10} height={19} rx={2.2} stroke={ICON_GREEN} strokeWidth={1.7} />
+      <Rect x={10.5} y={8.5} width={11} height={7} rx={1.3} fill={ICON_RED} />
+      <Circle cx={16} cy={12} r={1.6} fill="#FFFFFF" />
     </Svg>
   );
 }
+
+/** Investment app position (ZiiDi in the reference): green disc with a white rising chart. */
+export function InvestIcon({ size = 24 }: { size?: number }) {
+  return (
+    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={11.5} fill={ICON_GREEN} />
+      <Path d="M6 15.6l3.6-3.6 2.8 2.6L18 9" stroke="#FFFFFF" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M14.6 9H18v3.4" stroke="#FFFFFF" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+/** Shared-payments position (Shiriki Pay in the reference): dark green disc with two green people. */
+export function SharedPayIcon({ size = 24 }: { size?: number }) {
+  return (
+    <Svg width={s(size)} height={s(size)} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={11.5} fill={DARK_GREEN} />
+      <Circle cx={9.3} cy={9.4} r={2.3} stroke={ICON_GREEN} strokeWidth={1.6} />
+      <Circle cx={15.2} cy={10.2} r={1.9} stroke={ICON_GREEN} strokeWidth={1.6} />
+      <Path d="M5.4 17.2c.5-2.2 2-3.4 3.9-3.4s3.4 1.2 3.9 3.4M13.4 14c.6-.4 1.2-.6 1.9-.6 1.6 0 2.8 1 3.3 2.9" stroke={ICON_GREEN} strokeWidth={1.6} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+/** Loyalty-points position (Bonga in the reference): grey outline medal. */
+export const PointsIcon = make((c) => (
+  <>
+    <Circle cx={12} cy={14} r={6.6} stroke={c} />
+    <Path d="m12 10.9 1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3 1-2Z" stroke={c} strokeWidth={1.3} />
+    <Path d="M8.6 8.3 6.8 2.8h3.6L12 7.4l1.6-4.6h3.6l-1.8 5.5" stroke={c} />
+  </>
+), { color: '#BDBDBD' });

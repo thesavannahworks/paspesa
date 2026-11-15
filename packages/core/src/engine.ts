@@ -61,12 +61,27 @@ export interface SimulationRequest {
   paymentMethod?: PaymentMethod;
   /** Simulated Paspesa PIN entered on the PIN screen. Not part of the request fingerprint. */
   pin?: string;
+  /**
+   * SEND_MONEY only: also send the agent withdrawal charge for `amount`, so the recipient can withdraw
+   * the full amount (the M-PESA "add withdrawal charges" option). The charge is added to the sent amount.
+   */
+  addWithdrawalCharge?: boolean;
+}
+
+/** Agent withdrawal charge for an amount, or null when the amount is outside the withdrawal schedule. */
+export function withdrawalChargeFor(config: SimulatorConfig, amount: number): number | null {
+  if (!isWholeShillings(amount) || amount <= 0) return null;
+  const r = resolveFee(getFeeSchedule(config, 'WITHDRAW'), amount);
+  return r.ok ? r.fee : null;
 }
 
 export interface Quote {
   type: SimulationType;
   definition: TransactionDefinition;
+  /** Amount sent/received, including any withdrawal charge the sender chose to add. */
   amount: number;
+  /** Withdrawal charge included in `amount` (0 when not added). */
+  withdrawalCharge: number;
   /** Simulated M-PESA transaction cost. */
   fee: number;
   totalDebit: number;
@@ -130,8 +145,19 @@ export function quoteSimulation(
   }
   if (Object.keys(errors).length > 0) return fail('VALIDATION', 'Please correct the highlighted fields', errors);
 
+  let withdrawalCharge = 0;
+  if (request.addWithdrawalCharge) {
+    const charge = request.type === 'SEND_MONEY' ? withdrawalChargeFor(config, request.amount) : null;
+    if (charge === null) {
+      const message = 'Withdrawal charges can only be added to Send Money amounts that can be withdrawn';
+      return fail('VALIDATION', message, { amount: message });
+    }
+    withdrawalCharge = charge;
+  }
+  const amount = request.amount + withdrawalCharge;
+
   const schedule = getFeeSchedule(config, request.type);
-  const fee = resolveFee(schedule, request.amount);
+  const fee = resolveFee(schedule, amount);
   if (!fee.ok) {
     const message = `Amount must be between ${formatKsh(fee.min)} and ${formatKsh(fee.max)}`;
     return fail('UNSUPPORTED_AMOUNT', message, { amount: message });
@@ -139,7 +165,7 @@ export function quoteSimulation(
 
   let airtimeBalanceAfter: number | null = null;
   if (request.type === 'AIRTIME' && variant === 'OWN') {
-    airtimeBalanceAfter = account.airtimeBalance + request.amount;
+    airtimeBalanceAfter = account.airtimeBalance + amount;
     if (airtimeBalanceAfter > config.maxAirtimeBalance) {
       const room = Math.max(0, config.maxAirtimeBalance - account.airtimeBalance);
       const message = `Airtime balance cannot exceed ${formatKsh(config.maxAirtimeBalance)}. You can top up at most ${formatKsh(room)}.`;
@@ -149,7 +175,7 @@ export function quoteSimulation(
 
   const balanceBefore = account.currentBalanceCache;
   const isDebit = definition.direction === 'DEBIT';
-  const totalDebit = isDebit ? request.amount + fee.fee : 0;
+  const totalDebit = isDebit ? amount + fee.fee : 0;
   if (isDebit && totalDebit > balanceBefore) {
     return fail(
       'INSUFFICIENT_BALANCE',
@@ -163,11 +189,12 @@ export function quoteSimulation(
     quote: {
       type: request.type,
       definition,
-      amount: request.amount,
+      amount,
+      withdrawalCharge,
       fee: fee.fee,
       totalDebit,
       balanceBefore,
-      balanceAfter: isDebit ? balanceBefore - totalDebit : balanceBefore + request.amount,
+      balanceAfter: isDebit ? balanceBefore - totalDebit : balanceBefore + amount,
       airtimeBalanceAfter,
       counterparty,
       variant,
@@ -226,6 +253,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         direction: q.definition.direction,
         status: 'SUCCESSFUL',
         amount: q.amount,
+        ...(q.withdrawalCharge ? { withdrawalCharge: q.withdrawalCharge } : {}),
         fee: q.fee,
         totalDebit: q.totalDebit,
         balanceBefore: q.balanceBefore,
@@ -429,5 +457,6 @@ export function requestFingerprint(request: SimulationRequest): string {
     variant: request.variant ?? null,
     counterparty: request.counterparty ?? {},
     paymentMethod: request.paymentMethod ?? 'UNMETERED',
+    ...(request.addWithdrawalCharge ? { addWithdrawalCharge: true } : {}),
   });
 }
