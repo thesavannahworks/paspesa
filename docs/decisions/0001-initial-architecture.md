@@ -53,3 +53,13 @@ device width, so a phone shows the same proportions as the references.
 Text does not grow with the phone's system font-size setting (`FIXED_TEXT`), matching the reference app:
 measured on the owner's phone, reference text stayed at its size while ours grew 10%. Sizes and weights
 were then measured element by element against the screenshots (same 1080 px phone, 2 px per unit).
+
+## Scan to Pay, profile picture, Explore (2026-11-16)
+- **QR codes:** Paspesa's own format `paspesa://pay?v=1&t=<type>&…` (`packages/core/src/qr.ts`, tested).
+  Only Paspesa codes are understood; real M-PESA/merchant codes are not decoded. Scanning works from the
+  live camera, a captured photo or a gallery image, and opens the matching journey pre-filled.
+- **My QR download:** phone saves a PNG to the gallery; the browser downloads an SVG of the code.
+- **Profile picture:** stored on the device only (document folder on phone, data URI in the browser);
+  it is not part of the ledger and is not synced.
+- **Explore banners:** Paspesa's own artwork. The supplied third-party adverts are kept in
+  `reference-screenshots/01-home/12-14` as references only (White Paper §40).

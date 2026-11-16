@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -59,13 +61,13 @@ export function Screen({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'bottom']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[{ paddingHorizontal: s(16), paddingBottom: s(24) }, contentStyle]} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[{ paddingHorizontal: s(21), paddingBottom: s(24) }, contentStyle]} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
       ) : (
-        <View style={[{ flex: 1, paddingHorizontal: s(16) }, contentStyle]}>{children}</View>
+        <View style={[{ flex: 1, paddingHorizontal: s(21) }, contentStyle]}>{children}</View>
       )}
-      {footer ? <View style={{ paddingHorizontal: s(12), paddingBottom: s(12) }}>{footer}</View> : null}
+      {footer ? <View style={{ paddingHorizontal: s(21), paddingBottom: s(12) }}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -210,10 +212,13 @@ function hash(text: string): number {
   return Math.abs(h);
 }
 
-export function Avatar({ name, size = 56, fontSize }: { name: string; size?: number; fontSize?: number }) {
+export function Avatar({ name, size = 56, fontSize, photo }: { name: string; size?: number; fontSize?: number; photo?: string | null }) {
   const { colors } = useTheme();
   const palette = AVATAR_COLORS[colors.mode];
   const [bg, fg] = palette[hash(name) % palette.length]!;
+  if (photo) {
+    return <Image source={{ uri: photo }} accessibilityIgnoresInvertColors style={{ width: s(size), height: s(size), borderRadius: s(size) / 2, backgroundColor: bg }} />;
+  }
   return (
     <View style={{ width: s(size), height: s(size), borderRadius: s(size) / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
       <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: fg, fontSize: s(fontSize ?? size * 0.36), fontWeight: '600' }}>{initialsOf(name)}</Text>
@@ -280,4 +285,40 @@ const styles = StyleSheet.create({
   badge: { position: 'absolute', top: s(-46), alignSelf: 'center', width: s(94), height: s(94), borderRadius: s(47), borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   edgeCard: { borderRadius: s(18), overflow: 'hidden', flexDirection: 'row' },
   leftEdge: { width: s(4) },
+});
+
+/** Bottom sheet with grabber, back button and centred title (reference: 02-profile-settings/04, 05). */
+export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: colors.overlay }} onPress={onClose} accessibilityLabel="Close" />
+      <View style={[sheetStyles.sheet, { backgroundColor: colors.mode === 'dark' ? '#1B1B1B' : colors.screen }]}>
+        <View style={[sheetStyles.grabber, { backgroundColor: colors.textMuted }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: s(18) }}>
+          <CircleButton label="Back" onPress={onClose} size={46}><ChevronLeftIcon color={colors.text} size={22} /></CircleButton>
+          <T variant="title" style={{ flex: 1, textAlign: 'center', marginRight: s(46), fontSize: s(19) }}>{title}</T>
+        </View>
+        {children}
+      </View>
+    </Modal>
+  );
+}
+
+/** A tappable row inside a Sheet: icon tile + label. */
+export function SheetRow({ icon, label, onPress, color }: { icon: ReactNode; label: string; onPress: () => void; color?: string }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [sheetStyles.row, { opacity: pressed ? 0.6 : 1 }]}>
+      <View style={[sheetStyles.rowIcon, { backgroundColor: colors.raised }]}>{icon}</View>
+      <T variant="body" color={color} style={{ fontSize: s(17), fontWeight: '500', marginLeft: s(16) }}>{label}</T>
+    </Pressable>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  sheet: { borderTopLeftRadius: s(26), borderTopRightRadius: s(26), paddingHorizontal: s(20), paddingBottom: s(34) },
+  grabber: { alignSelf: 'center', width: s(56), height: s(5), borderRadius: s(3), marginTop: s(10) },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: s(12) },
+  rowIcon: { width: s(42), height: s(42), borderRadius: s(10), alignItems: 'center', justifyContent: 'center' },
 });

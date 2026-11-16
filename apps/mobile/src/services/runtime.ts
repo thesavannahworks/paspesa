@@ -13,7 +13,8 @@ export interface Runtime {
   initialPrefs: Record<string, unknown>;
 }
 
-const PREF_KEYS = ['theme', 'balanceHidden', 'frequentsOpen'];
+/** Every preference read at start-up. A key missing here is saved but not restored after a restart. */
+const PREF_KEYS = ['theme', 'balanceHidden', 'frequentsOpen', 'profilePhoto'];
 
 /**
  * Builds the offline-first runtime: the whole local ledger is loaded from device storage,

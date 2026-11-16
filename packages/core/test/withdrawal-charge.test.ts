@@ -22,7 +22,7 @@ describe('Send Money: add withdrawal charges', () => {
     expect(res.transaction.withdrawalCharge).toBe(11);
     expect(res.transaction.fee).toBe(7);
     expect(res.transaction.balanceAfter).toBe(1_000 - 118);
-    expect(res.message.body).toContain('Ksh111.00 sent to');
+    expect(res.message?.body).toContain('Ksh111.00 sent to');
     expect((await reconcileAccount(store)).ok).toBe(true);
   });
 

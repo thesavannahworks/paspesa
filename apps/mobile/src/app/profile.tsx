@@ -3,8 +3,10 @@ import Constants from 'expo-constants';
 import { router, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { Avatar, Inert, Screen, ScreenHeader, T } from '@/components/ui';
-import { CameraIcon, ChevronLeftIcon, FingerprintIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, ShareIcon, SunIcon, WalletIcon } from '@/icons';
+import { UserAvatar } from '@/components/UserAvatar';
+import { Inert, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
+import { CameraIcon, ChevronLeftIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
+import { useProfilePhoto } from '@/services/profilePhoto';
 import { useAccount } from '@/services/AppState';
 import { useTheme, type ThemeChoice } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -18,6 +20,7 @@ export default function ProfileScreen() {
   const { colors } = useTheme();
   const account = useAccount();
   const [themeOpen, setThemeOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   return (
     <Screen background="page">
@@ -25,10 +28,10 @@ export default function ProfileScreen() {
       <View style={[styles.card, { backgroundColor: colors.surface, marginTop: s(40) }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View>
-            <Avatar name={account.accountName} size={88} />
-            <Inert style={[styles.cameraBadge, { backgroundColor: colors.raised, borderColor: colors.surface }]}>
+            <UserAvatar size={88} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Change profile picture" onPress={() => setPhotoOpen(true)} hitSlop={8} style={[styles.cameraBadge, { backgroundColor: colors.raised, borderColor: colors.surface }]}>
               <CameraIcon size={22} />
-            </Inert>
+            </Pressable>
           </View>
           <T variant="title" style={{ marginLeft: s(30), fontSize: s(26) }} numberOfLines={2}>{account.accountName}</T>
         </View>
@@ -60,6 +63,7 @@ export default function ProfileScreen() {
       </T>
 
       <ThemeSheet visible={themeOpen} onClose={() => setThemeOpen(false)} />
+      <PhotoSheet visible={photoOpen} onClose={() => setPhotoOpen(false)} />
     </Screen>
   );
 }
@@ -88,6 +92,31 @@ function Tile({ icon, label, onPress, href, wide }: { icon: ReactNode; label: st
     <Pressable accessibilityRole="button" accessibilityLabel={label.replace('\n', ' ')} onPress={action} style={flex}>{content}</Pressable>
   ) : (
     <Inert style={flex}>{content}</Inert>
+  );
+}
+
+/** Change Profile Picture (reference: 02-profile-settings/05). The photo stays on this device. */
+function PhotoSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { colors } = useTheme();
+  const photo = useProfilePhoto();
+  const [error, setError] = useState<string | null>(null);
+  const run = async (action: () => Promise<{ ok: boolean; reason?: string }>) => {
+    setError(null);
+    const res = await action();
+    if (res.ok) onClose();
+    else if (res.reason === 'denied') setError('Allow camera access in your phone settings to take a photo.');
+    else if (res.reason === 'failed') setError('The picture could not be saved. Please try again.');
+  };
+  const close = () => { setError(null); onClose(); };
+  return (
+    <Sheet visible={visible} title="Change Profile Picture" onClose={close}>
+      <View style={{ marginTop: s(18) }}>
+        <SheetRow icon={<CameraIcon size={24} />} label="Take a Photo" onPress={() => run(photo.take)} />
+        <SheetRow icon={<GalleryIcon size={24} />} label="Pick from Gallery" onPress={() => run(photo.pick)} />
+        {photo.uri ? <SheetRow icon={<TrashIcon size={24} />} label="Remove Profile Picture" onPress={() => { photo.remove(); close(); }} /> : null}
+      </View>
+      {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(8) }}>{error}</T> : null}
+    </Sheet>
   );
 }
 

@@ -17,3 +17,4 @@ export { PIN_PATTERN } from './util';
 export * from './ledger';
 export * from './statement';
 export * from './recall';
+export * from './qr';

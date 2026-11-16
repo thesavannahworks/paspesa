@@ -35,6 +35,7 @@ import {
   ScheduleIcon, SearchIcon, SendToManyIcon, StarFilledIcon, StarIcon,
 } from '@/icons';
 import { useAccount, useAppState } from '@/services/AppState';
+import { usePreference } from '@/services/preferences';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
@@ -111,6 +112,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const [result, setResult] = useState<TransactionRecord | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addCharge, setAddCharge] = useState(false);
+  const [balanceHidden] = usePreference('balanceHidden', false);
 
   const favs = useMemo(
     () => favouritesFor([type], favourites, transactions, deps.config.frequentThreshold),
@@ -357,11 +359,13 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         error={errors.amount}
         right={<T variant="body">Ksh</T>}
       />
-      {!errors.amount ? (
+      {errors.amount ? null : balanceHidden ? (
+        <View style={[styles.hiddenHint, { marginLeft: s(type === 'BUY_GOODS' || type === 'PAYBILL' ? 22 : 4), backgroundColor: colors.mode === 'dark' ? '#262626' : '#E6E8EC' }]} />
+      ) : (
         <T variant="label" color={colors.textSecondary} style={{ marginTop: s(8), marginLeft: s(type === 'BUY_GOODS' || type === 'PAYBILL' ? 22 : 4), fontWeight: lowercaseLabels ? '600' : '400' }}>
           Balance: {formatKsh(account.currentBalanceCache)}{lowercaseLabels ? '  ' : ' '}- Fuliza: {formatKsh(0)}
         </T>
-      ) : null}
+      )}
 
       {type === 'SEND_MONEY' ? (
         <WithdrawalChargeOption
@@ -371,7 +375,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         />
       ) : null}
 
-      <PaymentMethods balance={account.currentBalanceCache} three={type === 'BUY_GOODS' || type === 'PAYBILL'} />
+      <PaymentMethods balance={account.currentBalanceCache} hidden={balanceHidden} three={type === 'BUY_GOODS' || type === 'PAYBILL'} />
 
       <PrimaryButton title="Continue" onPress={onContinue} disabled={!canContinue} style={{ marginTop: s(24) }} />
 
@@ -395,15 +399,17 @@ function WithdrawalChargeOption({ charge, checked, onToggle }: { charge: number 
       accessibilityState={{ checked }}
       accessibilityLabel="Add withdrawal charges"
       onPress={onToggle}
-      style={[styles.chargeRow, { borderColor: checked ? colors.green : colors.inputBorder }]}
+      hitSlop={6}
+      style={styles.chargeRow}
     >
-      <View style={[styles.checkbox, { borderColor: checked ? colors.green : colors.textSecondary, backgroundColor: checked ? colors.green : 'transparent' }]}>
-        {checked ? <Text maxFontSizeMultiplier={FIXED_TEXT} style={styles.checkTick}>✓</Text> : null}
+      <View style={[styles.checkbox, checked
+        ? { borderColor: colors.green, backgroundColor: colors.mode === 'dark' ? '#1E3A23' : colors.greenSoft }
+        : { borderColor: colors.mode === 'dark' ? '#4F5964' : '#C9CED4' }]}>
+        {checked ? <Text maxFontSizeMultiplier={FIXED_TEXT} style={[styles.checkTick, { color: colors.green }]}>✓</Text> : null}
       </View>
-      <View style={{ flex: 1, marginLeft: s(12) }}>
-        <T variant="body" style={{ fontSize: s(16) }}>Add withdrawal charges ({formatKsh(charge)})</T>
-        <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(2), fontSize: s(14) }}>So the recipient can withdraw the full amount</T>
-      </View>
+      <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ marginLeft: s(14), fontSize: s(17), color: colors.green }}>
+        Add withdrawal charges <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: colors.text }}>({formatKsh(charge)})</Text>
+      </Text>
     </Pressable>
   );
 }
@@ -437,7 +443,7 @@ function NameLine({ value, onChange, placeholder, error, indent }: {
   );
 }
 
-function FavouritesStrip({ items, onPick, onAdd }: { items: FavouriteSuggestion[]; onPick: (f: FavouriteSuggestion) => void; onAdd: () => void }) {
+export function FavouritesStrip({ items, onPick, onAdd }: { items: FavouriteSuggestion[]; onPick: (f: FavouriteSuggestion) => void; onAdd: () => void }) {
   const { colors } = useTheme();
   return (
     <View style={{ marginTop: s(24) }}>
@@ -461,7 +467,9 @@ function FavouritesStrip({ items, onPick, onAdd }: { items: FavouriteSuggestion[
   );
 }
 
-function PaymentMethods({ balance, three }: { balance: number; three: boolean }) {
+function PaymentMethods({ balance, hidden, three }: { balance: number; hidden: boolean; three: boolean }) {
+  // With the balance hidden the reference shows a zero placeholder on the card (03-send-money/12).
+  const shown = hidden ? '0.0' : formatAmount(balance);
   const { colors } = useTheme();
   const card = (selected: boolean, mark: ReactNode, title: string, sub: string) => (
     <View style={[three ? styles.methodTall : styles.methodWide, {
@@ -481,7 +489,7 @@ function PaymentMethods({ balance, three }: { balance: number; three: boolean })
       <T variant="bodyStrong" style={{ fontSize: s(19) }}>Select Payment Method</T>
       <View style={{ flexDirection: 'row', gap: s(three ? 14 : 16), marginTop: s(16) }}>
         <View style={{ flex: 1 }} accessibilityRole="radio" accessibilityState={{ checked: true }}>
-          {card(true, <MoneyMethodIcon size={30} />, 'M-PESA', three ? `Ksh. ${formatAmount(balance)}` : `Bal. Ksh. ${formatAmount(balance)}`)}
+          {card(true, <MoneyMethodIcon size={30} />, 'M-PESA', three ? `Ksh. ${shown}` : `Bal. Ksh. ${shown}`)}
         </View>
         {three ? (
           <Inert style={{ flex: 1 }}>{card(false, <PointsIcon size={30} />, 'Bonga Points', 'Ksh. 0')}</Inert>
@@ -522,7 +530,7 @@ function DoMore({ type }: { type: PaymentType }) {
 
 // ---------------------------------------------------------------- add favourite
 
-function AddFavouriteSheet({ type, visible, onClose }: { type: PaymentType; visible: boolean; onClose: () => void }) {
+export function AddFavouriteSheet({ type, visible, onClose }: { type: PaymentType | 'AIRTIME'; visible: boolean; onClose: () => void }) {
   const { colors } = useTheme();
   const { deps, refresh } = useAppState();
   const [f, setF] = useState<FormState>(EMPTY);
@@ -531,7 +539,9 @@ function AddFavouriteSheet({ type, visible, onClose }: { type: PaymentType; visi
 
   const close = () => { setF(EMPTY); setErrors({}); onClose(); };
   const save = async () => {
-    const res = await addFavourite(deps, { type, counterparty: counterpartyOf(type, f) });
+    const res = type === 'AIRTIME'
+      ? await addFavourite(deps, { type, variant: 'OTHER', counterparty: { phone: f.phone }, label: f.name.trim() || f.phone.trim() })
+      : await addFavourite(deps, { type, counterparty: counterpartyOf(type, f) });
     if (!res.ok) return setErrors(res.error.fieldErrors ?? { form: res.error.message });
     await refresh();
     close();
@@ -542,8 +552,13 @@ function AddFavouriteSheet({ type, visible, onClose }: { type: PaymentType; visi
       <Pressable style={{ flex: 1, backgroundColor: colors.overlay }} onPress={close} accessibilityLabel="Close" />
       <View style={[styles.sheet, { backgroundColor: colors.screen }]}>
         <T variant="title" center>Add to Favourites</T>
-        <T variant="caption" color={colors.textSecondary} center style={{ marginTop: s(6) }}>{TAB_LABEL[type] === 'Mobile number' ? 'Send Money' : TAB_LABEL[type]}</T>
-        {type === 'SEND_MONEY' || type === 'POCHI' ? (
+        <T variant="caption" color={colors.textSecondary} center style={{ marginTop: s(6) }}>{type === 'AIRTIME' ? 'Airtime Top Up' : TAB_LABEL[type] === 'Mobile number' ? 'Send Money' : TAB_LABEL[type]}</T>
+        {type === 'AIRTIME' ? (
+          <>
+            <Field label="Phone number" placeholder="07XX XXX XXX" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
+            <Field label="Name (optional)" value={f.name} onChangeText={set('name')} autoCapitalize="words" error={errors.name} />
+          </>
+        ) : type === 'SEND_MONEY' || type === 'POCHI' ? (
           <>
             <Field label="Phone number" placeholder="07XX XXX XXX" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
             <Field label={type === 'POCHI' ? 'Business name' : 'Name'} value={f.name} onChangeText={set('name')} autoCapitalize="words" error={errors.name} />
@@ -641,9 +656,10 @@ function ZiidiBanner() {
 }
 
 const styles = StyleSheet.create({
-  chargeRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: s(10), padding: s(12), marginTop: s(16) },
-  checkbox: { width: s(22), height: s(22), borderRadius: s(5), borderWidth: 1.6, alignItems: 'center', justifyContent: 'center' },
-  checkTick: { color: '#FFFFFF', fontSize: s(14), fontWeight: '700' },
+  chargeRow: { flexDirection: 'row', alignItems: 'center', marginTop: s(26) },
+  checkbox: { width: s(30), height: s(30), borderRadius: s(8), borderWidth: 1.6, alignItems: 'center', justifyContent: 'center' },
+  checkTick: { fontSize: s(17), fontWeight: '600' },
+  hiddenHint: { width: s(260), height: s(18), borderRadius: s(9), marginTop: s(10) },
   adornments: { flexDirection: 'row', alignItems: 'center', gap: s(14) },
   adornDivider: { width: 1.5, height: s(30) },
   favCircle: { width: s(48), height: s(48), borderRadius: s(24), alignItems: 'center', justifyContent: 'center' },

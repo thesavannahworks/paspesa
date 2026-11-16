@@ -442,3 +442,122 @@ export const PointsIcon = make((c) => (
     <Path d="M8.6 8.3 6.8 2.8h3.6L12 7.4l1.6-4.6h3.6l-1.8 5.5" stroke={c} />
   </>
 ), { color: '#BDBDBD' });
+
+// ---------------------------------------------------------------- profile picture / scan to pay
+
+export const GalleryIcon = make((c, a) => (
+  <>
+    <Rect x={3.5} y={3.5} width={17} height={17} rx={3.4} stroke={c} />
+    <Circle cx={9} cy={9} r={1.7} stroke={a} />
+    <Path d="m4 17.4 4.6-4.4 3.4 3.1 3.1-2.9 4.9 4.6" stroke={c} />
+  </>
+));
+
+export const TrashIcon = make((c, a) => (
+  <>
+    <Path d="M4 6.6h16M9.4 6.4V4.6c0-.6.5-1.1 1.1-1.1h3c.6 0 1.1.5 1.1 1.1v1.8" stroke={c} />
+    <Path d="m5.8 6.8.9 12.3c.1 1 .9 1.7 1.9 1.7h6.8c1 0 1.8-.7 1.9-1.7l.9-12.3" stroke={c} />
+    <Path d="M10.2 11v5.6M13.8 11v5.6" stroke={a} />
+  </>
+));
+
+export const DownloadIcon = make((c) => (
+  <>
+    <Path d="M12 3.8v11M7.6 10.6 12 15l4.4-4.4" stroke={c} />
+    <Path d="M4 15.6v2.8c0 1 .8 1.8 1.8 1.8h12.4c1 0 1.8-.8 1.8-1.8v-2.8" stroke={c} />
+  </>
+), { color: '#B5B5B5' });
+
+export const FlashOffIcon = make((c) => (
+  <>
+    <Circle cx={12} cy={12} r={9.6} stroke={c} />
+    <Path d="M12.8 5.8 8.4 12.6h3.6l-.8 5.6 4.4-6.8H12l.8-5.6Z" stroke={c} strokeWidth={1.4} />
+    <Path d="m5.4 5.4 13.2 13.2" stroke={c} />
+  </>
+), { color: '#FFFFFF' });
+
+export const FlashOnIcon = make((c) => (
+  <>
+    <Circle cx={12} cy={12} r={9.6} stroke={c} />
+    <Path d="M12.8 5.8 8.4 12.6h3.6l-.8 5.6 4.4-6.8H12l.8-5.6Z" stroke={c} strokeWidth={1.4} fill={c} />
+  </>
+), { color: '#FFD54A' });
+
+/** "We can't access your camera" illustration (scan to pay). */
+export function CameraOffArt({ width = 190 }: { width?: number }) {
+  const h = (width * 90) / 190;
+  return (
+    <Svg width={s(width)} height={s(h)} viewBox="0 0 190 90" fill="none">
+      <Rect x={20} y={30} width={150} height={22} rx={11} fill="#8E8E8E" opacity={0.18} />
+      <Rect x={2} y={44} width={70} height={14} rx={7} fill="#8E8E8E" opacity={0.18} />
+      <Rect x={36} y={64} width={130} height={18} rx={9} fill="#8E8E8E" opacity={0.18} />
+      <Circle cx={178} cy={73} r={6} fill="#8E8E8E" opacity={0.18} />
+      <Path d="M82 44.5c0-3 2.4-5.4 5.4-5.4h4l3.2-4.3h10.8l3.2 4.3h4c3 0 5.4 2.4 5.4 5.4V64c0 3-2.4 5.4-5.4 5.4H87.4c-3 0-5.4-2.4-5.4-5.4V44.5Z" stroke={ICON_RED} strokeWidth={2.4} />
+      <Circle cx={100} cy={55} r={7} stroke={ICON_RED} strokeWidth={2.4} />
+      <Path d="M77 75 124 28" stroke={ICON_GREEN} strokeWidth={2.6} strokeLinecap="round" />
+      <Path d="m70 20 4 4m0-4-4 4M126 12l4 4m0-4-4 4" stroke={ICON_RED} strokeWidth={2} strokeLinecap="round" />
+      <Circle cx={124} cy={2.5} r={2} stroke={ICON_RED} strokeWidth={1.4} />
+      <Circle cx={82} cy={14} r={2} fill={ICON_RED} />
+      <Circle cx={142} cy={20} r={2} fill={ICON_RED} />
+    </Svg>
+  );
+}
+
+// ---------------------------------------------------------------- My Finances (generic, no partner logos)
+
+export const TraderIcon = make((c, a) => (
+  <>
+    <Path d="M6 4v16M12 6v12M18 3.5v14" stroke={c} />
+    <Rect x={4.4} y={8} width={3.2} height={6} rx={0.8} fill={c} stroke={c} strokeWidth={1} />
+    <Rect x={10.4} y={9} width={3.2} height={5} rx={0.8} fill={a} stroke={a} strokeWidth={1} />
+    <Rect x={16.4} y={6} width={3.2} height={7} rx={0.8} fill={c} stroke={c} strokeWidth={1} />
+  </>
+));
+
+export const SavingsIcon = make((c, a) => (
+  <>
+    <Path d="M5 9.4c0-2.4 3.1-4.4 7-4.4s7 2 7 4.4-3.1 4.4-7 4.4-7-2-7-4.4Z" stroke={c} />
+    <Path d="M5 9.4v4.4c0 2.4 3.1 4.4 7 4.4s7-2 7-4.4V9.4" stroke={c} />
+    <Path d="M5 13.8v1.8c0 2.4 3.1 4.4 7 4.4s7-2 7-4.4v-1.8" stroke={c} />
+    <Path d="M10.4 9.4h3.2" stroke={a} />
+  </>
+));
+
+export const ShieldLeafIcon = make((c, a) => (
+  <>
+    <Path d="M12 3.2 5 5.8v5.6c0 4.4 3 7.8 7 9.4 4-1.6 7-5 7-9.4V5.8l-7-2.6Z" stroke={c} />
+    <Path d="M9 14.6c0-3.2 2.4-5.4 6-5.6.2 3.6-2.2 6-5.6 6M9 14.6l3.4-2.8" stroke={a} />
+  </>
+));
+
+export const UmbrellaIcon = make((c, a) => (
+  <>
+    <Path d="M3.4 12a8.6 8.6 0 0 1 17.2 0H3.4Z" stroke={c} />
+    <Path d="M12 12v6.4a1.8 1.8 0 0 1-3.6 0" stroke={a} />
+    <Path d="M12 3.4v-.8" stroke={c} />
+  </>
+));
+
+export const GrowthIcon = make((c, a) => (
+  <>
+    <Path d="M4 19.5h16" stroke={c} />
+    <Path d="M6.5 16.5v-3M11 16.5v-6M15.5 16.5v-9" stroke={c} />
+    <Path d="m5 10 4.6-4.4 3 2.6L19 3.6M15.6 3.6H19V7" stroke={a} />
+  </>
+));
+
+export const BriefcaseIcon = make((c, a) => (
+  <>
+    <Rect x={3.4} y={7.2} width={17.2} height={12.4} rx={2.4} stroke={c} />
+    <Path d="M8.8 7V5.4c0-.8.6-1.4 1.4-1.4h3.6c.8 0 1.4.6 1.4 1.4V7" stroke={c} />
+    <Path d="M3.6 12.4h16.8M10.6 12.4v1.8h2.8v-1.8" stroke={a} />
+  </>
+));
+
+export const GoIcon = make((c, a) => (
+  <>
+    <Rect x={6.4} y={2.8} width={11.2} height={18.4} rx={2.4} stroke={c} />
+    <Path d="m10.6 9.6 3.6 2.4-3.6 2.4V9.6Z" stroke={a} />
+    <Path d="M10.6 18.2h2.8" stroke={c} />
+  </>
+));

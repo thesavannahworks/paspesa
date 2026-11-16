@@ -48,10 +48,12 @@ export function ConfirmView({
  * Submits automatically on the 4th digit.
  */
 export function PinView({
-  badge, name, amount, fee, onSubmit, onBack, error, busy,
+  badge, name, amount, fee, onSubmit, onBack, error, busy, keepCase,
 }: {
   badge: ReactNode;
   name: string;
+  /** Show the name as given (e.g. "Buy Airtime") instead of upper case. */
+  keepCase?: boolean;
   amount: number;
   fee: number;
   onSubmit: (pin: string) => void | Promise<void>;
@@ -79,7 +81,7 @@ export function PinView({
       </View>
       <View style={{ alignItems: 'center', marginTop: s(40) }}>
         {badge}
-        <T variant="body" color={colors.textSecondary} style={{ marginTop: s(22), fontSize: s(21), textTransform: 'uppercase' }} center>{name}</T>
+        <T variant="body" color={colors.textSecondary} style={{ marginTop: s(22), fontSize: s(21), textTransform: keepCase ? 'none' : 'uppercase' }} center>{name}</T>
         <T variant="label" color={colors.textSecondary} style={{ marginTop: s(10) }}>
           Ksh. {formatAmount(amount)}  Fee:Ksh. {formatAmount(fee)}
         </T>

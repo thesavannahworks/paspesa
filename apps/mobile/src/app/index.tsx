@@ -8,6 +8,8 @@ import {
   AirtimeIcon, BellIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EmptyActivityArt, EyeIcon, EyeOffIcon, GiftIcon,
   HomeInternetIcon, LipaIcon, BundlesIcon, InvestIcon, PochiWalletIcon, SharedPayIcon, ScanIcon, SearchIcon, SendMoneyIcon, WithdrawIcon,
 } from '@/icons';
+import { ExploreCarousel, MyFinances } from '@/components/explore';
+import { UserAvatar } from '@/components/UserAvatar';
 import { useAppState } from '@/services/AppState';
 import { usePreference } from '@/services/preferences';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -58,7 +60,7 @@ export default function HomeScreen() {
     { label: 'Withdraw\nMoney', icon: <WithdrawIcon size={33} /> },
     { label: 'Pochi\nWallet', icon: <PochiWalletIcon size={33} /> },
     { label: 'Buy\nBundles', icon: <BundlesIcon size={31} /> },
-    { label: 'Airtime\nTop Up', icon: <AirtimeIcon size={33} /> },
+    { label: 'Airtime\nTop Up', icon: <AirtimeIcon size={33} />, href: '/airtime' },
     { label: 'Tunukiwa\nBundles', icon: <GiftIcon size={33} /> },
     { label: 'Home\nInternet', icon: <HomeInternetIcon size={33} /> },
   ];
@@ -84,7 +86,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.header, borderBottomColor: colors.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Profile" onPress={() => router.push('/profile')} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <Avatar name={account.accountName} size={50} />
+          <UserAvatar size={50} />
           <View style={{ marginLeft: s(14) }}>
             <T variant="body" color={colors.textSecondary} style={{ fontSize: s(18) }}>{greeting()}</T>
             <T variant="body" style={{ fontSize: s(20), marginTop: s(2) }}>{firstName} 👋</T>
@@ -109,7 +111,7 @@ export default function HomeScreen() {
           onMomentumScrollEnd={onPagerScroll}
           onScroll={onPagerScroll}
           scrollEventThrottle={32}
-          contentContainerStyle={{ paddingHorizontal: s(16), paddingTop: s(28), gap: s(12) }}
+          contentContainerStyle={{ paddingHorizontal: s(21), paddingTop: s(28), gap: s(12) }}
         >
           <EdgeCard style={{ width: cardWidth }}>
             <T variant="label" color={colors.green} style={{ fontWeight: '600', fontSize: s(16) }}>M-PESA Balance</T>
@@ -218,14 +220,20 @@ export default function HomeScreen() {
             </View>
           ) : null}
         </View>
+
+        {/* Explore & Discover Deals: Paspesa's own banners (the reference adverts are third-party, White Paper §40) */}
+        <T variant="heading" style={{ marginHorizontal: s(21), marginTop: s(26), fontSize: s(18), fontWeight: '600' }}>Explore &amp; Discover Deals 🔥</T>
+        <ExploreCarousel />
+
+        <MyFinances />
       </ScrollView>
 
-      {/* Floating scan-to-pay (inert, as referenced) */}
+      {/* Floating scan-to-pay */}
       {/* Collapses to the icon while scrolling down the page, expands again when scrolling back up (reference 01-home/04). */}
-      <Inert style={[styles.scanPill, scanCollapsed && styles.scanPillCollapsed, { backgroundColor: colors.mode === 'dark' ? colors.raised : colors.screen, shadowColor: '#000' }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Scan to pay" onPress={() => router.push('/scan')} style={[styles.scanPill, scanCollapsed && styles.scanPillCollapsed, { backgroundColor: colors.mode === 'dark' ? colors.raised : colors.screen, shadowColor: '#000' }]}>
         <ScanIcon size={30} />
         {scanCollapsed ? null : <T variant="body" style={{ fontSize: s(19), marginLeft: s(14) }}>Scan to pay</T>}
-      </Inert>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -287,18 +295,18 @@ function EmptyFrequents({ action }: { action?: string }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(16), paddingTop: s(14), paddingBottom: s(30), borderBottomWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(21), paddingTop: s(14), paddingBottom: s(30), borderBottomWidth: StyleSheet.hairlineWidth },
   dot: { position: 'absolute', top: s(2), right: s(2), width: s(12), height: s(12), borderRadius: s(6) },
   blurBar: { height: s(30), borderRadius: s(8), opacity: 0.9 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: s(8), marginTop: s(18) },
   pageDot: { height: s(5), borderRadius: s(3) },
-  panel: { marginHorizontal: s(16), marginTop: s(22), borderRadius: s(18), paddingHorizontal: s(20), paddingTop: s(24), paddingBottom: s(20) },
+  panel: { marginHorizontal: s(21), marginTop: s(22), borderRadius: s(18), paddingHorizontal: s(20), paddingTop: s(24), paddingBottom: s(20) },
   panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: s(30), marginBottom: s(-14) },
   gridCell: { width: '25%', alignItems: 'center', marginBottom: s(11) },
   qaCircle: { width: s(52), height: s(52), borderRadius: s(26), alignItems: 'center', justifyContent: 'center' },
   scanPill: {
-    position: 'absolute', right: s(16), bottom: s(24), flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(24), paddingVertical: s(16),
+    position: 'absolute', right: s(22), bottom: s(24), flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(24), paddingVertical: s(16),
     borderRadius: s(16), elevation: 6, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: s(4) },
   },
   scanPillCollapsed: { paddingHorizontal: s(20), paddingVertical: s(20) },
