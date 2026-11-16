@@ -105,3 +105,17 @@ were then measured element by element against the screenshots (same 1080 px phon
 - **Account details** (Profile → Account Details): name and phone from setup can be edited. Past
   transactions, messages and statements keep their original values. The opening balance is read-only
   because it is the first ledger entry.
+
+## Local storage in tables (2026-11-17)
+- The ledger is stored per entity, not as one JSON record: SQLite tables in `paspesa.db` on the phone,
+  IndexedDB object stores (database `paspesa` v2) in the browser (White Paper §7, §23.2).
+- The engine still works on an in-memory copy (fast reads, all-or-nothing units). Each committed unit
+  now produces a change set — only the rows it touched — written in ONE database transaction
+  before the change becomes visible (`MemoryStore` option `persistChanges`, `packages/core/src/changes.ts`).
+- The SQL schema and statements are platform-neutral (`packages/core/src/sqlLedger.ts`): the phone runs
+  them through expo-sqlite (`withExclusiveTransactionAsync`), the tests through Node's built-in SQLite.
+  UNIQUE constraints on operation ID, reference, sequence, one movement / one confirmation message per
+  transaction and one outbox entry per operation give duplicate protection in the database itself (§25).
+  Records are kept whole as JSON beside the indexed columns, so new optional fields need no migration.
+- Migration: on first start the old single record (`ledger.state.v1`) is written to the tables in one
+  transaction and removed only afterwards; an interrupted migration just repeats the removal.

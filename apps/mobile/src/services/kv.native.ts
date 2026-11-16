@@ -1,12 +1,10 @@
-import * as SQLite from 'expo-sqlite';
+import { getDatabase } from './db.native';
 import type { KeyValueStore } from './kvTypes';
 
-/** Android/iOS: SQLite file `paspesa.db`, table `kv`. */
+/** Android/iOS: table `kv` in the SQLite file `paspesa.db`. */
 export async function openKeyValueStore(): Promise<KeyValueStore> {
-  const db = await SQLite.openDatabaseAsync('paspesa.db');
-  await db.execAsync(
-    'PRAGMA journal_mode = WAL; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);',
-  );
+  const db = await getDatabase();
+  await db.execAsync('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);');
   return {
     async get(key) {
       const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', key);

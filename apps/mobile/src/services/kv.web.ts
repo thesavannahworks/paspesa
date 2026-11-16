@@ -1,29 +1,19 @@
+import { idbTransaction } from './idb.web';
 import type { KeyValueStore } from './kvTypes';
 
-/** Web/PWA: IndexedDB database `paspesa`, object store `kv`. */
-export function openKeyValueStore(): Promise<KeyValueStore> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('paspesa', 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains('kv')) request.result.createObjectStore('kv');
-    };
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const run = <T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest): Promise<T> =>
-        new Promise((res, rej) => {
-          const tx = db.transaction('kv', mode);
-          const r = op(tx.objectStore('kv'));
-          // Resolve on transaction completion so writes are durable before we continue.
-          tx.oncomplete = () => res(r.result as T);
-          tx.onerror = () => rej(tx.error);
-          tx.onabort = () => rej(tx.error);
-        });
-      resolve({
-        get: async (key) => ((await run<string | undefined>('readonly', (s) => s.get(key))) ?? null),
-        set: async (key, value) => { await run('readwrite', (s) => s.put(value, key)); },
-        remove: async (key) => { await run('readwrite', (s) => s.delete(key)); },
+/** Web/PWA: object store `kv` in the IndexedDB database `paspesa`. Each call is one committed transaction. */
+export async function openKeyValueStore(): Promise<KeyValueStore> {
+  return {
+    get: async (key) => ((await idbTransaction<string | undefined>(['kv'], 'readonly', (tx) => tx.objectStore('kv').get(key))) ?? null),
+    set: async (key, value) => {
+      await idbTransaction(['kv'], 'readwrite', (tx) => {
+        tx.objectStore('kv').put(value, key);
       });
-    };
-  });
+    },
+    remove: async (key) => {
+      await idbTransaction(['kv'], 'readwrite', (tx) => {
+        tx.objectStore('kv').delete(key);
+      });
+    },
+  };
 }

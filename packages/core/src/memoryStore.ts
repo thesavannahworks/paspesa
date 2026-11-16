@@ -3,6 +3,7 @@
  * each runAtomic works on a deep copy and swaps it in only on success.
  * Used by tests and as the reference behaviour for the SQLite/IndexedDB adapters.
  */
+import { isEmptyChangeSet, type ChangeSet } from './changes';
 import type { LocalStore, StoreWriter } from './store';
 import type {
   Account,
@@ -110,6 +111,40 @@ class MemoryAccess implements StoreWriter {
   }
 }
 
+/** Records which rows a unit touched, so only those rows are written to the tables. */
+class TrackingAccess extends MemoryAccess {
+  readonly touched = { account: false, favourites: false, transactions: new Set<string>(), movements: new Set<string>(), messages: new Set<string>(), outbox: new Set<string>() };
+
+  override async putAccount(account: Account) { await super.putAccount(account); this.touched.account = true; }
+  override async insertTransaction(tx: TransactionRecord) { await super.insertTransaction(tx); this.touched.transactions.add(tx.id); }
+  override async insertMovement(m: BalanceMovement) { await super.insertMovement(m); this.touched.movements.add(m.id); }
+  override async insertMessage(m: MessageRecord) { await super.insertMessage(m); this.touched.messages.add(m.id); }
+  override async enqueueOutbox(e: OutboxEntry) { await super.enqueueOutbox(e); this.touched.outbox.add(e.id); }
+  override async updateOutbox(e: OutboxEntry) { await super.updateOutbox(e); this.touched.outbox.add(e.id); }
+  override async setTransactionSyncStatus(transactionId: string, status: SyncStatus) {
+    await super.setTransactionSyncStatus(transactionId, status);
+    this.touched.transactions.add(transactionId);
+    for (const m of this.state.messages) if (m.transactionId === transactionId) this.touched.messages.add(m.id);
+  }
+  override async markMessageRead(id: string, readAt: string) { await super.markMessageRead(id, readAt); this.touched.messages.add(id); }
+  override async updateMessage(m: MessageRecord) { await super.updateMessage(m); this.touched.messages.add(m.id); }
+  override async upsertFavourite(f: Favourite) { await super.upsertFavourite(f); this.touched.favourites = true; }
+  override async deleteFavourite(id: string) { await super.deleteFavourite(id); this.touched.favourites = true; }
+
+  changes(): ChangeSet {
+    const pick = <T extends { id: string }>(rows: T[], ids: Set<string>) => (ids.size ? clone(rows.filter((r) => ids.has(r.id))) : []);
+    const t = this.touched;
+    return {
+      ...(t.account && this.state.account ? { account: clone(this.state.account) } : {}),
+      transactions: pick(this.state.transactions, t.transactions),
+      movements: pick(this.state.movements, t.movements),
+      messages: pick(this.state.messages, t.messages),
+      outbox: pick(this.state.outbox, t.outbox),
+      ...(t.favourites ? { favourites: clone(this.state.favourites) } : {}),
+    };
+  }
+}
+
 export interface MemoryStoreOptions {
   /**
    * Durably saves the complete new state. Called once per atomic unit, BEFORE the new state
@@ -117,6 +152,12 @@ export interface MemoryStoreOptions {
    * (the engine then reports STORAGE_FAILURE and nothing is committed).
    */
   persist?: (state: MemoryState) => Promise<void>;
+  /**
+   * Durably saves only the rows the unit changed, in ONE database transaction (SQLite / IndexedDB
+   * tables). Same contract as `persist`: called before the new state becomes visible; if it throws,
+   * nothing is committed. Not called for units that changed nothing.
+   */
+  persistChanges?: (changes: ChangeSet) => Promise<void>;
 }
 
 /** Fills in collections added after a state was first saved (forward-compatible loading). */
@@ -127,10 +168,12 @@ export function normalizeState(raw: Partial<MemoryState> | null | undefined): Me
 export class MemoryStore extends MemoryAccess implements LocalStore {
   private queue: Promise<unknown> = Promise.resolve();
   private readonly persist: MemoryStoreOptions['persist'];
+  private readonly persistChanges: MemoryStoreOptions['persistChanges'];
 
   constructor(initial?: Partial<MemoryState>, options: MemoryStoreOptions = {}) {
     super(normalizeState(initial ? clone(initial) : undefined));
     this.persist = options.persist;
+    this.persistChanges = options.persistChanges;
   }
 
   /** Test hook: inject a failure into the next atomic unit after N writes. */
@@ -139,9 +182,15 @@ export class MemoryStore extends MemoryAccess implements LocalStore {
   runAtomic<T>(work: (tx: StoreWriter) => Promise<T>): Promise<T> {
     const run = async () => {
       const working = clone(this.state);
-      const access = this.failAfterWrites === null ? new MemoryAccess(working) : this.faultyAccess(working, this.failAfterWrites);
+      const tracking = new TrackingAccess(working);
+      const access = this.failAfterWrites === null ? tracking : this.faultyAccess(tracking, this.failAfterWrites);
       const result = await work(access);
-      if (this.persist) await this.persist(clone(working)); // durable first…
+      // durable first…
+      if (this.persist) await this.persist(clone(working));
+      if (this.persistChanges) {
+        const changes = tracking.changes();
+        if (!isEmptyChangeSet(changes)) await this.persistChanges(changes);
+      }
       this.state = working; // …then visible
       return result;
     };
@@ -154,8 +203,7 @@ export class MemoryStore extends MemoryAccess implements LocalStore {
     return clone(this.state);
   }
 
-  private faultyAccess(working: MemoryState, limit: number): StoreWriter {
-    const access = new MemoryAccess(working);
+  private faultyAccess(access: TrackingAccess, limit: number): StoreWriter {
     let writes = 0;
     const writeMethods = new Set([
       'putAccount', 'insertTransaction', 'insertMovement', 'insertMessage',

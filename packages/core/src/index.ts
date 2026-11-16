@@ -18,3 +18,5 @@ export * from './ledger';
 export * from './statement';
 export * from './recall';
 export * from './qr';
+export * from './changes';
+export * from './sqlLedger';
