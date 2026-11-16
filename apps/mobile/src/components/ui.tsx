@@ -238,6 +238,31 @@ export function IconCircle({ children, size = 56 }: { children: ReactNode; size?
   );
 }
 
+/** On/off switch (reference: Biometrics "Unlock App", 68 × 41 track, outlined when off). */
+export function Toggle({ value, onChange, label, disabled }: { value: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  const { colors } = useTheme();
+  const dark = colors.mode === 'dark';
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value, disabled }}
+      aria-checked={value}
+      disabled={disabled}
+      onPress={() => onChange(!value)}
+      hitSlop={8}
+      style={{
+        width: s(68), height: s(41), borderRadius: s(20.5), borderWidth: 2, justifyContent: 'center', paddingHorizontal: s(8),
+        backgroundColor: value ? colors.green : dark ? '#1E2126' : '#E4E7EB',
+        borderColor: value ? colors.green : dark ? '#4A5568' : '#C9D0D8',
+        alignItems: value ? 'flex-end' : 'flex-start', opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <View style={{ width: s(20), height: s(20), borderRadius: s(10), backgroundColor: value ? '#FFFFFF' : dark ? '#C9CCD1' : '#9AA3AD' }} />
+    </Pressable>
+  );
+}
+
 /** Card with the cyan→green top edge and a badge circle overlapping it (confirm / success / detail cards). */
 export function BadgeCard({ badge, children, style, badgeSize = 94, contentTop }: {
   badge: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle>; badgeSize?: number;

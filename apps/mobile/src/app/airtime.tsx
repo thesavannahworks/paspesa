@@ -19,7 +19,7 @@ import {
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ConfirmView, PinView } from '@/components/journey';
+import { ConfirmView, PinView, authFields, type PinAuth } from '@/components/journey';
 import { ContactPicker } from '@/components/ContactPicker';
 import { AddFavouriteSheet, FavouritesStrip } from '@/components/payments';
 import { BadgeCard, CircleButton, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T } from '@/components/ui';
@@ -68,9 +68,9 @@ export default function AirtimeScreen() {
     setStep('confirm');
   };
 
-  const onPin = async (pin: string) => {
+  const onPin = async (auth: PinAuth) => {
     if (!req) return;
-    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, pin }));
+    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth) }));
     if (!res.ok) return setPinError(res.error.message);
     setPinError(null);
     await refresh();

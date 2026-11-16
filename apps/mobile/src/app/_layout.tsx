@@ -4,6 +4,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppLock } from '@/components/AppLock';
 import { AppStateProvider } from '@/services/AppState';
 import { PreferencesProvider } from '@/services/preferences';
 import { createRuntime, type Runtime } from '@/services/runtime';
@@ -56,6 +57,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <AppStateProvider deps={runtime.deps}>
             <ThemedStack />
+            <AppLock />
           </AppStateProvider>
         </ThemeProvider>
       </PreferencesProvider>

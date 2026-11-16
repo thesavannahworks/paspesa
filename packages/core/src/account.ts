@@ -32,6 +32,42 @@ export async function setPin(
   });
 }
 
+/**
+ * Checks the simulated PIN without doing anything else (turning on biometrics, unlocking the app).
+ * Follows the configured PIN mode, like payments.
+ */
+export async function verifyPin(deps: EngineDeps, pin: string): Promise<{ ok: true } | Failure> {
+  const account = await deps.store.getAccount();
+  if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+  return (await checkPin(deps, account, pin)) ?? { ok: true as const };
+}
+
+/**
+ * Edit the details entered at setup (name, phone number). Past transactions, messages and statements
+ * keep the values they were created with. The opening balance cannot be edited: it is a ledger entry.
+ */
+export async function updateAccountDetails(
+  deps: EngineDeps,
+  input: { accountName: string; phoneNumber: string },
+): Promise<Ok<{ account: Account }> | Failure> {
+  const accountName = input.accountName.replace(/\s+/g, ' ').trim();
+  const phone = normalizeKenyanPhone(input.phoneNumber);
+  const errors: Record<string, string> = {};
+  if (!accountName) errors.accountName = 'Name is required';
+  else if (accountName.length > 60) errors.accountName = 'Name must be at most 60 characters';
+  if (!phone) errors.phoneNumber = 'Enter a valid Kenyan mobile number';
+  if (Object.keys(errors).length) return fail('VALIDATION', 'Please correct the highlighted fields', errors);
+  return deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
+    const now = deps.clock.now();
+    const updated: Account = { ...account, accountName, phoneNumber: phone!, updatedAt: now };
+    await tx.putAccount(updated);
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    return { ok: true as const, account: updated };
+  });
+}
+
 /** User-configurable default recharge sender. Pass null to return to the Paspesa default. */
 export async function updateRechargeSenderDefaults(
   deps: EngineDeps,

@@ -263,10 +263,21 @@ export const GearIcon = make((c) => (
   </>
 ), { color: '#CFCFCF' });
 
+/** Fingerprint: green ridges with red accents (reference Biometrics screen). */
 export const FingerprintIcon = make((c, a) => (
   <>
-    <Circle cx={12} cy={12} r={8.6} stroke={c} />
-    <Path d="M8.4 14.2v-2.4a3.6 3.6 0 0 1 7.2 0v1.4M10.4 16.4v-4.4a1.6 1.6 0 0 1 3.2 0v4" stroke={a} />
+    {/* broken red outer ridge (top, right, left) */}
+    <Path d="M6.8 6A8.6 8.6 0 0 1 15.4 4.4" stroke={a} />
+    <Path d="M17.6 5.6A8.6 8.6 0 0 1 20.4 13.2" stroke={a} />
+    <Path d="M4.8 8.4A8.6 8.6 0 0 0 4.2 14.6" stroke={a} />
+    {/* green ridges, broken like the reference */}
+    <Path d="M6 12.8A6.2 6.2 0 0 1 18.2 12.6" stroke={c} />
+    <Path d="M18.3 14.6v1.8M5.9 15v1.2M7 18.4l-.6.8" stroke={c} />
+    <Path d="M7.9 14.2v-.6a4.1 4.1 0 0 1 8.2 0v2" stroke={c} />
+    <Path d="M7.9 16.4c0 .8.1 1.6.3 2.2M16 17.8c-.2.9-.5 1.6-.9 2.2" stroke={c} />
+    <Path d="M9.8 16.2v-2.6a2.2 2.2 0 0 1 4.4 0v1.4M14.2 16.8c0 1.2-.2 2.2-.6 3.2M9.6 17.8c-.2.7-.5 1.3-.9 1.9" stroke={c} />
+    {/* red ridge from the centre, down to the left */}
+    <Path d="M12 13.6v1.8c0 1.9-.7 3.6-2 5" stroke={a} />
   </>
 ));
 
@@ -581,3 +592,22 @@ export const ArrowDownToLineIcon = make((c) => (
 ), { color: '#FFFFFF' });
 
 export const CheckIcon = make((c) => <Path d="m6 12.4 4 4 8-8.6" stroke={c} />, { color: '#FFFFFF' });
+
+// ---------------------------------------------------------------- biometrics / account
+
+/** Green shield with a small red bug (Biometrics "Unlock App" row). */
+export const ShieldBugIcon = make((c, a) => (
+  <>
+    <Path d="M12 3.2 18.6 5.8v5.4c0 4.2-2.8 7.4-6.6 9-3.8-1.6-6.6-4.8-6.6-9V5.8L12 3.2Z" stroke={c} />
+    <Path d="M10.4 10.2a1.6 1.6 0 0 1 3.2 0M9.9 11.2h4.2v2.6a2.1 2.1 0 0 1-4.2 0v-2.6ZM12 11.2v4.6M8.6 12.2h1.3M14.1 12.2h1.3M8.8 14.6l1.1-.5M15.2 14.6l-1.1-.5" stroke={a} strokeWidth={1.1} />
+  </>
+));
+
+/** Person outline (Account Details tile). */
+export const PersonIcon = make((c, a) => (
+  <>
+    <Circle cx={12} cy={8.2} r={3.6} stroke={c} />
+    <Path d="M5.2 19.4c.6-3.6 3.4-5.8 6.8-5.8s6.2 2.2 6.8 5.8" stroke={c} />
+    <Path d="M16.6 4.4 18 3" stroke={a} />
+  </>
+));

@@ -11,7 +11,7 @@ import {
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { ConfirmView, PinView, SuccessView } from '@/components/journey';
+import { ConfirmView, PinView, SuccessView, authFields, type PinAuth } from '@/components/journey';
 import { Avatar, Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useSubmission } from '@/services/useSubmission';
@@ -69,10 +69,10 @@ export default function RechargeScreen() {
     setStep('confirm');
   };
 
-  const onPin = async (pin: string) => {
+  const onPin = async (auth: PinAuth) => {
     const r = request();
     if (!r) return;
-    const res = await submission.run((operationId) => processSimulation(deps, { ...r, operationId, pin }));
+    const res = await submission.run((operationId) => processSimulation(deps, { ...r, operationId, ...authFields(auth) }));
     if (!res.ok) {
       setPinError(res.error.message);
       return;

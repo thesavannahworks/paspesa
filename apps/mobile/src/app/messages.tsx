@@ -6,7 +6,7 @@
  * - Pinch (or Ctrl + scroll on the web) zooms the text; the zoom is remembered.
  * - Long press opens the message menu. The trash button selects several messages to delete.
  *   Deleting only removes messages from this screen: the M-PESA statement is never affected.
- * - Text that leaves Paspesa (copy, share, forward) carries a simulation note (White Paper §5.1, §19.2).
+ * - Copy, share and forward send the message text exactly as shown.
  */
 import {
   deleteMessages,
@@ -53,9 +53,8 @@ const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 2.2;
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100));
 
-/** Appended to every message that leaves the app. */
-export const SIMULATION_NOTE = '— Paspesa simulation. Not a real M-PESA message.';
-const shareable = (body: string) => `${body}\n\n${SIMULATION_NOTE}`;
+/** Copy, share and forward send the message exactly as shown (owner decision 2026-11-17). */
+const shareable = (body: string) => body;
 
 function palette(dark: boolean) {
   return dark

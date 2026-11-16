@@ -40,7 +40,7 @@ import { useSubmission } from '@/services/useSubmission';
 import { ContactPicker } from '@/components/ContactPicker';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
-import { ConfirmView, PinView, ResultAction, SuccessView } from './journey';
+import { ConfirmView, PinView, ResultAction, SuccessView, authFields, type PinAuth } from './journey';
 import { Avatar, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T, WEB_NO_OUTLINE } from './ui';
 
 export type PaymentType = Extract<SimulationType, 'SEND_MONEY' | 'POCHI' | 'BUY_GOODS' | 'PAYBILL'>;
@@ -181,9 +181,9 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     setStep('confirm');
   };
 
-  const onPin = async (pin: string) => {
+  const onPin = async (auth: PinAuth) => {
     if (!req) return;
-    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, pin }));
+    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth) }));
     if (!res.ok) {
       setPinError(res.error.message);
       return;

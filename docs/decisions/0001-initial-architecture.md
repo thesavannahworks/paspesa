@@ -78,9 +78,9 @@ were then measured element by element against the screenshots (same 1080 px phon
 - **Deleting messages** (single from the menu, bulk from the trash button) only hides messages
   (`deletedAt`). Transactions and the M-PESA statement are never touched; changing statements stays an
   admin back-office operation.
-- **Copy / Share / Forward / Select text** append "— Paspesa simulation. Not a real M-PESA message."
-  (White Paper §5.1 and §19.2: generated messages must stay identifiable as simulations once they leave
-  the app). The Messages header also says "Paspesa simulation". "Add to reminder" is visible but inert.
+- **Copy / Share / Forward / Select text** send the message exactly as shown. The owner removed the
+  simulation tags (header, statement footer, copied-text ending) on 2026-11-17 so screens match the
+  references. "Add to reminder" is visible but inert.
 - **Transaction codes** (`packages/core/src/reference.ts`): date prefix + node ("LA" for the account
   holder's own payments, the sender's node for money received) + a base-36 counter that rises with
   time, fitted to the 44 reference codes (≈ 2.41 per second, ±1 hour scatter). Codes generated now sit
@@ -92,3 +92,16 @@ were then measured element by element against the screenshots (same 1080 px phon
   parser is tolerant; verify against a real code when available.
 - **Transaction detail** follows the 2026-11 references: "Phone Number" holds the phone, till or paybill;
   the time is 24-hour with an am/pm suffix ("21:54pm"); the category chip toggles the Transaction Fee row.
+
+## Biometrics, app unlock, editable account details (2026-11-17)
+- **Biometrics** (`expo-local-authentication`; reference 02-profile-settings/06): turning on requires the
+  PIN, then the phone's biometric check. When on, the app opens locked (and locks again after more than
+  a minute in the background) and every PIN page opens the biometric prompt at once, with a fingerprint
+  key in the keypad and the PIN as fallback. Turning off needs no PIN. The OS does the check; Paspesa
+  never sees biometric data. A biometric approval reaches the engine as `authMethod: 'BIOMETRIC'`
+  instead of a PIN — a future backend must treat this as a device assertion.
+- The PIN page title is "Enter M-PESA PIN" (owner decision); setup and change-PIN still say "Paspesa
+  PIN" and warn never to use the real M-PESA PIN.
+- **Account details** (Profile → Account Details): name and phone from setup can be edited. Past
+  transactions, messages and statements keep their original values. The opening balance is read-only
+  because it is the first ledger entry.

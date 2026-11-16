@@ -4,9 +4,10 @@
  */
 import * as Clipboard from 'expo-clipboard';
 import { formatAmount, formatKsh, formatResultTimestamp, toLocalParts, type TransactionRecord } from '@paspesa/core';
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { BackspaceIcon, ChevronLeftIcon, CloseIcon, CopyIcon, ShareIcon } from '@/icons';
+import { BackspaceIcon, ChevronLeftIcon, CloseIcon, CopyIcon, FingerprintIcon, ShareIcon } from '@/icons';
+import { confirmBiometric, useBiometrics } from '@/services/biometrics';
 import { useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { BadgeCard, CircleButton, Inert, PrimaryButton, Row, Screen, ScreenHeader, T } from './ui';
@@ -43,51 +44,78 @@ export function ConfirmView({
 
 // ---------------------------------------------------------------- PIN
 
+/** How the user approved on the PIN screen. */
+export type PinAuth = { pin: string } | { biometric: true };
+
+/** The engine fields for an approval: the PIN, or a biometric approval by the phone. */
+export const authFields = (auth: PinAuth) => ('pin' in auth ? { pin: auth.pin } : { authMethod: 'BIOMETRIC' as const });
+
 /**
  * Simulated PIN entry, titled "Enter M-PESA PIN" like the reference (owner decision 2026-11-16). The PIN is
  * the simulated Paspesa PIN set at setup (where users are told never to use their real M-PESA PIN, §44.1).
- * Submits automatically on the 4th digit.
+ * Submits automatically on the 4th digit. When biometrics are turned on, the phone's fingerprint/face
+ * prompt opens straight away and a fingerprint key sits in the keypad's empty bottom-left cell.
  */
 export function PinView({
-  badge, name, amount, fee, onSubmit, onBack, error, busy, keepCase,
+  badge, name, amount, fee, onSubmit, onBack, error, busy, keepCase, allowBiometric = true, biometricPrompt,
 }: {
   badge: ReactNode;
   name: string;
   /** Show the name as given (e.g. "Buy Airtime") instead of upper case. */
   keepCase?: boolean;
-  amount: number;
-  fee: number;
-  onSubmit: (pin: string) => void | Promise<void>;
-  onBack: () => void;
+  /** Payment amount line; omitted for non-payment uses (unlocking, confirming a setting). */
+  amount?: number;
+  fee?: number;
+  onSubmit: (auth: PinAuth) => void | Promise<void>;
+  onBack?: () => void;
   error?: string | null;
   busy?: boolean;
+  /** false where the PIN itself must be typed (e.g. turning biometrics on). */
+  allowBiometric?: boolean;
+  biometricPrompt?: string;
 }) {
   const { colors } = useTheme();
   const dark = colors.mode === 'dark';
   const [pin, setPin] = useState('');
+  const bio = useBiometrics();
+  const canBio = allowBiometric && bio.active;
+  const prompted = useRef(false);
 
   const press = (d: string) => {
     if (busy || pin.length >= 4) return;
     const next = pin + d;
     setPin(next);
     // Clear the boxes once the attempt is processed (a wrong PIN shows the error with empty boxes).
-    if (next.length === 4) void Promise.resolve(onSubmit(next)).finally(() => setPin(''));
+    if (next.length === 4) void Promise.resolve(onSubmit({ pin: next })).finally(() => setPin(''));
   };
 
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+  const approveWithBiometrics = useCallback(async () => {
+    if (await confirmBiometric(biometricPrompt ?? 'Confirm with your fingerprint')) await onSubmit({ biometric: true });
+  }, [biometricPrompt, onSubmit]);
+
+  // Offer biometrics once, as soon as the screen opens.
+  useEffect(() => {
+    if (!canBio || prompted.current) return;
+    prompted.current = true;
+    void approveWithBiometrics();
+  }, [canBio, approveWithBiometrics]);
+
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', canBio ? 'bio' : '', '0', 'del'];
   return (
     <Screen scroll={false}>
       {/* Measured on reference 03-send-money/14 (1.4 px per unit). */}
       <View style={styles.pinHeader}>
-        <CircleButton label="Back" size={52} onPress={onBack}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
+        {onBack ? <CircleButton label="Back" size={52} onPress={onBack}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton> : <View style={{ width: s(52), height: s(52) }} />}
         <T variant="bodyStrong" style={{ flex: 1, textAlign: 'center', marginRight: s(41.7), fontSize: s(20.7) }}>Enter M-PESA PIN</T>
       </View>
       <View style={{ alignItems: 'center', marginTop: s(77.5) }}>
         {badge}
         <T variant="body" color={dark ? '#D7D7D7' : colors.textSecondary} style={{ marginTop: s(20.6), fontSize: s(23.2), lineHeight: s(27), textTransform: keepCase ? 'none' : 'uppercase' }} center>{name}</T>
-        <T variant="label" color={dark ? '#DFDFDF' : colors.textSecondary} style={{ marginTop: s(15.6), fontSize: s(18.1), lineHeight: s(22) }}>
-          Ksh. {formatAmount(amount)}  Fee:Ksh. {formatAmount(fee)}
-        </T>
+        {amount !== undefined ? (
+          <T variant="label" color={dark ? '#DFDFDF' : colors.textSecondary} style={{ marginTop: s(15.6), fontSize: s(18.1), lineHeight: s(22) }}>
+            Ksh. {formatAmount(amount)}  Fee:Ksh. {formatAmount(fee ?? 0)}
+          </T>
+        ) : <View style={{ height: s(37.6) }} />}
         <View style={{ flexDirection: 'row', gap: s(20), marginTop: s(85) }}>
           {[0, 1, 2, 3].map((i) => {
             const filled = i < pin.length;
@@ -105,12 +133,14 @@ export function PinView({
           <Pressable
             key={i}
             accessibilityRole="button"
-            accessibilityLabel={k === 'del' ? 'Delete' : k || undefined}
+            accessibilityLabel={k === 'del' ? 'Delete' : k === 'bio' ? 'Use biometrics' : k || undefined}
             disabled={!k || busy}
-            onPress={() => (k === 'del' ? setPin((p) => p.slice(0, -1)) : press(k))}
+            onPress={() => (k === 'del' ? setPin((p) => p.slice(0, -1)) : k === 'bio' ? void approveWithBiometrics() : press(k))}
             style={({ pressed }) => [styles.key, pressed && k ? { opacity: 0.5 } : null]}
           >
-            {k === 'del' ? <BackspaceIcon size={36} strokeWidth={1.3} /> : <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(36), fontWeight: '400', color: colors.text }}>{k}</Text>}
+            {k === 'del' ? <BackspaceIcon size={36} strokeWidth={1.3} />
+              : k === 'bio' ? <FingerprintIcon size={38} />
+              : <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(36), fontWeight: '400', color: colors.text }}>{k}</Text>}
           </Pressable>
         ))}
       </View>

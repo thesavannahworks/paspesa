@@ -63,6 +63,12 @@ export interface SimulationRequest {
   /** Simulated Paspesa PIN entered on the PIN screen. Not part of the request fingerprint. */
   pin?: string;
   /**
+   * BIOMETRIC: the user approved with the phone's biometrics instead of the PIN (only offered once
+   * they turned biometrics on, which itself requires the PIN). The device OS performs the check.
+   * Not part of the request fingerprint. A future backend must treat this as a device assertion.
+   */
+  authMethod?: 'PIN' | 'BIOMETRIC';
+  /**
    * SEND_MONEY only: also send the agent withdrawal charge for `amount`, so the recipient can withdraw
    * the full amount (the M-PESA "add withdrawal charges" option). The charge is added to the sent amount.
    */
@@ -234,7 +240,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
       const account = await tx.getAccount();
       if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
 
-      const pinFailure = await checkPin(deps, account, request.pin);
+      const pinFailure = request.authMethod === 'BIOMETRIC' ? null : await checkPin(deps, account, request.pin);
       if (pinFailure) {
         // A wrong PIN is logged in Messages like M-PESA does (reference 08-messages). The notice is
         // committed even though the payment is not.
