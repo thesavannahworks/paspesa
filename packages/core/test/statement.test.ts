@@ -21,7 +21,7 @@ describe('statements derive from the ledger (§22)', () => {
     const st = buildStatement(await store.listTransactions(), { utcOffsetMinutes: deps.config.utcOffsetMinutes });
     expect(st.groups.map((g) => g.heading)).toEqual(['14 November 2026', '13 November 2026', '12 November 2026', '10 November 2026']);
     const first = st.groups[0]!.rows[0]!;
-    expect(first).toMatchObject({ title: 'Henry Ohanga', subtitle: '0701***089', signedAmount: -2_000, fee: 33, category: 'Customer Send Money' });
+    expect(first).toMatchObject({ title: 'Henry Ohanga', subtitle: '254701***089', signedAmount: -2_000, fee: 33, category: 'Customer Send Money' });
     expect(st.groups[2]!.rows[0]).toMatchObject({ title: 'Emmanuel Khaemba', subtitle: '0759***371', signedAmount: 180, time: '9:50 pm' });
   });
 

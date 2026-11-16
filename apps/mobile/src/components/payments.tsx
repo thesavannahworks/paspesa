@@ -37,6 +37,7 @@ import {
 import { useAccount, useAppState } from '@/services/AppState';
 import { usePreference } from '@/services/preferences';
 import { useSubmission } from '@/services/useSubmission';
+import { ContactPicker } from '@/components/ContactPicker';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 import { ConfirmView, PinView, ResultAction, SuccessView } from './journey';
@@ -113,6 +114,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const [addOpen, setAddOpen] = useState(false);
   const [addCharge, setAddCharge] = useState(false);
   const [balanceHidden] = usePreference('balanceHidden', false);
+  const [contactsOpen, setContactsOpen] = useState(false);
 
   const favs = useMemo(
     () => favouritesFor([type], favourites, transactions, deps.config.frequentThreshold),
@@ -203,7 +205,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     if (step === 'pin') {
       return (
         <PinView
-          badge={<Avatar name={partyName} size={76} fontSize={20} />}
+          badge={<Avatar name={partyName} size={79} fontSize={16.5} fontWeight="400" />}
           name={partyName}
           amount={q.amount}
           fee={q.fee}
@@ -266,6 +268,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
       </View>
 
       <FavouritesStrip items={favs} onPick={pickFavourite} onAdd={() => setAddOpen(true)} />
+      <ContactPicker visible={contactsOpen} onClose={() => setContactsOpen(false)} onPick={(c) => update({ phone: c.phone, name: c.name }, { name: true })} />
 
       {type === 'SEND_MONEY' || type === 'POCHI' ? (
         <>
@@ -278,7 +281,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
             error={errors.phone}
             right={
               <View style={styles.adornments}>
-                <Inert><ContactIcon size={30} /></Inert>
+                <Pressable accessibilityRole="button" accessibilityLabel="Choose from contacts" hitSlop={8} onPress={() => setContactsOpen(true)}><ContactIcon size={30} /></Pressable>
                 {type === 'SEND_MONEY' ? (
                   <>
                     <View style={[styles.adornDivider, { backgroundColor: colors.text }]} />

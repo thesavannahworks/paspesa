@@ -20,6 +20,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ConfirmView, PinView } from '@/components/journey';
+import { ContactPicker } from '@/components/ContactPicker';
 import { AddFavouriteSheet, FavouritesStrip } from '@/components/payments';
 import { BadgeCard, CircleButton, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T } from '@/components/ui';
 import { AirtimeIcon, ChevronRightIcon, CloseIcon, ContactIcon, GlobalAirtimeIcon } from '@/icons';
@@ -45,6 +46,7 @@ export default function AirtimeScreen() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [result, setResult] = useState<TransactionRecord | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
 
   const favs = useMemo(
     () => favouritesFor(['AIRTIME'], favourites, transactions, deps.config.frequentThreshold),
@@ -87,7 +89,7 @@ export default function AirtimeScreen() {
   if (step === 'pin' && quote?.ok) {
     return (
       <PinView
-        badge={badge(76)}
+        badge={badge(79)}
         name="Buy Airtime"
         keepCase
         amount={quote.quote.amount}
@@ -142,7 +144,7 @@ export default function AirtimeScreen() {
         onChangeText={(v) => { setPhone(v); changed(); }}
         keyboardType="phone-pad"
         error={errors.phone}
-        right={target === 'OTHER' ? <Inert><ContactIcon size={24} /></Inert> : undefined}
+        right={target === 'OTHER' ? <Pressable accessibilityRole="button" accessibilityLabel="Choose from contacts" hitSlop={8} onPress={() => setContactsOpen(true)}><ContactIcon size={24} /></Pressable> : undefined}
       />
       <Field
         label="Enter amount"
@@ -176,6 +178,7 @@ export default function AirtimeScreen() {
       </Inert>
 
       <AddFavouriteSheet type="AIRTIME" visible={addOpen} onClose={() => setAddOpen(false)} />
+      <ContactPicker visible={contactsOpen} onClose={() => setContactsOpen(false)} onPick={(c) => { setPhone(c.phone); changed(); }} />
     </Screen>
   );
 }

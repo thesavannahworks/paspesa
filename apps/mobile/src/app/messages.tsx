@@ -288,11 +288,7 @@ export default function MessagesScreen() {
           <View style={[styles.senderAvatar, { backgroundColor: pal.bubble }]}>
             <PersonFilledIcon size={30} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text maxFontSizeMultiplier={FIXED_TEXT} style={[styles.title, { color: pal.text }]}>MPESA</Text>
-            {/* White Paper §19.2: generated messages remain identifiable as simulations. */}
-            <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: pal.meta, fontSize: s(12), marginTop: -s(2) }}>Paspesa simulation</Text>
-          </View>
+          <Text maxFontSizeMultiplier={FIXED_TEXT} style={[styles.title, { color: pal.text, flex: 1 }]}>MPESA</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Delete messages" onPress={startSelecting} hitSlop={12} disabled={thread.length === 0}>
             <TrashIcon size={32} color={pal.text} accent={pal.text} strokeWidth={1.5} />
           </Pressable>

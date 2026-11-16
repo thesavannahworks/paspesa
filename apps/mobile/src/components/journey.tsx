@@ -44,7 +44,8 @@ export function ConfirmView({
 // ---------------------------------------------------------------- PIN
 
 /**
- * Simulated Paspesa PIN entry. Never the real M-PESA PIN (White Paper §44.1).
+ * Simulated PIN entry, titled "Enter M-PESA PIN" like the reference (owner decision 2026-11-16). The PIN is
+ * the simulated Paspesa PIN set at setup (where users are told never to use their real M-PESA PIN, §44.1).
  * Submits automatically on the 4th digit.
  */
 export function PinView({
@@ -62,6 +63,7 @@ export function PinView({
   busy?: boolean;
 }) {
   const { colors } = useTheme();
+  const dark = colors.mode === 'dark';
   const [pin, setPin] = useState('');
 
   const press = (d: string) => {
@@ -75,21 +77,22 @@ export function PinView({
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
   return (
     <Screen scroll={false}>
+      {/* Measured on reference 03-send-money/14 (1.4 px per unit). */}
       <View style={styles.pinHeader}>
-        <CircleButton label="Back" onPress={onBack}><BackChevron /></CircleButton>
-        <T variant="bodyStrong" style={{ flex: 1, textAlign: 'center', marginRight: s(50), fontSize: s(19) }}>Enter Paspesa PIN</T>
+        <CircleButton label="Back" size={52} onPress={onBack}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
+        <T variant="bodyStrong" style={{ flex: 1, textAlign: 'center', marginRight: s(41.7), fontSize: s(20.7) }}>Enter M-PESA PIN</T>
       </View>
-      <View style={{ alignItems: 'center', marginTop: s(40) }}>
+      <View style={{ alignItems: 'center', marginTop: s(77.5) }}>
         {badge}
-        <T variant="body" color={colors.textSecondary} style={{ marginTop: s(22), fontSize: s(21), textTransform: keepCase ? 'none' : 'uppercase' }} center>{name}</T>
-        <T variant="label" color={colors.textSecondary} style={{ marginTop: s(10) }}>
+        <T variant="body" color={dark ? '#D7D7D7' : colors.textSecondary} style={{ marginTop: s(20.6), fontSize: s(23.2), lineHeight: s(27), textTransform: keepCase ? 'none' : 'uppercase' }} center>{name}</T>
+        <T variant="label" color={dark ? '#DFDFDF' : colors.textSecondary} style={{ marginTop: s(15.6), fontSize: s(18.1), lineHeight: s(22) }}>
           Ksh. {formatAmount(amount)}  Fee:Ksh. {formatAmount(fee)}
         </T>
-        <View style={{ flexDirection: 'row', gap: s(16), marginTop: s(44) }}>
+        <View style={{ flexDirection: 'row', gap: s(20), marginTop: s(85) }}>
           {[0, 1, 2, 3].map((i) => {
             const filled = i < pin.length;
             return (
-              <View key={i} style={[styles.pinBox, { borderColor: filled ? colors.green : colors.mode === 'dark' ? '#7F8386' : '#D5DCE2' }]}>
+              <View key={i} style={[styles.pinBox, { borderColor: filled ? colors.green : dark ? '#BEC1C6' : '#D5DCE2' }]}>
                 {filled ? <View style={[styles.pinDot, { backgroundColor: colors.green }]} /> : null}
               </View>
             );
@@ -107,17 +110,12 @@ export function PinView({
             onPress={() => (k === 'del' ? setPin((p) => p.slice(0, -1)) : press(k))}
             style={({ pressed }) => [styles.key, pressed && k ? { opacity: 0.5 } : null]}
           >
-            {k === 'del' ? <BackspaceIcon size={30} /> : <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(34), color: colors.text }}>{k}</Text>}
+            {k === 'del' ? <BackspaceIcon size={36} strokeWidth={1.3} /> : <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(36), fontWeight: '400', color: colors.text }}>{k}</Text>}
           </Pressable>
         ))}
       </View>
     </Screen>
   );
-}
-
-function BackChevron() {
-  const { colors } = useTheme();
-  return <ChevronLeftIcon color={colors.text} size={22} />;
 }
 
 // ---------------------------------------------------------------- Success
@@ -202,11 +200,11 @@ export function ResultAction({ icon, label, onPress, inert }: { icon: ReactNode;
 }
 
 const styles = StyleSheet.create({
-  pinHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: s(10) },
+  pinHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: s(21), marginLeft: -s(10.3) },
   pinBox: { width: s(62), height: s(62), borderRadius: s(10), borderWidth: 1.4, alignItems: 'center', justifyContent: 'center' },
   pinDot: { width: s(20), height: s(20), borderRadius: s(10) },
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 'auto', marginBottom: s(16) },
-  key: { width: '33.33%', height: s(74), alignItems: 'center', justifyContent: 'center' },
+  keypad: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 'auto', marginBottom: s(61.5), marginHorizontal: -s(21) },
+  key: { width: '33.33%', height: s(105), alignItems: 'center', justifyContent: 'center' },
   successTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: s(28) },
   sharePill: { flexDirection: 'row', alignItems: 'center', gap: s(14), paddingHorizontal: s(20), paddingVertical: s(14), borderRadius: s(12), borderWidth: StyleSheet.hairlineWidth },
   idPill: { flexDirection: 'row', alignItems: 'center', gap: s(8), marginTop: s(12), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(10) },

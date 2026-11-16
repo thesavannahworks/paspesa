@@ -100,7 +100,7 @@ export default function RechargeScreen() {
   if (step === 'pin' && quote?.ok) {
     return (
       <PinView
-        badge={<Avatar name={sender.name ?? 'Paspesa'} size={84} fontSize={20} />}
+        badge={<Avatar name={sender.name ?? 'Paspesa'} size={79} fontSize={16.5} fontWeight="400" />}
         name={sender.name ?? ''}
         amount={quote.quote.amount}
         fee={quote.quote.fee}

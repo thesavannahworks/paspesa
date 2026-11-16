@@ -89,7 +89,11 @@ export function categoryFor(type: TransactionType): string {
 }
 
 export function toStatementRow(tx: TransactionRecord, utcOffsetMinutes: number): StatementRow {
-  const { title, subtitle } = describeCounterparty(tx);
+  const { title, subtitle: described } = describeCounterparty(tx);
+  // Sent money shows the international form masked ("254706***273"); received money keeps "0759***371"
+  // (reference 09-statements 01, 13).
+  const phone = tx.counterparty.phone;
+  const subtitle = (tx.type === 'SEND_MONEY' || tx.type === 'POCHI') && phone && phone.length >= 12 ? `${phone.slice(0, 6)}***${phone.slice(-3)}` : described;
   const p = toLocalParts(tx.completedAt, utcOffsetMinutes);
   return {
     transactionId: tx.id,

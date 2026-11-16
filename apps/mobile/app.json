@@ -45,6 +45,12 @@
           "savePhotosPermission": "Paspesa saves your QR code to your photos when you tap download.",
           "isAccessMediaLocationEnabled": false
         }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Paspesa reads your contacts only on this phone so you can pick a recipient. Contacts are never stored or uploaded."
+        }
       ]
     ],
     "scheme": "paspesa",

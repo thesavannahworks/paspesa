@@ -94,13 +94,29 @@ export const light: Palette = {
 };
 
 /** Avatar initials colour pairs (background, text) seen across the references. */
+/**
+ * Initials avatars: the eight [background, initials] pairs sampled from the references
+ * (09-statements, contacts list, detail cards). Light mode uses pale tints of the same hues.
+ */
 export const AVATAR_COLORS: Record<'light' | 'dark', [string, string][]> = {
   dark: [
-    ['#0B3A1A', '#4CC36A'], ['#2A1B5E', '#9C8CF0'], ['#4A0F33', '#F06FB5'],
-    ['#5A1A12', '#FF7A45'], ['#14215A', '#7F97FF'], ['#3D0D3D', '#E07CE0'],
+    ['#052E1C', '#5ABE63'], // green
+    ['#501C0F', '#F8904A'], // orange-brown
+    ['#1E235B', '#859EFB'], // indigo
+    ['#0F2A55', '#50B3FD'], // sky blue
+    ['#27105F', '#A28CFE'], // violet
+    ['#46104B', '#E77EFE'], // purple
+    ['#4F0B30', '#FD71CC'], // pink
+    ['#53140B', '#FD6524'], // red-orange
   ],
   light: [
-    ['#E8F7EC', '#2E9E4C'], ['#EFEAFE', '#6A4FD8'], ['#FDEBF5', '#C5268F'],
-    ['#FFF0EA', '#D9531E'], ['#EAF1FF', '#3C62D6'], ['#F9EAF9', '#A23BA2'],
+    ['#E8F7EC', '#2E9E4C'],
+    ['#FFF0E6', '#D9641E'],
+    ['#ECEEFF', '#4458D6'],
+    ['#E6F3FF', '#1C7FD0'],
+    ['#F1EDFE', '#6A3FD8'],
+    ['#F9EBFC', '#A43BB8'],
+    ['#FDEBF5', '#C5268F'],
+    ['#FFECE6', '#D0461A'],
   ],
 };

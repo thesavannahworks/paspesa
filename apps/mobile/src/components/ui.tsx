@@ -206,13 +206,16 @@ export function initialsOf(name: string): string {
   return ((parts[0]![0] ?? '') + (parts.length > 1 ? parts[parts.length - 1]![0] ?? '' : '')).toUpperCase();
 }
 
+/** FNV-1a: spreads similar names across the palette (the same name always gets the same colour). */
 function hash(text: string): number {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
-  return Math.abs(h);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return h >>> 0;
 }
 
-export function Avatar({ name, size = 56, fontSize, photo }: { name: string; size?: number; fontSize?: number; photo?: string | null }) {
+export function Avatar({ name, size = 56, fontSize, fontWeight = '600', photo }: {
+  name: string; size?: number; fontSize?: number; fontWeight?: TextStyle['fontWeight']; photo?: string | null;
+}) {
   const { colors } = useTheme();
   const palette = AVATAR_COLORS[colors.mode];
   const [bg, fg] = palette[hash(name) % palette.length]!;
@@ -221,7 +224,7 @@ export function Avatar({ name, size = 56, fontSize, photo }: { name: string; siz
   }
   return (
     <View style={{ width: s(size), height: s(size), borderRadius: s(size) / 2, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: fg, fontSize: s(fontSize ?? size * 0.36), fontWeight: '600' }}>{initialsOf(name)}</Text>
+      <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: fg, fontSize: s(fontSize ?? size * 0.36), fontWeight }}>{initialsOf(name)}</Text>
     </View>
   );
 }
