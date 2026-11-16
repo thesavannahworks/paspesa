@@ -17,14 +17,14 @@
 import { getDefinition, type CounterpartyInput, type TransactionDefinition } from './catalogue';
 import { getFeeSchedule, type SimulatorConfig } from './config/defaults';
 import { resolveFee } from './fees';
-import { findTemplate } from './messages/templates';
-import { messageVariables, renderTemplate } from './messages/render';
+import { NOTICE_TEMPLATES, findTemplate } from './messages/templates';
+import { messageVariables, renderTemplate, type MessageContext } from './messages/render';
 import { formatKsh, isWholeShillings } from './money';
 import { normalizeKenyanPhone } from './phone';
 import type { Clock, IdGenerator, PinHasher, RandomSource } from './ports';
-import { generateReference } from './reference';
+import { OWN_NODE, generateReference } from './reference';
 import type { LocalStore, StoreWriter } from './store';
-import { toLocalParts } from './time';
+import { localDateKey, toLocalParts } from './time';
 import type {
   Account,
   BalanceMovement,
@@ -35,6 +35,7 @@ import type {
   SimulationError,
   SimulationType,
   TransactionRecord,
+  TransactionType,
 } from './types';
 import { PAYLOAD_VERSION, PIN_PATTERN, fail, outboxEntry, stableStringify, type Failure } from './util';
 
@@ -234,7 +235,14 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
       if (!account) return fail('NO_ACCOUNT', 'Set up your simulated account first');
 
       const pinFailure = await checkPin(deps, account, request.pin);
-      if (pinFailure) return pinFailure;
+      if (pinFailure) {
+        // A wrong PIN is logged in Messages like M-PESA does (reference 08-messages). The notice is
+        // committed even though the payment is not.
+        if (pinFailure.error.code === 'WRONG_PIN' && PIN_PATTERN.test(request.pin ?? '')) {
+          await tx.insertMessage(await wrongPinNotice(tx, deps, account.id, request.operationId));
+        }
+        return pinFailure;
+      }
 
       const quoted = quoteSimulation(account, deps.config, request);
       if (!quoted.ok) return quoted;
@@ -246,7 +254,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         id: deps.ids.uuid(),
         accountId: account.id,
         operationId: request.operationId,
-        reference: await uniqueReference(tx, deps, now),
+        reference: await uniqueReference(tx, deps, now, q.type === 'RECHARGE' ? undefined : OWN_NODE),
         sequence,
         type: q.type,
         variant: q.variant,
@@ -283,7 +291,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
 
       await tx.insertTransaction(record);
       await tx.insertMovement(movementFor(deps, record, q.definition.direction === 'DEBIT' ? 'DEBIT' : 'CREDIT'));
-      const message = buildMessage(deps, record);
+      const message = buildMessage(deps, record, { dailyRemaining: await dailyRemaining(tx, deps, record) });
       if (message) await tx.insertMessage(message);
       await tx.putAccount(updatedAccount);
       await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, record.operationId, 'TRANSACTION', record.id, 'CREATE_SIMULATION', now));
@@ -358,7 +366,7 @@ export async function setupAccount(deps: EngineDeps, request: SetupAccountReques
         id: deps.ids.uuid(),
         accountId: account.id,
         operationId: request.operationId,
-        reference: await uniqueReference(tx, deps, now),
+        reference: await uniqueReference(tx, deps, now, OWN_NODE),
         sequence: 1,
         type: 'OPENING_BALANCE',
         variant: null,
@@ -408,10 +416,11 @@ async function replayExisting(tx: StoreWriter, existing: TransactionRecord, fing
   return { ok: true, duplicate: true, transaction: existing, message, account };
 }
 
-async function uniqueReference(tx: StoreWriter, deps: EngineDeps, nowIso: string): Promise<string> {
+async function uniqueReference(tx: StoreWriter, deps: EngineDeps, nowIso: string, node: string | undefined): Promise<string> {
   const parts = toLocalParts(nowIso, deps.config.utcOffsetMinutes);
+  const epochMs = Date.parse(nowIso);
   for (let attempt = 0; attempt < 10; attempt++) {
-    const candidate = generateReference(parts, deps.random);
+    const candidate = generateReference(parts, deps.random, { epochMs, node });
     if (!(await tx.getTransactionByReference(candidate))) return candidate;
   }
   throw new Error('Could not generate a unique transaction reference');
@@ -433,7 +442,39 @@ function movementFor(deps: EngineDeps, record: TransactionRecord, movementType: 
   };
 }
 
-function buildMessage(deps: EngineDeps, record: TransactionRecord): MessageRecord | null {
+/** Payments that use up the day's allowance (fees excluded, as in the reference messages). */
+const DAILY_ALLOWANCE_TYPES = new Set<TransactionType>(['SEND_MONEY', 'POCHI', 'BUY_GOODS', 'PAYBILL', 'AIRTIME', 'WITHDRAW']);
+
+/** Allowance left for the record's local day, including the record itself. Display only; never enforced. */
+async function dailyRemaining(tx: StoreWriter, deps: EngineDeps, record: TransactionRecord): Promise<number> {
+  const offset = deps.config.utcOffsetMinutes;
+  const day = localDateKey(toLocalParts(record.completedAt, offset));
+  const used = (await tx.listTransactions())
+    .filter((t) => t.status === 'SUCCESSFUL' && DAILY_ALLOWANCE_TYPES.has(t.type) && localDateKey(toLocalParts(t.completedAt, offset)) === day)
+    .reduce((sum, t) => sum + t.amount, 0);
+  return Math.max(0, deps.config.dailyTransactionLimit - used);
+}
+
+/** First wrong PIN for a payment gets the short notice; further attempts get the "Failed, …" one. */
+async function wrongPinNotice(tx: StoreWriter, deps: EngineDeps, accountId: string, operationId: string): Promise<MessageRecord> {
+  const earlier = (await tx.listMessages()).some((m) => m.category === 'SYSTEM_NOTICE' && m.operationId === operationId);
+  const template = NOTICE_TEMPLATES[earlier ? 'WRONG_PIN_REPEATED' : 'WRONG_PIN'];
+  return {
+    id: deps.ids.uuid(),
+    transactionId: null,
+    operationId,
+    accountId,
+    category: 'SYSTEM_NOTICE',
+    templateId: template.id,
+    templateVersion: template.version,
+    body: template.body,
+    createdAt: deps.clock.now(),
+    readAt: null,
+    syncStatus: 'LOCAL_ONLY',
+  };
+}
+
+function buildMessage(deps: EngineDeps, record: TransactionRecord, context: MessageContext): MessageRecord | null {
   const template = findTemplate(record.type, record.variant);
   if (!template) return null;
   return {
@@ -443,7 +484,7 @@ function buildMessage(deps: EngineDeps, record: TransactionRecord): MessageRecor
     category: 'TRANSACTION_CONFIRMATION',
     templateId: template.id,
     templateVersion: template.version,
-    body: renderTemplate(template, messageVariables(record, deps.config.utcOffsetMinutes)),
+    body: renderTemplate(template, messageVariables(record, deps.config.utcOffsetMinutes, context)),
     createdAt: record.completedAt,
     readAt: null,
     syncStatus: record.syncStatus,

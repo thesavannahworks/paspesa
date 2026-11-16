@@ -25,6 +25,12 @@ export interface SimulatorConfig {
   maxAirtimeBalance: number;
   /** A counterparty used at least this many times counts as a frequent/favourite. */
   frequentThreshold: number;
+  /**
+   * M-PESA daily transaction allowance, used ONLY for the message line "Amount you can transact
+   * within the day is …" (500,000 less the day's payments, fees excluded — reference 08-messages).
+   * Not enforced: Paspesa has no daily limit (product-owner decision).
+   */
+  dailyTransactionLimit: number;
   feeSchedules: FeeSchedule[];
   /** Which fee schedule each transaction type uses. */
   feeScheduleByType: Record<SimulationType, string>;
@@ -109,6 +115,7 @@ export const DEFAULT_CONFIG: SimulatorConfig = {
   pinMode: 'USER_PIN',
   maxAirtimeBalance: 1_000,
   frequentThreshold: 3,
+  dailyTransactionLimit: 500_000,
   feeSchedules: [SEND_MONEY_SCHEDULE, AGENT_WITHDRAWAL_SCHEDULE, ZERO_FEE_SCHEDULE],
   feeScheduleByType: {
     SEND_MONEY: 'SEND_MONEY',

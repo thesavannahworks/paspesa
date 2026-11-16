@@ -91,16 +91,16 @@ export const HomeInternetIcon = make((c, a) => (
 
 export const BellIcon = make((c, a) => (
   <>
-    <Path d="M6.2 16.6v-5.2a5.8 5.8 0 0 1 11.6 0v5.2l1.4 1.6H4.8l1.4-1.6Z" stroke={c} />
-    <Path d="M10 18.4a2 2 0 0 0 4 0" stroke={c} />
-    <Path d="M12 8.6v2.8" stroke={a} />
+    <Path d="M6.6 16.1v-5.2a5.4 5.4 0 0 1 10.8 0v5.2l1.6 2H5l1.6-2Z" stroke={c} />
+    <Path d="M10.2 18.1a1.8 1.8 0 0 0 3.6 0" stroke={c} />
+    <Path d="M12 8.2v2.6" stroke={a} />
   </>
 ));
 
 export const SearchIcon = make((c, a) => (
   <>
     <Circle cx={10.8} cy={10.8} r={6.6} stroke={c} />
-    <Path d="m16.3 16.3 3.6 3.6" stroke={a} />
+    <Path d="m16.4 16.4 2.5 2.5" stroke={a} />
   </>
 ));
 
@@ -561,3 +561,23 @@ export const GoIcon = make((c, a) => (
     <Path d="M10.6 18.2h2.8" stroke={c} />
   </>
 ));
+
+// ---------------------------------------------------------------- messages thread
+
+/** Generic contact silhouette (filled), as on the Messages header avatar. */
+export const PersonFilledIcon = make((c) => (
+  <>
+    <Circle cx={12} cy={8.4} r={3.6} fill={c} stroke="none" />
+    <Path d="M5.2 19.2c.6-3.6 3.4-5.6 6.8-5.6s6.2 2 6.8 5.6Z" fill={c} stroke="none" />
+  </>
+), { color: '#949494' });
+
+/** Arrow down onto a line: jump to the latest message. */
+export const ArrowDownToLineIcon = make((c) => (
+  <>
+    <Path d="m6.5 9.5 5.5 5.5 5.5-5.5" stroke={c} />
+    <Path d="M6 18.6h12" stroke={c} />
+  </>
+), { color: '#FFFFFF' });
+
+export const CheckIcon = make((c) => <Path d="m6 12.4 4 4 8-8.6" stroke={c} />, { color: '#FFFFFF' });

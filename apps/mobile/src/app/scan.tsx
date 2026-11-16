@@ -80,7 +80,7 @@ function CameraPermission({ canAsk, onEnable }: { canAsk: boolean; onEnable: () 
 
 // ---------------------------------------------------------------- scanning
 
-const NOT_PASPESA = 'This is not a Paspesa payment QR code';
+const NOT_PASPESA = 'This is not an M-PESA or Paspesa payment QR code';
 
 /** Opens the matching journey pre-filled. Returns false when the code is not a Paspesa payment code. */
 function openPayment(data: string): boolean {

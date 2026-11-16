@@ -52,7 +52,7 @@ export default function HomeScreen() {
   if (!account) return <Redirect href="/setup" />;
 
   const firstName = account.accountName.split(' ')[0] ?? account.accountName;
-  const unread = messages.some((m) => !m.readAt);
+  const unread = messages.some((m) => !m.readAt && !m.deletedAt);
 
   const quickActions: QuickAction[] = [
     { label: 'Send\nMoney', icon: <SendMoneyIcon size={33} />, href: '/send-money' },
@@ -86,7 +86,13 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.header, borderBottomColor: colors.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Profile" onPress={() => router.push('/profile')} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <UserAvatar size={50} />
+          <View>
+            <UserAvatar size={52} />
+            {/* Account dropdown badge (reference 01-home): grey disc, green ring, red chevron. */}
+            <View style={styles.avatarBadge}>
+              <ChevronDownIcon size={11} color="#E0457B" strokeWidth={2.4} />
+            </View>
+          </View>
           <View style={{ marginLeft: s(14) }}>
             <T variant="body" color={colors.textSecondary} style={{ fontSize: s(18) }}>{greeting()}</T>
             <T variant="body" style={{ fontSize: s(20), marginTop: s(2) }}>{firstName} 👋</T>
@@ -94,10 +100,10 @@ export default function HomeScreen() {
         </Pressable>
         <View style={{ flexDirection: 'row', gap: s(12) }}>
           <View>
-            <CircleButton label="Messages" size={52} onPress={() => router.push('/messages')}><BellIcon size={26} /></CircleButton>
+            <CircleButton label="Messages" size={52} onPress={() => router.push('/messages')}><BellIcon size={36} strokeWidth={1.2} /></CircleButton>
             {unread ? <View style={[styles.dot, { backgroundColor: colors.red }]} /> : null}
           </View>
-          <Inert><CircleButton label="Search" size={52}><SearchIcon size={26} /></CircleButton></Inert>
+          <CircleButton label="Search" size={52} onPress={() => router.push('/search')}><SearchIcon size={36} strokeWidth={1.25} /></CircleButton>
         </View>
       </View>
 
@@ -296,7 +302,12 @@ function EmptyFrequents({ action }: { action?: string }) {
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(21), paddingTop: s(14), paddingBottom: s(30), borderBottomWidth: StyleSheet.hairlineWidth },
-  dot: { position: 'absolute', top: s(2), right: s(2), width: s(12), height: s(12), borderRadius: s(6) },
+  // Measured on reference 01-home: 11.5 dot, centre 10.5 right / 9.8 above the button centre.
+  dot: { position: 'absolute', top: s(10.4), left: s(30.8), width: s(11.5), height: s(11.5), borderRadius: s(5.75) },
+  avatarBadge: {
+    position: 'absolute', left: s(34), top: s(34), width: s(18), height: s(18), borderRadius: s(9),
+    backgroundColor: '#D6DBE5', borderWidth: 1.4, borderColor: '#36A839', alignItems: 'center', justifyContent: 'center',
+  },
   blurBar: { height: s(30), borderRadius: s(8), opacity: 0.9 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: s(8), marginTop: s(18) },
   pageDot: { height: s(5), borderRadius: s(3) },

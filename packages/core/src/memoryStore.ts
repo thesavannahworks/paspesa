@@ -76,7 +76,7 @@ class MemoryAccess implements StoreWriter {
     this.state.movements.push(clone(movement));
   }
   async insertMessage(message: MessageRecord) {
-    if (this.state.messages.some((m) => m.transactionId === message.transactionId)) {
+    if (message.transactionId !== null && this.state.messages.some((m) => m.transactionId === message.transactionId)) {
       throw new Error('UNIQUE constraint failed: message per transaction');
     }
     this.state.messages.push(clone(message));
@@ -102,6 +102,11 @@ class MemoryAccess implements StoreWriter {
   async markMessageRead(messageId: string, readAt: string) {
     const msg = this.state.messages.find((m) => m.id === messageId);
     if (msg && !msg.readAt) msg.readAt = readAt;
+  }
+  async updateMessage(message: MessageRecord) {
+    const i = this.state.messages.findIndex((m) => m.id === message.id);
+    if (i < 0) throw new Error(`Message ${message.id} not found`);
+    this.state.messages[i] = clone(message);
   }
 }
 
@@ -154,7 +159,7 @@ export class MemoryStore extends MemoryAccess implements LocalStore {
     let writes = 0;
     const writeMethods = new Set([
       'putAccount', 'insertTransaction', 'insertMovement', 'insertMessage',
-      'enqueueOutbox', 'updateOutbox', 'setTransactionSyncStatus', 'markMessageRead',
+      'enqueueOutbox', 'updateOutbox', 'setTransactionSyncStatus', 'markMessageRead', 'updateMessage',
       'upsertFavourite', 'deleteFavourite',
     ]);
     return new Proxy(access, {

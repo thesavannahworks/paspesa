@@ -92,6 +92,34 @@ export async function markAllMessagesRead(deps: EngineDeps): Promise<number> {
   });
 }
 
+/**
+ * Deletes messages from the Messages screen (single or bulk). Only the messages are hidden:
+ * transactions and the M-PESA statement are never touched (statements can only be changed from
+ * the admin back office).
+ */
+export async function deleteMessages(deps: EngineDeps, messageIds: readonly string[]): Promise<number> {
+  const ids = new Set(messageIds);
+  return deps.store.runAtomic(async (tx) => {
+    const now = deps.clock.now();
+    const targets = (await tx.listMessages()).filter((m) => ids.has(m.id) && !m.deletedAt);
+    for (const m of targets) await tx.updateMessage({ ...m, deletedAt: now });
+    return targets.length;
+  });
+}
+
+/** Stars or un-stars a message ("Star message" in the message menu). */
+export async function setMessageStarred(deps: EngineDeps, messageId: string, starred: boolean): Promise<void> {
+  await deps.store.runAtomic(async (tx) => {
+    const message = (await tx.listMessages()).find((m) => m.id === messageId);
+    if (message && !message.deletedAt) await tx.updateMessage({ ...message, starred });
+  });
+}
+
+/** Messages shown in the Messages screen (not deleted), oldest first like an SMS thread. */
+export function visibleMessages<T extends { deletedAt?: string | null; createdAt: string }>(messages: readonly T[]): T[] {
+  return messages.filter((m) => !m.deletedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+}
+
 /** Manually save a favourite. The counterparty is validated with the same rules as the transaction. */
 export async function addFavourite(
   deps: EngineDeps,

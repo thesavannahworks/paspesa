@@ -38,7 +38,7 @@ describe('General Operations recharge (§10, §47.2)', () => {
     });
     if (!res.ok) throw new Error(res.error.message);
     expect(res.transaction.counterparty).toEqual({ name: 'Protas Juma', phone: '254726123928' });
-    expect(res.message!.body).toContain('from PROTAS JUMA 0726***928');
+    expect(res.message!.body).toContain('from PROTAS  JUMA 0726***928');
   });
 
   it('creates the matching incoming message', async () => {
@@ -48,7 +48,7 @@ describe('General Operations recharge (§10, §47.2)', () => {
     });
     if (!res.ok) throw new Error(res.error.message);
     expect(res.message!.body).toMatch(
-      new RegExp(`^${res.transaction.reference} Confirmed\\.You have received Ksh700\\.00 from PROTAS JUMA 0726\\*\\*\\*928 on \\d\\d/\\d\\d/\\d\\d at \\d{1,2}:\\d\\d (AM|PM) New M-PESA balance is Ksh25,071\\.00\\.$`),
+      new RegExp(`^${res.transaction.reference} Confirmed\\.You have received Ksh700\\.00 from PROTAS  JUMA 0726\\*\\*\\*928 on \\d\\d/\\d\\d/\\d\\d at \\d{1,2}:\\d\\d (AM|PM)  New M-PESA balance is Ksh25,071\\.00\\. Invest & earn daily interest with ZIIDI on https://saf\\.cx/cF6ir$`),
     );
   });
 

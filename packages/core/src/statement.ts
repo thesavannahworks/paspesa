@@ -57,6 +57,33 @@ export function typeLabelFor(type: TransactionType): string {
   return type === 'OPENING_BALANCE' ? 'Opening Balance' : getDefinition(type).displayName;
 }
 
+/**
+ * What the transaction detail card shows (reference 09-statements 02, 05, 07–12):
+ * the outlined chip, the green category chip, and the "Phone Number" row. M-PESA labels that row
+ * "Phone Number" for every type; for a till or paybill it holds the till / paybill number.
+ */
+export function detailLabelsFor(tx: Pick<TransactionRecord, 'type' | 'counterparty'>): { chip: string; category: string; party: string } {
+  const c = tx.counterparty;
+  switch (tx.type) {
+    case 'SEND_MONEY':
+      return { chip: 'Send Money', category: 'Customer Transfer', party: c.phone ?? '' };
+    case 'POCHI':
+      return { chip: 'Send Money', category: 'Customer Send to Micro SME Business', party: c.phone ?? '' };
+    case 'RECHARGE':
+      return { chip: 'Send Money', category: 'Customer Transfer', party: c.phone ?? '' };
+    case 'BUY_GOODS':
+      return { chip: 'Customer Merchant Payment', category: 'Pay Merchant Online', party: c.tillNumber ?? '' };
+    case 'PAYBILL':
+      return { chip: 'Pay Bill', category: 'Pay Bill Online', party: c.paybillNumber ?? '' };
+    case 'AIRTIME':
+      return { chip: 'Airtime Top Up', category: 'Airtime Purchase', party: c.phone ?? '' };
+    case 'WITHDRAW':
+      return { chip: 'Withdraw Money', category: 'Customer Withdrawal At Agent Till', party: c.agentNumber ?? '' };
+    default:
+      return { chip: 'Opening Balance', category: 'Opening Balance', party: '' };
+  }
+}
+
 export function categoryFor(type: TransactionType): string {
   return type === 'OPENING_BALANCE' ? 'Opening Balance' : getDefinition(type).statementCategory;
 }

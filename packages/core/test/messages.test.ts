@@ -22,39 +22,45 @@ const base: TransactionRecord = {
   syncStatus: 'PENDING', payloadVersion: 1,
 };
 
-const render = (tx: TransactionRecord) =>
-  renderTemplate(findTemplate(tx.type, tx.variant)!, messageVariables(tx, 180));
+const render = (tx: TransactionRecord, dailyRemaining = 0) =>
+  renderTemplate(findTemplate(tx.type, tx.variant)!, messageVariables(tx, 180, { dailyRemaining }));
 
-describe('message templates match the supplied reference structure', () => {
-  it('Send Money', () => {
-    expect(render(base)).toBe(
-      'UKELA1SOZG Confirmed. Ksh1.00 sent to PASKAL TWOLI 0119249141 on 14/11/26 at 10:55 AM. New M-PESA balance is Ksh26.00. Transaction cost, Ksh0.00.',
+// Expected strings are the reference messages (reference-screenshots/08-messages) character for
+// character; only balances differ because Paspesa has no cents.
+describe('message templates match the supplied reference messages exactly', () => {
+  it('Send Money (two-part name keeps the double space; "Ksh0.00.  Amount")', () => {
+    expect(render(base, 499_998)).toBe(
+      'UKELA1SOZG Confirmed. Ksh1.00 sent to PASKAL  TWOLI 0119249141 on 14/11/26 at 10:55 AM. New M-PESA balance is Ksh26.00. Transaction cost, Ksh0.00.  Amount you can transact within the day is 499,998.00. See all your balances now https://saf.cx/iqIzU',
     );
   });
   it('Pochi la Biashara (no phone in message)', () => {
-    expect(render({ ...base, type: 'POCHI', reference: 'UKELA1SUXR', completedAt: '2026-11-14T08:02:00.000Z', amount: 2, balanceAfter: 24 })).toBe(
-      'UKELA1SUXR Confirmed. Ksh2.00 sent to PASKAL TWOLI on 14/11/26 at 11:02 AM. New M-PESA balance is Ksh24.00. Transaction cost, Ksh0.00.',
+    expect(render({ ...base, type: 'POCHI', reference: 'UKELA1SUXR', completedAt: '2026-11-14T08:02:00.000Z', amount: 2, balanceAfter: 24 }, 499_996)).toBe(
+      'UKELA1SUXR Confirmed. Ksh2.00 sent to PASKAL  TWOLI on 14/11/26 at 11:02 AM. New M-PESA balance is Ksh24.00. Transaction cost, Ksh0.00. Amount you can transact within the day is 499,996.00. See all your balances now https://saf.cx/kWQpy',
     );
   });
-  it('Buy Goods', () => {
-    expect(render({ ...base, type: 'BUY_GOODS', reference: 'UKELA1S2AK', completedAt: '2026-11-14T05:16:00.000Z', balanceAfter: 27, counterparty: { name: 'Innocent Wafula Achoka', tillNumber: '6484844' } })).toBe(
-      'UKELA1S2AK Confirmed. Ksh1.00 paid to INNOCENT WAFULA ACHOKA. on 14/11/26 at 8:16 AM.New M-PESA balance is Ksh27.00. Transaction cost, Ksh0.00.',
+  it('Buy Goods (merchant names keep single spaces)', () => {
+    expect(render({ ...base, type: 'BUY_GOODS', reference: 'UKELA1S2AK', completedAt: '2026-11-14T05:16:00.000Z', balanceAfter: 27, counterparty: { name: 'Innocent Wafula Achoka', tillNumber: '6484844' } }, 499_999)).toBe(
+      'UKELA1S2AK Confirmed. Ksh1.00 paid to INNOCENT WAFULA ACHOKA. on 14/11/26 at 8:16 AM.New M-PESA balance is Ksh27.00. Transaction cost, Ksh0.00. Amount you can transact within the day is 499,999.00. See all your balances now https://saf.cx/kWQpy',
     );
   });
   it('Paybill', () => {
-    expect(render({ ...base, type: 'PAYBILL', reference: 'UKELA1SVEA', completedAt: '2026-11-14T08:24:00.000Z', balanceAfter: 20, counterparty: { businessName: 'Co-operative Bank Money Transfer', paybillNumber: '400200', accountReference: '4001077' } })).toBe(
-      'UKELA1SVEA Confirmed. Ksh1.00 sent to Co-operative Bank Money Transfer for account 4001077 on 14/11/26 at 11:24 AM New M-PESA balance is Ksh20.00. Transaction cost, Ksh0.00.',
+    expect(render({ ...base, type: 'PAYBILL', reference: 'UKELA1SVEA', completedAt: '2026-11-14T08:24:00.000Z', balanceAfter: 20, counterparty: { businessName: 'Co-operative Bank Money Transfer', paybillNumber: '400200', accountReference: '4001077' } }, 499_992)).toBe(
+      'UKELA1SVEA Confirmed. Ksh1.00 sent to Co-operative Bank Money Transfer for account 4001077 on 14/11/26 at 11:24 AM New M-PESA balance is Ksh20.00. Transaction cost, Ksh0.00.Amount you can transact within the day is 499,992.00. See all your balances now https://saf.cx/kWQpy',
     );
   });
   it('Airtime — own and other number', () => {
     const own = { ...base, type: 'AIRTIME' as const, variant: 'OWN', reference: 'UKELA1SR5M', completedAt: '2026-11-14T08:34:00.000Z', balanceAfter: 18, counterparty: { phone: '254759981287' } };
-    expect(render(own)).toBe('UKELA1SR5M confirmed.You bought Ksh1.00 of airtime on 14/11/26 at 11:34 AM.New M-PESA balance is Ksh18.00. Transaction cost, Ksh0.00.');
+    expect(render(own, 499_990)).toBe('UKELA1SR5M confirmed.You bought Ksh1.00 of airtime on 14/11/26 at 11:34 AM.New M-PESA balance is Ksh18.00. Transaction cost, Ksh0.00. Amount you can transact within the day is 499,990.00. See all your balances now https://saf.cx/3wAmy');
     const other = { ...own, variant: 'OTHER', reference: 'UKELA1SOJB', completedAt: '2026-11-14T08:33:00.000Z', balanceAfter: 19, counterparty: { phone: '254119249141' } };
-    expect(render(other)).toBe('UKELA1SOJB confirmed.You bought Ksh1.00 of airtime for 254119249141 on 14/11/26 at 11:33 AM.New balance is Ksh19.00. Transaction cost, Ksh0.00.');
+    expect(render(other, 499_991)).toBe('UKELA1SOJB confirmed.You bought Ksh1.00 of airtime for 254119249141 on 14/11/26 at 11:33 AM.New  balance is Ksh19.00. Transaction cost, Ksh0.00. Amount you can transact within the day is 499,991.00.You can now access M-PESA via *334#');
   });
-  it('Recharge uses the incoming-money structure with a masked phone', () => {
-    const tx = { ...base, type: 'RECHARGE' as const, direction: 'CREDIT' as const, reference: 'UKC2Z27DK3', amount: 700, totalDebit: 0, balanceAfter: 25_071, completedAt: '2026-11-12T09:51:00.000Z', counterparty: { name: 'Protas Juma', phone: '254726123928' } };
-    expect(render(tx)).toBe('UKC2Z27DK3 Confirmed.You have received Ksh700.00 from PROTAS JUMA 0726***928 on 12/11/26 at 12:51 PM New M-PESA balance is Ksh25,071.00.');
+  it('Money received', () => {
+    const tx = { ...base, type: 'RECHARGE' as const, direction: 'CREDIT' as const, reference: 'UKFAH21CD5', amount: 150, totalDebit: 0, balanceAfter: 150, completedAt: '2026-11-15T12:36:00.000Z', counterparty: { name: 'Felix Twoli', phone: '254746123183' } };
+    expect(render(tx)).toBe('UKFAH21CD5 Confirmed.You have received Ksh150.00 from FELIX  TWOLI 0746***183 on 15/11/26 at 3:36 PM  New M-PESA balance is Ksh150.00. Invest & earn daily interest with ZIIDI on https://saf.cx/cF6ir');
+  });
+  it('three-part names keep single spaces', () => {
+    const tx = { ...base, type: 'RECHARGE' as const, direction: 'CREDIT' as const, counterparty: { name: 'Janefefah Akoth Ohanga', phone: '254715123723' } };
+    expect(render(tx)).toContain('from JANEFEFAH AKOTH OHANGA 0715***723');
   });
   it('every template only uses known placeholders', () => {
     for (const t of MESSAGE_TEMPLATES) {
@@ -74,7 +80,8 @@ describe('message consistency with the committed record (§19.3)', () => {
     if (!r.ok) throw new Error(r.error.message);
     const msg = (await store.getMessageByTransactionId(r.transaction.id))!;
     expect(msg.body).toContain(r.transaction.reference);
-    expect(msg.body).toContain('Ksh2,000.00 sent to HENRY OHANGA 0701033089');
+    expect(msg.body).toContain('Ksh2,000.00 sent to HENRY  OHANGA 0701033089');
+    expect(msg.body).toContain('Amount you can transact within the day is 498,000.00.');
     expect(msg.body).toContain('New M-PESA balance is Ksh7,967.00');
     expect(msg.body).toContain('Transaction cost, Ksh33.00');
     expect(msg.transactionId).toBe(r.transaction.id);

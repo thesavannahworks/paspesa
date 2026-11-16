@@ -56,10 +56,39 @@ were then measured element by element against the screenshots (same 1080 px phon
 
 ## Scan to Pay, profile picture, Explore (2026-11-16)
 - **QR codes:** Paspesa's own format `paspesa://pay?v=1&t=<type>&…` (`packages/core/src/qr.ts`, tested).
-  Only Paspesa codes are understood; real M-PESA/merchant codes are not decoded. Scanning works from the
+  Superseded 2026-11-16 (owner request): M-PESA codes are now accepted too (see below). Scanning works from the
   live camera, a captured photo or a gallery image, and opens the matching journey pre-filled.
 - **My QR download:** phone saves a PNG to the gallery; the browser downloads an SVG of the code.
 - **Profile picture:** stored on the device only (document folder on phone, data URI in the browser);
   it is not part of the ledger and is not synced.
 - **Explore banners:** Paspesa's own artwork. The supplied third-party adverts are kept in
   `reference-screenshots/01-home/12-14` as references only (White Paper §40).
+
+## Messages, transaction codes, M-PESA QR (2026-11-16)
+- **Templates** (`packages/core/src/messages/templates.ts`) copy the supplied messages character for
+  character, including their irregular spacing and trailing links. Two-part names print with M-PESA's
+  empty-middle-name double space ("GETRUDE  OHANGA"). Links are display text; tapping one opens the
+  Paspesa home screen. Not simulated (no Paspesa feature): Ziidi round-ups, Fuliza, Shiriki Pay,
+  bundles, mini-statements, Safaricom's own "Safaricom Offers" paybill variant, and the
+  "similar transaction is currently underway" notice (duplicate submissions are idempotent instead).
+- **"Amount you can transact within the day"** = 500,000 less the day's payments (fees excluded),
+  matching the references. Display only; Paspesa still has no daily limit.
+- **Wrong PIN** is logged in Messages: the short notice first, then the "Failed, … *334#" notice for a
+  further wrong PIN on the same payment. These are SYSTEM_NOTICE messages with no transaction.
+- **Deleting messages** (single from the menu, bulk from the trash button) only hides messages
+  (`deletedAt`). Transactions and the M-PESA statement are never touched; changing statements stays an
+  admin back-office operation.
+- **Copy / Share / Forward / Select text** append "— Paspesa simulation. Not a real M-PESA message."
+  (White Paper §5.1 and §19.2: generated messages must stay identifiable as simulations once they leave
+  the app). The Messages header also says "Paspesa simulation". "Add to reminder" is visible but inert.
+- **Transaction codes** (`packages/core/src/reference.ts`): date prefix + node ("LA" for the account
+  holder's own payments, the sender's node for money received) + a base-36 counter that rises with
+  time, fitted to the 44 reference codes (≈ 2.41 per second, ±1 hour scatter). Codes generated now sit
+  next to real codes issued at the same moment.
+- **M-PESA QR:** EMVCo merchant-presented payloads (tag 00 = 01, currency 404, country KE; the M-PESA
+  template in 26–51, name in 59, amount in 54, account in 62) and the Daraja key/value form
+  (TrxCode/CPI/Amount). The decoded till, paybill or phone only pre-fills a simulated payment
+  (White Paper §5.1). The exact tag layout of Safaricom's codes is not publicly documented, so the
+  parser is tolerant; verify against a real code when available.
+- **Transaction detail** follows the 2026-11 references: "Phone Number" holds the phone, till or paybill;
+  the time is 24-hour with an am/pm suffix ("21:54pm"); the category chip toggles the Transaction Fee row.

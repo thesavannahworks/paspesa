@@ -236,13 +236,17 @@ export function IconCircle({ children, size = 56 }: { children: ReactNode; size?
 }
 
 /** Card with the cyan→green top edge and a badge circle overlapping it (confirm / success / detail cards). */
-export function BadgeCard({ badge, children, style, badgeSize = 94 }: { badge: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle>; badgeSize?: number }) {
+export function BadgeCard({ badge, children, style, badgeSize = 94, contentTop }: {
+  badge: ReactNode; children: ReactNode; style?: StyleProp<ViewStyle>; badgeSize?: number;
+  /** Distance from the card's top edge to the content (defaults to below the badge). */
+  contentTop?: number;
+}) {
   const { colors } = useTheme();
   return (
     <View style={[{ marginTop: s(76) }, style]}>
       <View style={[styles.badgeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <LinearGradient colors={colors.edgeGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.topEdge} />
-        <View style={{ paddingTop: s(badgeSize / 2 + 37) }}>{children}</View>
+        <View style={{ paddingTop: s(contentTop ?? badgeSize / 2 + 37) }}>{children}</View>
       </View>
       <View style={[styles.badge, { width: s(badgeSize), height: s(badgeSize), borderRadius: s(badgeSize / 2), top: -s(badgeSize / 2),  backgroundColor: colors.mode === 'dark' ? colors.raised : colors.raised, borderColor: colors.mode === 'dark' ? '#424C58' : '#D5DCE2' }]}>
         {badge}

@@ -41,6 +41,8 @@ export interface StoreWriter extends StoreReader {
   updateOutbox(entry: OutboxEntry): Promise<void>;
   setTransactionSyncStatus(transactionId: string, status: SyncStatus): Promise<void>;
   markMessageRead(messageId: string, readAt: string): Promise<void>;
+  /** Replaces an existing message (star / delete flags). */
+  updateMessage(message: MessageRecord): Promise<void>;
   /** Insert or replace by (type, key). */
   upsertFavourite(favourite: Favourite): Promise<void>;
   deleteFavourite(id: string): Promise<void>;

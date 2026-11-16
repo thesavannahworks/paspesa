@@ -148,17 +148,32 @@ export interface BalanceMovement {
   sourceReference: string;
 }
 
+/**
+ * TRANSACTION_CONFIRMATION: generated from a committed transaction (transactionId set).
+ * SYSTEM_NOTICE: an event without a transaction, e.g. a wrong PIN (transactionId null).
+ */
+export type MessageCategory = 'TRANSACTION_CONFIRMATION' | 'SYSTEM_NOTICE';
+
 export interface MessageRecord {
   id: string;
-  transactionId: string;
+  transactionId: string | null;
+  /** The payment attempt a notice belongs to (wrong-PIN notices). */
+  operationId?: string;
   accountId: string;
-  category: 'TRANSACTION_CONFIRMATION';
+  category: MessageCategory;
   templateId: string;
   templateVersion: number;
   body: string;
   createdAt: string;
   readAt: string | null;
   syncStatus: SyncStatus;
+  /** Starred from the message menu. */
+  starred?: boolean;
+  /**
+   * Set when the user deletes the message from the Messages screen. Deleting a message only hides
+   * the message; the transaction and the M-PESA statement are never affected.
+   */
+  deletedAt?: string | null;
 }
 
 export type OutboxStatus = 'PENDING' | 'SYNCING' | 'DONE' | 'FAILED' | 'NEEDS_REVIEW';

@@ -21,7 +21,10 @@ describe('simulated Paspesa PIN', () => {
     const before = store.snapshot();
     const wrong = await coreProcess(deps, { operationId: newOp(), type: 'RECHARGE', amount: 10, counterparty: {}, pin: '9999' });
     expect(!wrong.ok && wrong.error.code).toBe('WRONG_PIN');
-    expect(store.snapshot()).toEqual(before);
+    // Nothing changes except the wrong-PIN notice in Messages.
+    const after = store.snapshot();
+    expect({ ...after, messages: [] }).toEqual({ ...before, messages: [] });
+    expect(after.messages.map((m) => [m.category, m.body])).toEqual([['SYSTEM_NOTICE', 'You have entered the wrong PIN. Please try again.']]);
     const right = await coreProcess(deps, { operationId: newOp(), type: 'RECHARGE', amount: 10, counterparty: {}, pin: TEST_PIN });
     expect(right.ok).toBe(true);
   });
