@@ -51,5 +51,9 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   `EXPO_PUBLIC_PASPESA_API_URL=http://<your computer's Wi-Fi IP>:3000` (or `http://localhost:3000` for the web
   build), then restart `npx expo start --clear`. Profile shows the backup state.
 - **Windows firewall:** allow Node.js on private networks the first time, or the phone can't reach port 3000.
-- **Admin commands** (pricing, token grants, expiry, wallet checks) until the admin back office exists:
-  `npm run admin -w @paspesa/backend -- help`. Stop the running backend first when using the embedded database.
+- **Back office:** open `http://localhost:3000/admin` (accounts, devices, payments, review queue, pricing,
+  fees, settings, audit log, admin users). Create the first administrator once, with the backend stopped
+  when using the embedded database:
+  `npm run admin -w @paspesa/backend -- admin:create you@example.com "Your Name" ADMIN '<10+ chars, letters and numbers>'`.
+  Add further users (Administrator, Operator, Viewer) from the Admin users page.
+- **Admin commands** (scripting; same operations as the back office): `npm run admin -w @paspesa/backend -- help`.

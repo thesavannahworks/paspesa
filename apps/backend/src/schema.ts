@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -290,4 +290,32 @@ CREATE TABLE IF NOT EXISTS allocation_lots (
 );
 
 ALTER TABLE token_spends ADD COLUMN IF NOT EXISTS allocation_id TEXT;
+
+-- ---------------------------------------------------------------- v4: admin back office (§34–35, §44.3)
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('ADMIN', 'OPERATOR', 'VIEWER')),
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DISABLED')),
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ
+);
+
+-- Sessions: only the SHA-256 of the cookie token is stored; each carries its own CSRF token.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token_hash TEXT PRIMARY KEY,
+  admin_id TEXT NOT NULL REFERENCES admin_users(id),
+  csrf TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- Review items resolved by an operator (the original stays for audit).
+ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS resolution TEXT;
+ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS resolved_by TEXT;
 `;

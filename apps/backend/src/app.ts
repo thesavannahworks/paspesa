@@ -20,6 +20,8 @@
  *   GET  /v1/payments/providers [auth] payment providers switched on (Daraja, Kopo Kopo, IntaSend, Paystack, PayHero)
  *   POST /v1/payments/:provider/callback   result notice (Daraja: mpesa/callback): only triggers a verification
  *
+ * Back office (§34–35): server-rendered pages at /admin, administrator login — see src/admin/.
+ *
  * Authentication: each installation creates a random secret on the device and registers it; the server
  * stores only its SHA-256 hash. Requests send `Authorization: Bearer <secret>`.
  * Errors are structured: { error: { code, message } } (§39.3).
@@ -53,6 +55,7 @@ import { AllocationService } from './allocation.service.js';
 import { MonetizationError, MonetizationService, type PaymentProvider } from './monetization.service.js';
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
+import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.controller.js';
 
 export const DATABASE = Symbol('DATABASE');
 export const PAYMENT_PROVIDERS = Symbol('PAYMENT_PROVIDERS');
@@ -357,10 +360,12 @@ class AppModule {
   static with(db: Database, providers: PaymentProviders): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, AllocationsController, PaymentsController],
+      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, AllocationsController, PaymentsController, AdminController],
       providers: [
         { provide: DATABASE, useValue: db },
         { provide: PAYMENT_PROVIDERS, useValue: providers },
+        { provide: ADMIN_DATABASE, useValue: db },
+        { provide: ADMIN_PROVIDERS, useValue: providers },
         { provide: MonetizationService, useFactory: () => new MonetizationService(db) },
         { provide: AllocationService, useFactory: (money: MonetizationService) => new AllocationService(db, money), inject: [MonetizationService] },
         {
@@ -380,5 +385,7 @@ export async function createApp(db: Database, options: { paymentProvider?: Payme
   const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, providers), { logger: ['error', 'warn', 'log'], bodyParser: true });
   app.enableCors(); // the web build (another origin) talks to the API too
   app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { extended: false, limit: '100kb' }); // back-office forms (/admin)
+  app.disable('x-powered-by');
   return app;
 }

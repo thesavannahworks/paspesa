@@ -1,5 +1,6 @@
 /**
- * Server-side admin commands (until the admin back office with administrator login exists, §34–35).
+ * Server-side admin commands. The back office at /admin covers day-to-day work (§34–35); this CLI
+ * creates the first back-office user and stays available for scripting.
  * Runs directly against the database on the server machine; every change is audited as `admin:cli`.
  *
  *   npm run admin -w @paspesa/backend -- pricing:show
@@ -13,6 +14,8 @@
  *   npm run admin -w @paspesa/backend -- device:lost <installationId> "<reason>"
  *   npm run admin -w @paspesa/backend -- settings:show
  *   npm run admin -w @paspesa/backend -- settings:set freeSimulationsOffline false
+ *   npm run admin -w @paspesa/backend -- admin:create you@example.com "Your Name" ADMIN '<password>'   (first back-office user)
+ *   npm run admin -w @paspesa/backend -- admin:list
  *
  * Uses DATABASE_URL, or the embedded database in PGLITE_DIR (default ./.data/pglite). Stop the running
  * backend first when using the embedded database (it allows one process at a time).
@@ -28,6 +31,7 @@ try {
 import { openDatabase } from './database.js';
 import { AllocationService } from './allocation.service.js';
 import { MonetizationService } from './monetization.service.js';
+import { AdminAuth, type AdminRole } from './admin/auth.js';
 
 const [command, ...args] = process.argv.slice(2);
 const db = await openDatabase(process.env.DATABASE_URL ? { databaseUrl: process.env.DATABASE_URL } : { pgliteDir: process.env.PGLITE_DIR ?? './.data/pglite' });
@@ -80,11 +84,22 @@ try {
       print(await money.updateSettings({ [key!]: value }, actor));
       break;
     }
+    case 'admin:create': {
+      // the first back-office user (later ones can be added from /admin/users)
+      const [email, name, role, password] = args;
+      if (!['ADMIN', 'OPERATOR', 'VIEWER'].includes(role ?? '')) throw new Error('Usage: admin:create <email> "<name>" <ADMIN|OPERATOR|VIEWER> <password>');
+      const user = await new AdminAuth(db).createAdmin({ email: email ?? '', name: name ?? '', role: role as AdminRole, password: password ?? '' }, actor);
+      print({ created: user.email, role: user.role, signIn: '/admin/login' });
+      break;
+    }
+    case 'admin:list':
+      print(await db.query('SELECT email, name, role, status, last_login_at FROM admin_users ORDER BY created_at'));
+      break;
     case 'accounts':
       print(await db.query('SELECT id, installation_id, account_name, phone_number, balance FROM accounts ORDER BY created_at'));
       break;
     default:
-      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts');
+      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts | admin:create <email> <name> <role> <password> | admin:list');
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);

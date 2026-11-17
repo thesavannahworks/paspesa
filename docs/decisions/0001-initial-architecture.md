@@ -211,3 +211,25 @@ activation, which needs the product-owner inputs listed below (§52).
   as a permanent, audited ledger event; no transactions are invented.
 - **Limit:** one installation per account today, so "Phone B" (§29.2) arrives with account registration
   and login; the allocation model is already per device.
+
+## Pay sheet, token pages, back office (2026-11-17)
+- **Pay sheet:** when payments are required and a simulation costs tokens, Confirm opens a bottom sheet
+  ("choose how to pay") before the PIN: Paspesa Tokens (shows what is set aside on the phone) or M-PESA
+  (STK prompt for the token cost in KSh, polled until verified). Free simulations go straight to the PIN.
+- **Token pages:** Profile → Paspesa Tokens: balances, tokens on this phone (set aside / return), buy
+  tokens, purchase and spending history.
+- **Back office** (`apps/backend/src/admin/`, served by the backend at `/admin`): server-rendered HTML
+  forms, no JavaScript; CSP `default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'`.
+  - **Login:** email + password (scrypt, per-user salt), 5 failures lock for 15 minutes, the same message
+    for unknown email and wrong password. Session token in an HttpOnly, SameSite=Strict cookie scoped to
+    `/admin`; only its SHA-256 is stored; 8 hours. Each session has a CSRF token required on every form.
+  - **Roles, enforced on the server:** Viewer (read only), Operator (+ promotional grants, verify payments,
+    resolve review items, mark devices lost), Administrator (+ administrator-issued tokens, pricing,
+    settings, admin users). Disabling a user ends their sessions.
+  - **Pages:** dashboard (§35.8 counts), accounts (search, wallet, ledger, reconciliation, simulations,
+    grants), devices (allocations, mark lost with confirmation), payments (filter, verify now, refundable
+    credits), review queue (resolve with a note), pricing (publish a new rule version: full, excess,
+    tiered), fees (read only for now — schedules still live in core config), settings, audit log.
+  - Every change is audited as `admin:<email>` with a reason where the action needs one.
+  - The first administrator is created with the CLI (`admin:create`); there is no default password.
+- **Still open:** editing fee schedules centrally; 2-factor sign-in once the back office is hosted.

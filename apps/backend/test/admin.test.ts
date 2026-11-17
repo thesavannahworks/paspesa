@@ -1,0 +1,183 @@
+/**
+ * Back office (White Paper §34–35, §44.3): login and lockout, roles enforced on the server, CSRF,
+ * escaping of user-supplied text, and audited changes. Runs the real app over HTTP against PGlite.
+ */
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { INestApplication } from '@nestjs/common';
+import { createApp } from '../src/app.js';
+import { AdminAuth, hashPassword, verifyPassword } from '../src/admin/auth.js';
+import { openDatabase, type Database } from '../src/database.js';
+import { html } from '../src/admin/views.js';
+import { MonetizationService } from '../src/monetization.service.js';
+
+let db: Database;
+let app: INestApplication;
+let base: string;
+const PASSWORD = 'correct horse 42';
+
+beforeAll(async () => {
+  db = await openDatabase({});
+  const auth = new AdminAuth(db);
+  await auth.createAdmin({ email: 'boss@example.com', name: 'Boss', role: 'ADMIN', password: PASSWORD }, 'test');
+  await auth.createAdmin({ email: 'ops@example.com', name: 'Ops', role: 'OPERATOR', password: PASSWORD }, 'test');
+  await auth.createAdmin({ email: 'look@example.com', name: 'Looker', role: 'VIEWER', password: PASSWORD }, 'test');
+  await auth.createAdmin({ email: 'lockme@example.com', name: 'Lock', role: 'VIEWER', password: PASSWORD }, 'test');
+  app = await createApp(db);
+  await app.listen(0, '127.0.0.1');
+  base = await app.getUrl();
+});
+afterAll(async () => {
+  await app.close();
+  await db.close();
+});
+
+const form = (data: Record<string, string>) => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams(data).toString(),
+  redirect: 'manual' as const,
+});
+
+/** Signs in and returns a client that sends the session cookie and knows the CSRF token. */
+async function signIn(email: string) {
+  const res = await fetch(`${base}/admin/login`, form({ email, password: PASSWORD }));
+  expect(res.status).toBe(303);
+  const cookie = res.headers.get('set-cookie')!.split(';')[0]!;
+  const get = (path: string) => fetch(`${base}${path}`, { headers: { cookie }, redirect: 'manual' });
+  const page = await (await get('/admin')).text();
+  const csrf = /name="_csrf" value="([0-9a-f]+)"/.exec(page)![1]!;
+  const post = (path: string, data: Record<string, string>, withCsrf = true) => {
+    const f = form(withCsrf ? { _csrf: csrf, ...data } : data);
+    return fetch(`${base}${path}`, { ...f, headers: { ...f.headers, cookie } });
+  };
+  return { cookie, csrf, get, post };
+}
+
+async function newAccount(name = 'Paskal Twoli') {
+  const installationId = randomUUID();
+  const accountId = randomUUID();
+  await db.query("INSERT INTO installations (id, token_hash, platform) VALUES ($1, $2, 'android')", [installationId, randomUUID()]);
+  await db.query(
+    `INSERT INTO accounts (id, installation_id, account_name, phone_number, opening_balance, balance, version, currency, created_at, updated_at)
+     VALUES ($1, $2, $3, '254759981287', 1000, 1000, 1, 'KES', now(), now())`,
+    [accountId, installationId, name],
+  );
+  return { accountId, installationId };
+}
+
+describe('back office', () => {
+  it('stores passwords as salted scrypt hashes', async () => {
+    const h = await hashPassword(PASSWORD);
+    expect(h).toMatch(/^scrypt\$16384\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
+    expect(h).not.toContain(PASSWORD);
+    expect(await verifyPassword(PASSWORD, h)).toBe(true);
+    expect(await verifyPassword('wrong password 1', h)).toBe(false);
+  });
+
+  it('redirects to the login page without a session, and sets strict security headers', async () => {
+    const res = await fetch(`${base}/admin/accounts`, { redirect: 'manual' });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('/admin/login');
+    const login = await fetch(`${base}/admin/login`);
+    expect(login.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(login.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(login.headers.get('x-powered-by')).toBeNull();
+  });
+
+  it('signs in with an HttpOnly, SameSite=Strict cookie, and signs out', async () => {
+    const res = await fetch(`${base}/admin/login`, form({ email: 'BOSS@example.com ', password: PASSWORD }));
+    expect(res.headers.get('set-cookie')).toMatch(/paspesa_admin=[0-9a-f]{64}; Path=\/admin; HttpOnly; SameSite=Strict/);
+    const c = await signIn('boss@example.com');
+    expect((await c.get('/admin')).status).toBe(200);
+    expect((await c.post('/admin/logout', {})).status).toBe(303);
+    expect((await c.get('/admin')).status).toBe(303); // session gone
+  });
+
+  it('gives the same answer for an unknown email and a wrong password, and locks after 5 failures', async () => {
+    const unknown = await fetch(`${base}/admin/login`, form({ email: 'nobody@example.com', password: 'x' }));
+    const wrong = await fetch(`${base}/admin/login`, form({ email: 'lockme@example.com', password: 'x' }));
+    expect(unknown.headers.get('location')).toBe(wrong.headers.get('location'));
+    for (let i = 0; i < 4; i++) await fetch(`${base}/admin/login`, form({ email: 'lockme@example.com', password: 'x' }));
+    const locked = await fetch(`${base}/admin/login`, form({ email: 'lockme@example.com', password: PASSWORD }));
+    expect(decodeURIComponent(locked.headers.get('location')!)).toMatch(/Too many attempts/);
+  });
+
+  it('refuses a form without the session CSRF token', async () => {
+    const { accountId } = await newAccount();
+    const c = await signIn('boss@example.com');
+    const res = await c.post(`/admin/accounts/${accountId}/grant`, { category: 'PROMOTIONAL', quantity: '10', reason: 'x', reference: 'csrf:1' }, false);
+    expect(res.status).toBe(403);
+    const forged = await c.post(`/admin/accounts/${accountId}/grant`, { _csrf: 'f'.repeat(48), category: 'PROMOTIONAL', quantity: '10', reason: 'x', reference: 'csrf:2' }, false);
+    expect(forged.status).toBe(403);
+    expect((await db.query("SELECT 1 FROM token_ledger WHERE reference_id LIKE 'csrf:%'")).length).toBe(0);
+  });
+
+  it('enforces roles on the server: viewers read only, operators cannot grant admin tokens or change settings', async () => {
+    const { accountId } = await newAccount();
+    const viewer = await signIn('look@example.com');
+    expect((await viewer.get(`/admin/accounts/${accountId}`)).status).toBe(200);
+    expect((await viewer.post(`/admin/accounts/${accountId}/grant`, { category: 'PROMOTIONAL', quantity: '5', reason: 'x', reference: 'role:1' })).status).toBe(403);
+    expect((await viewer.get('/admin/users')).status).toBe(403);
+
+    const ops = await signIn('ops@example.com');
+    expect((await ops.post(`/admin/accounts/${accountId}/grant`, { category: 'ADMIN', quantity: '5', reason: 'x', reference: 'role:2' })).status).toBe(403);
+    expect((await ops.post('/admin/settings', { paymentRequired: 'true', shillingsPerToken: '1', minimumPurchase: '10', offlineAuthorizationDays: '3' })).status).toBe(403);
+    expect((await ops.post('/admin/users', { email: 'x@example.com', name: 'X', role: 'ADMIN', password: PASSWORD })).status).toBe(403);
+    const ok = await ops.post(`/admin/accounts/${accountId}/grant`, { category: 'PROMOTIONAL', quantity: '5', reason: 'Launch promo', reference: 'role:3' });
+    expect(ok.status).toBe(303);
+    const [audit] = await db.query<{ actor_id: string; reason: string }>("SELECT actor_id, reason FROM audit_log WHERE action = 'GRANT_PROMOTIONAL_TOKENS' AND entity_id = $1", [accountId]);
+    expect(audit).toMatchObject({ actor_id: 'admin:ops@example.com', reason: 'Launch promo' });
+  });
+
+  it('grants are idempotent per form submission', async () => {
+    const { accountId } = await newAccount();
+    const c = await signIn('boss@example.com');
+    for (let i = 0; i < 2; i++) await c.post(`/admin/accounts/${accountId}/grant`, { category: 'ADMIN', quantity: '30', reason: 'Support', reference: 'admin:same-form' });
+    const page = await (await c.get(`/admin/accounts/${accountId}`)).text();
+    expect(page).toContain('Available</th><td>30 ');
+  });
+
+  it('escapes user-supplied text (account names come from phones)', async () => {
+    await newAccount('<script>alert(1)</script>');
+    const c = await signIn('look@example.com');
+    const page = await (await c.get('/admin/accounts?q=script')).text();
+    expect(page).not.toContain('<script>alert(1)</script>');
+    expect(page).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html`<b>${'"><img src=x onerror=1>'}</b>`.value).toBe('<b>&quot;&gt;&lt;img src=x onerror=1&gt;</b>');
+  });
+
+  it('administrators change settings and publish pricing, both audited', async () => {
+    const c = await signIn('boss@example.com');
+    const saved = await c.post('/admin/settings', { paymentRequired: 'true', freeSimulationsOffline: 'true', shillingsPerToken: '1', minimumPurchase: '10', offlineAuthorizationDays: '5' });
+    expect(saved.status).toBe(303);
+    expect(await new MonetizationService(db).settings()).toMatchObject({ paymentRequired: true, offlineAuthorizationDays: 5 });
+
+    const bad = await c.post('/admin/pricing', { id: 'global-paybill', scopeType: 'GLOBAL', transactionType: 'PAYBILL', formula: 'TIERED', freeThreshold: '0', tiers: 'nonsense', status: 'ACTIVE' });
+    expect(decodeURIComponent(bad.headers.get('location')!)).toMatch(/err=Cannot read tier/);
+    const good = await c.post('/admin/pricing', { id: 'global-paybill', scopeType: 'GLOBAL', transactionType: 'PAYBILL', formula: 'TIERED', freeThreshold: '20', tiers: '0-20:0\n21-100:3\n101-:8', status: 'ACTIVE' });
+    expect(decodeURIComponent(good.headers.get('location')!)).toMatch(/ok=Published global-paybill v1/);
+    expect((await (await c.get('/admin/pricing')).text())).toContain('21–100: 3');
+    const actions = (await db.query<{ action: string }>("SELECT action FROM audit_log WHERE actor_id = 'admin:boss@example.com'")).map((r) => r.action);
+    expect(actions).toEqual(expect.arrayContaining(['UPDATE_MONETIZATION_SETTINGS']));
+  });
+
+  it('every page renders for a signed-in viewer', async () => {
+    const c = await signIn('look@example.com');
+    for (const p of ['/admin', '/admin/accounts', '/admin/devices', '/admin/payments', '/admin/review', '/admin/pricing', '/admin/fees', '/admin/settings', '/admin/audit']) {
+      const res = await c.get(p);
+      expect(res.status, p).toBe(200);
+    }
+    expect((await fetch(`${base}/admin/assets/admin.css`)).headers.get('content-type')).toMatch(/text\/css/);
+  });
+
+  it('administrators add and disable admin users; a disabled user is signed out', async () => {
+    const boss = await signIn('boss@example.com');
+    expect((await boss.post('/admin/users', { email: 'temp@example.com', name: 'Temp', role: 'OPERATOR', password: 'short' })).headers.get('location')).toMatch(/err=/);
+    expect((await boss.post('/admin/users', { email: 'temp@example.com', name: 'Temp', role: 'OPERATOR', password: PASSWORD })).headers.get('location')).toMatch(/ok=/);
+    const temp = await signIn('temp@example.com');
+    const [u] = await db.query<{ id: string }>("SELECT id FROM admin_users WHERE email = 'temp@example.com'");
+    await boss.post(`/admin/users/${u!.id}/disable`, {});
+    expect((await temp.get('/admin')).status).toBe(303);
+  });
+});
