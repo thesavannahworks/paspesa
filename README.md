@@ -70,4 +70,12 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   when using the embedded database:
   `npm run admin -- admin:create you@example.com "Your Name" ADMIN '<10+ chars, letters and numbers>'`.
   Add further users (Administrator, Operator, Viewer) from the Admin users page.
+- **Signing in to the app:** with a server configured, the app asks for an email and a 6-digit code the
+  first time on each device (and after signing out); then the Paspesa PIN is used as before. To send real
+  emails, set the `SMTP_*` settings in `apps/backend/.env` (see `.env.example`; Gmail works with an App
+  Password). Without them, codes are printed in the backend's terminal — fine while testing alone.
+- **One device at a time per account:** signing in elsewhere (another phone, or the web on a computer)
+  moves the account there; the other device uploads what it had, then signs itself out.
+- **Back office → My account:** change your name and password, turn on 2-step sign-in with an
+  authenticator app (recovery codes included), and see or end your other sessions.
 - **Admin commands** (scripting; same operations as the back office): `npm run admin -w @paspesa/backend -- help`.

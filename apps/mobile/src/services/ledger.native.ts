@@ -1,5 +1,5 @@
 /** Android/iOS ledger tables in SQLite (`paspesa.db`), via the shared SQL layer in @paspesa/core. */
-import { applySqlChanges, loadSqlLedger, migrateSqlLedger, type SqlExecutor } from '@paspesa/core';
+import { applySqlChanges, loadSqlLedger, migrateSqlLedger, replaceSqlLedger, type SqlExecutor } from '@paspesa/core';
 import type { SQLiteBindValue } from 'expo-sqlite';
 import { getDatabase } from './db.native';
 import type { LedgerPersistence } from './ledgerTypes';
@@ -25,5 +25,5 @@ export async function openLedgerPersistence(): Promise<LedgerPersistence> {
     transaction: (work) => db.withExclusiveTransactionAsync(async (txn) => work(statements(txn))),
   };
   await migrateSqlLedger(executor);
-  return { load: () => loadSqlLedger(executor), apply: (changes) => applySqlChanges(executor, changes) };
+  return { load: () => loadSqlLedger(executor), apply: (changes) => applySqlChanges(executor, changes), replace: (state) => replaceSqlLedger(executor, state) };
 }

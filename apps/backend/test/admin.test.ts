@@ -10,6 +10,7 @@ import { AdminAuth, hashPassword, verifyPassword } from '../src/admin/auth.js';
 import { openDatabase, type Database } from '../src/database.js';
 import { html } from '../src/admin/views.js';
 import { MonetizationService } from '../src/monetization.service.js';
+import { base32Decode, base32Encode, currentStep, totpAt, verifyTotp } from '../src/admin/totp.js';
 
 let db: Database;
 let app: INestApplication;
@@ -183,5 +184,83 @@ describe('back office', () => {
     const [u] = await db.query<{ id: string }>("SELECT id FROM admin_users WHERE email = 'temp@example.com'");
     await boss.post(`/admin/users/${u!.id}/disable`, {});
     expect((await temp.get('/admin')).status).toBe(303);
+  });
+});
+
+describe('authenticator codes (TOTP)', () => {
+  it('matches the RFC 6238 test vector and allows one step of drift', () => {
+    const secret = base32Encode(Buffer.from('12345678901234567890'));
+    expect(base32Decode(secret).toString()).toBe('12345678901234567890');
+    expect(totpAt(secret, Math.floor(59 / 30))).toBe('287082'); // RFC 6238, T=59s, SHA-1, 6 digits
+    expect(totpAt(secret, Math.floor(1111111109 / 30))).toBe('081804');
+    const now = Date.now();
+    expect(verifyTotp(secret, totpAt(secret, currentStep(now) - 1), now)).toBe(currentStep(now) - 1);
+    expect(verifyTotp(secret, totpAt(secret, currentStep(now) - 3), now)).toBeNull();
+    expect(verifyTotp(secret, totpAt(secret, currentStep(now)), now, currentStep(now))).toBeNull(); // no reuse
+  });
+});
+
+describe('my account', () => {
+  const cookieOf = (res: Response) => res.headers.get('set-cookie')!.split(';')[0]!;
+  const loc = (res: Response) => decodeURIComponent(res.headers.get('location') ?? '');
+
+  it('turns on 2-step sign-in; sign-in then needs the app code or a recovery code (once each)', async () => {
+    await new AdminAuth(db).createAdmin({ email: 'twofa@example.com', name: 'Two Fa', role: 'OPERATOR', password: PASSWORD }, 'test');
+    const c = await signIn('twofa@example.com');
+    expect((await c.get('/admin/me')).status).toBe(200);
+    expect((await c.post('/admin/me/2fa/start', {})).headers.get('location')).toBe('/admin/me/2fa');
+    const setup = await (await c.get('/admin/me/2fa')).text();
+    expect(setup).toContain('<svg'); // QR code, inline
+    const [{ totp_pending_secret: secret }] = await db.query<{ totp_pending_secret: string }>("SELECT totp_pending_secret FROM admin_users WHERE email = 'twofa@example.com'") as [{ totp_pending_secret: string }];
+    expect(setup).toContain(secret.slice(0, 4));
+    expect(loc(await c.post('/admin/me/2fa/confirm', { code: '000000' === totpAt(secret, currentStep()) ? '111111' : '000000' }))).toMatch(/err=That code did not match/);
+    const shown = await (await c.post('/admin/me/2fa/confirm', { code: totpAt(secret, currentStep()) })).text();
+    const codes = [...shown.matchAll(/<code>([a-z0-9]{4}-[a-z0-9]{4})<\/code>/g)].map((m) => m[1]!);
+    expect(codes).toHaveLength(10);
+    const [stored] = await db.query<{ recovery_codes: string[] }>("SELECT recovery_codes FROM admin_users WHERE email = 'twofa@example.com'");
+    expect(JSON.stringify(stored!.recovery_codes)).not.toContain(codes[0]!); // hashes only
+
+    // password alone no longer signs in
+    const step1 = await fetch(`${base}/admin/login`, form({ email: 'twofa@example.com', password: PASSWORD }));
+    expect(step1.headers.get('location')).toBe('/admin/login/code');
+    const pending = cookieOf(step1);
+    expect(pending).toMatch(/^paspesa_admin_2fa=/);
+    const codeForm = (code: string) => { const f = form({ code }); return fetch(`${base}/admin/login/code`, { ...f, headers: { ...f.headers, cookie: pending } }); };
+    expect(loc(await codeForm('123'))).toMatch(/err=Wrong code/);
+    const ok = await codeForm(totpAt(secret, currentStep() + 1)); // the next code (the current one was used to confirm)
+    expect(ok.headers.get('location')).toBe('/admin');
+    expect(ok.headers.get('set-cookie')).toContain('paspesa_admin=');
+
+    // a recovery code works once
+    const again = await fetch(`${base}/admin/login`, form({ email: 'twofa@example.com', password: PASSWORD }));
+    const p2 = cookieOf(again);
+    const useCode = (code: string) => { const f = form({ code }); return fetch(`${base}/admin/login/code`, { ...f, headers: { ...f.headers, cookie: p2 } }); };
+    expect((await useCode(codes[0]!.toUpperCase())).headers.get('location')).toBe('/admin');
+    const again2 = await fetch(`${base}/admin/login`, form({ email: 'twofa@example.com', password: PASSWORD }));
+    const f3 = form({ code: codes[0]! });
+    expect(loc(await fetch(`${base}/admin/login/code`, { ...f3, headers: { ...f3.headers, cookie: cookieOf(again2) } }))).toMatch(/err=Wrong code/);
+
+    // an administrator can reset it (lost phone and codes)
+    const boss = await signIn('boss@example.com');
+    const [u] = await db.query<{ id: string }>("SELECT id FROM admin_users WHERE email = 'twofa@example.com'");
+    await boss.post(`/admin/users/${u!.id}/reset-2fa`, {});
+    expect((await fetch(`${base}/admin/login`, form({ email: 'twofa@example.com', password: PASSWORD }))).headers.get('location')).toBe('/admin');
+    const actions = (await db.query<{ action: string }>('SELECT action FROM audit_log WHERE entity_id = $1', [u!.id])).map((r) => r.action);
+    expect(actions).toEqual(expect.arrayContaining(['ENABLE_2FA', 'USED_RECOVERY_CODE', 'RESET_2FA']));
+  });
+
+  it('changes name and password; a new password signs out other sessions', async () => {
+    await new AdminAuth(db).createAdmin({ email: 'pw@example.com', name: 'Pee Double', role: 'VIEWER', password: PASSWORD }, 'test');
+    const here = await signIn('pw@example.com');
+    const elsewhere = await signIn('pw@example.com');
+    expect(loc(await here.post('/admin/me/name', { name: 'Peter W' }))).toMatch(/ok=Name saved/);
+    expect(loc(await here.post('/admin/me/password', { current: 'wrong one 99', next: 'brand new pass 7', again: 'brand new pass 7' }))).toMatch(/err=Your current password is wrong/);
+    expect(loc(await here.post('/admin/me/password', { current: PASSWORD, next: 'brand new pass 7', again: 'different 7777' }))).toMatch(/err=The two new passwords are different/);
+    expect(loc(await here.post('/admin/me/password', { current: PASSWORD, next: 'brand new pass 7', again: 'brand new pass 7' }))).toMatch(/ok=Password changed/);
+    expect((await here.get('/admin/me')).status).toBe(200);
+    expect((await elsewhere.get('/admin/me')).status).toBe(303); // signed out
+    const page = await (await here.get('/admin/me')).text();
+    expect(page).toContain('Peter W');
+    expect((await fetch(`${base}/admin/login`, form({ email: 'pw@example.com', password: 'brand new pass 7' }))).headers.get('location')).toBe('/admin');
   });
 });

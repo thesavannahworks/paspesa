@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -318,4 +318,53 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 -- Review items resolved by an operator (the original stays for audit).
 ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS resolution TEXT;
 ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+
+-- ---------------------------------------------------------------- v5: 2-step sign-in for admins, account sign-in by email
+
+-- Authenticator-app (TOTP) 2-step sign-in. Recovery codes are stored as SHA-256 hashes; used ones are removed.
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret TEXT;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled_at TIMESTAMPTZ;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_last_step BIGINT;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS recovery_codes JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT;
+-- Password accepted, waiting for the authenticator code (5 minutes, 5 tries).
+CREATE TABLE IF NOT EXISTS admin_pending_logins (
+  token_hash TEXT PRIMARY KEY,
+  admin_id TEXT NOT NULL REFERENCES admin_users(id),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- People who sign in to the app with their email. One account per person; one active device per account.
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_sign_in_at TIMESTAMPTZ
+);
+-- One-time sign-in codes: only a salted hash is kept; 10 minutes, 5 tries.
+CREATE TABLE IF NOT EXISTS sign_in_codes (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  installation_id TEXT NOT NULL REFERENCES installations(id),
+  code_hash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS sign_in_codes_email ON sign_in_codes (email, created_at);
+CREATE INDEX IF NOT EXISTS sign_in_codes_installation ON sign_in_codes (installation_id, created_at);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS user_id TEXT UNIQUE REFERENCES users(id);
+-- The account a device works on. accounts.installation_id is the ACTIVE device; a device signed out by a
+-- sign-in elsewhere keeps account_id so it can still upload what it recorded before (then it wipes itself).
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS account_id TEXT REFERENCES accounts(id);
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id);
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS signed_in_at TIMESTAMPTZ;
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS signed_out_at TIMESTAMPTZ;
+-- An account dropped by its device (the person chose another account there) has no active device.
+ALTER TABLE accounts ALTER COLUMN installation_id DROP NOT NULL;
+UPDATE installations i SET account_id = a.id FROM accounts a WHERE a.installation_id = i.id AND i.account_id IS NULL;
 `;

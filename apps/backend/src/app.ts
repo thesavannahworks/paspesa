@@ -20,6 +20,12 @@
  *   GET  /v1/payments/providers [auth] payment providers switched on (Daraja, Kopo Kopo, IntaSend, Paystack, PayHero)
  *   POST /v1/payments/:provider/callback   result notice (Daraja: mpesa/callback): only triggers a verification
  *
+ *   POST /v1/auth/code        [auth]   email a 6-digit sign-in code
+ *   POST /v1/auth/verify      [auth]   check the code: signs this device in (moves the account here)
+ *   GET  /v1/auth/me          [auth]   signed in? signed out by a sign-in on another device?
+ *   POST /v1/auth/sign-out    [auth]   this device signs out (after uploading what it has)
+ *   GET  /v1/account/restore  [auth]   the account's transactions, messages and favourites (new device)
+ *
  * Back office (§34–35): server-rendered pages at /admin, administrator login — see src/admin/.
  *
  * Authentication: each installation creates a random secret on the device and registers it; the server
@@ -55,6 +61,8 @@ import { AllocationService } from './allocation.service.js';
 import { MonetizationError, MonetizationService, type PaymentProvider } from './monetization.service.js';
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
+import { SignInError, SignInService } from './signin.service.js';
+import { mailerFromEnv, type Mailer } from './mailer.js';
 import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.controller.js';
 
 export const DATABASE = Symbol('DATABASE');
@@ -116,6 +124,67 @@ class InstallationsController {
       throw fail(HttpStatus.CONFLICT, 'ALREADY_REGISTERED', 'This installation is registered with another token');
     }
     return { installationId, apiVersion: SYNC_API_VERSION };
+  }
+}
+
+const SIGN_IN_STATUS: Record<SignInError['code'], HttpStatus> = {
+  VALIDATION: HttpStatus.BAD_REQUEST,
+  WRONG_CODE: HttpStatus.UNAUTHORIZED,
+  CODE_EXPIRED: HttpStatus.GONE,
+  TOO_MANY: HttpStatus.TOO_MANY_REQUESTS,
+  ACCOUNT_CONFLICT: HttpStatus.CONFLICT,
+  NOT_SIGNED_IN: HttpStatus.UNAUTHORIZED,
+  NOT_ACTIVE_DEVICE: HttpStatus.FORBIDDEN,
+};
+const signInFail = (e: unknown) => {
+  if (e instanceof SignInError) return fail(SIGN_IN_STATUS[e.code], e.code, e.message);
+  return e;
+};
+
+@Controller('v1')
+@UseGuards(InstallationAuthGuard)
+class SignInController {
+  constructor(@Inject(SignInService) private readonly signIn: SignInService) {}
+
+  @Post('auth/code')
+  @HttpCode(200)
+  async code(@Req() req: AuthedRequest, @Body() body: { email?: unknown }) {
+    try {
+      return await this.signIn.requestCode(String(body?.email ?? ''), req.installationId!);
+    } catch (e) {
+      throw signInFail(e);
+    }
+  }
+
+  @Post('auth/verify')
+  @HttpCode(200)
+  async verify(@Req() req: AuthedRequest, @Body() body: { email?: unknown; code?: unknown; replaceLocalAccount?: unknown }) {
+    try {
+      return await this.signIn.verifyCode(String(body?.email ?? ''), String(body?.code ?? ''), req.installationId!, body?.replaceLocalAccount === true);
+    } catch (e) {
+      throw signInFail(e);
+    }
+  }
+
+  @Get('auth/me')
+  me(@Req() req: AuthedRequest) {
+    return this.signIn.status(req.installationId!);
+  }
+
+  @Post('auth/sign-out')
+  @HttpCode(200)
+  async signOut(@Req() req: AuthedRequest) {
+    await this.signIn.signOut(req.installationId!);
+    return { signedOut: true };
+  }
+
+  @Get('account/restore')
+  async restore(@Req() req: AuthedRequest) {
+    try {
+      return await this.signIn.snapshot(req.installationId!);
+    } catch (e) {
+      throw signInFail(e);
+    }
   }
 }
 
@@ -357,15 +426,16 @@ class PaymentsController {
 
 @Module({})
 class AppModule {
-  static with(db: Database, providers: PaymentProviders): DynamicModule {
+  static with(db: Database, providers: PaymentProviders, mailer: Mailer): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, AllocationsController, PaymentsController, AdminController],
+      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, AllocationsController, PaymentsController, SignInController, AdminController],
       providers: [
         { provide: DATABASE, useValue: db },
         { provide: PAYMENT_PROVIDERS, useValue: providers },
         { provide: ADMIN_DATABASE, useValue: db },
         { provide: ADMIN_PROVIDERS, useValue: providers },
+        { provide: SignInService, useFactory: () => new SignInService(db, mailer) },
         { provide: MonetizationService, useFactory: () => new MonetizationService(db) },
         { provide: AllocationService, useFactory: (money: MonetizationService) => new AllocationService(db, money), inject: [MonetizationService] },
         {
@@ -380,9 +450,9 @@ class AppModule {
 }
 
 /** Builds the Nest application around an opened database (used by main.ts and the tests). */
-export async function createApp(db: Database, options: { paymentProvider?: PaymentProvider | null; paymentProviders?: PaymentProviders } = {}) {
+export async function createApp(db: Database, options: { paymentProvider?: PaymentProvider | null; paymentProviders?: PaymentProviders; mailer?: Mailer } = {}) {
   const providers = options.paymentProviders ?? providerRegistry(options.paymentProvider ? [options.paymentProvider] : []);
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, providers), { logger: ['error', 'warn', 'log'], bodyParser: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, providers, options.mailer ?? mailerFromEnv(process.env)), { logger: ['error', 'warn', 'log'], bodyParser: true });
   app.enableCors(); // the web build (another origin) talks to the API too
   app.useBodyParser('json', { limit: '2mb' });
   app.useBodyParser('urlencoded', { extended: false, limit: '100kb' }); // back-office forms (/admin)

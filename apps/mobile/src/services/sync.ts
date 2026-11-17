@@ -11,6 +11,7 @@ import { outboxSummary, syncOutbox, type EngineDeps, type SyncPushRequest, type 
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { apiUrl, refreshServerConfig, request, ensureToken, type PaspesaApi } from './api';
+import { checkSignedInElsewhere } from './session';
 import type { KeyValueStore } from './kvTypes';
 
 const INTERVAL_MS = 60_000;
@@ -31,6 +32,8 @@ export interface SyncStatus {
 
 export interface SyncRunner {
   kick(): void;
+  /** Uploads what is waiting now (after any run in progress); resolves when done. */
+  syncNow(): Promise<void>;
   status(): SyncStatus;
   subscribe(listener: (s: SyncStatus) => void): () => void;
   start(): void;
@@ -94,11 +97,21 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
       const token = await ensureToken(kv, base, deps.installationId, platform);
       // Back-office pricing and settings (payment switch, offline rules) follow every sync.
       if (await refreshServerConfig(api, deps, kv).catch(() => false)) onConfigChange();
+      let signedOut = false;
       const transport: SyncTransport = {
-        push: (body: SyncPushRequest) => request<SyncPushResponse>(`${base}/v1/sync/push`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) }),
+        push: async (body: SyncPushRequest) => {
+          const res = await request<SyncPushResponse>(`${base}/v1/sync/push`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+          if (res.signedOut) signedOut = true;
+          return res;
+        },
       };
       const report: SyncReport = await syncOutbox(deps, transport);
       publish({ lastError: report.error, ...(report.error ? {} : { lastSyncedAt: new Date().toISOString() }) });
+      // Signed in on another device? This one wipes itself once everything above is uploaded.
+      if (!report.error) {
+        await refreshCounts().catch(() => undefined);
+        await checkSignedInElsewhere(signedOut).catch(() => undefined);
+      }
     } catch (e) {
       publish({ lastError: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -124,6 +137,14 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
 
   const runner: SyncRunner = {
     kick,
+    async syncNow() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      while (state.running) await new Promise((r) => setTimeout(r, 200));
+      await run();
+    },
     status: () => state,
     subscribe(listener) {
       listeners.add(listener);

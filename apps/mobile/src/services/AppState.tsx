@@ -12,6 +12,8 @@ interface AppStateValue extends LedgerSnapshot {
   deps: EngineDeps;
   /** Re-reads the local ledger. Call after every engine operation. */
   refresh: () => Promise<void>;
+  /** The most recent non-empty account (see useAccount). */
+  lastAccount: Account | null;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -29,18 +31,27 @@ async function read(deps: EngineDeps): Promise<LedgerSnapshot> {
 
 export function AppStateProvider({ deps, children }: { deps: EngineDeps; children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<LedgerSnapshot | null>(null);
-  const refresh = useCallback(async () => setSnapshot(await read(deps)), [deps]);
+  // The last account seen: screens that need one keep rendering it for the moment between a sign-out
+  // wiping the device and the app leaving those screens.
+  const [lastAccount, setLastAccount] = useState<Account | null>(null);
+  const refresh = useCallback(async () => {
+    const next = await read(deps);
+    if (next.account) setLastAccount(next.account);
+    setSnapshot(next);
+  }, [deps]);
   useEffect(() => {
     let live = true;
     void read(deps).then((s) => {
-      if (live) setSnapshot(s);
+      if (!live) return;
+      if (s.account) setLastAccount(s.account);
+      setSnapshot(s);
     });
     return () => {
       live = false;
     };
   }, [deps]);
   if (!snapshot) return null;
-  return <AppStateContext.Provider value={{ ...snapshot, deps, refresh }}>{children}</AppStateContext.Provider>;
+  return <AppStateContext.Provider value={{ ...snapshot, deps, refresh, lastAccount }}>{children}</AppStateContext.Provider>;
 }
 
 export function useAppState(): AppStateValue {
@@ -51,7 +62,8 @@ export function useAppState(): AppStateValue {
 
 /** For screens that only render once an account exists. */
 export function useAccount(): Account {
-  const { account } = useAppState();
-  if (!account) throw new Error('No account set up');
-  return account;
+  const { account, lastAccount } = useAppState();
+  const shown = account ?? lastAccount;
+  if (!shown) throw new Error('No account set up');
+  return shown;
 }

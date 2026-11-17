@@ -20,6 +20,7 @@ try {
 }
 import { MonetizationService } from './monetization.service.js';
 import { providersFromEnv } from './providers.js';
+import { mailerFromEnv } from './mailer.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -28,7 +29,8 @@ const pgliteDir = process.env.PGLITE_DIR ?? './.data/pglite';
 
 const db = await openDatabase(databaseUrl ? { databaseUrl } : { pgliteDir });
 const paymentProviders = providersFromEnv(process.env);
-const app = await createApp(db, { paymentProviders });
+const mailer = mailerFromEnv(process.env);
+const app = await createApp(db, { paymentProviders, mailer });
 app.enableShutdownHooks();
 await app.listen(port, host);
 if (paymentProviders.all.length) {
@@ -41,6 +43,7 @@ if (paymentProviders.all.length) {
   }, 20_000);
 }
 console.log(`[paspesa] payments: ${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
+console.log(`[paspesa] sign-in emails: ${mailer.kind === 'smtp' ? `SMTP via ${process.env.SMTP_HOST}` : 'printed here (set SMTP_* in .env to send real email)'}`);
 console.log(`[paspesa] backend listening on http://${host}:${port} (database: ${db.kind === 'postgres' ? 'PostgreSQL' : `embedded PostgreSQL in ${pgliteDir}`})`);
 
 const stop = async () => {

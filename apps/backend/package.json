@@ -17,13 +17,17 @@
     "@nestjs/core": "^12.5.1",
     "@nestjs/platform-express": "^12.5.1",
     "@paspesa/core": "*",
+    "nodemailer": "^10.6.0",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "vitest": "^5.1.0"

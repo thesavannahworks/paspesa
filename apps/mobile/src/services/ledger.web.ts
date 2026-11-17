@@ -1,5 +1,5 @@
 /** Web/PWA ledger: one IndexedDB object store per entity; each unit is one IndexedDB transaction. */
-import { normalizeState, type ChangeSet, type MemoryState } from '@paspesa/core';
+import { normalizeState, stateToChangeSet, type ChangeSet, type MemoryState } from '@paspesa/core';
 import { LEDGER_STORES, getIndexedDb, idbTransaction } from './idb.web';
 import type { LedgerPersistence } from './ledgerTypes';
 
@@ -34,8 +34,7 @@ async function load(): Promise<MemoryState | null> {
   return empty ? null : state;
 }
 
-async function apply(c: ChangeSet): Promise<void> {
-  await idbTransaction([...LEDGER_STORES], 'readwrite', (tx) => {
+function write(tx: IDBTransaction, c: ChangeSet) {
     if (c.account) tx.objectStore('ledger_account').put(c.account);
     for (const t of c.transactions) tx.objectStore('ledger_transactions').put(t);
     for (const m of c.movements) tx.objectStore('ledger_movements').put(m);
@@ -46,10 +45,21 @@ async function apply(c: ChangeSet): Promise<void> {
       favs.clear();
       for (const f of c.favourites) favs.put(f);
     }
+}
+
+async function apply(c: ChangeSet): Promise<void> {
+  await idbTransaction([...LEDGER_STORES], 'readwrite', (tx) => write(tx, c));
+}
+
+/** Replaces everything in one IndexedDB transaction (sign-out wipe, or a restored account). */
+async function replace(state: MemoryState): Promise<void> {
+  await idbTransaction([...LEDGER_STORES], 'readwrite', (tx) => {
+    for (const store of LEDGER_STORES) tx.objectStore(store).clear();
+    write(tx, stateToChangeSet(state));
   });
 }
 
 export async function openLedgerPersistence(): Promise<LedgerPersistence> {
   await getIndexedDb();
-  return { load, apply };
+  return { load, apply, replace };
 }

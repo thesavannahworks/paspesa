@@ -5,6 +5,7 @@ import { openLedgerPersistence } from './ledger';
 import { Platform } from 'react-native';
 import { createApi, loadCachedServerConfig, type PaspesaApi } from './api';
 import { createSyncRunner, type SyncRunner } from './sync';
+import { initSession } from './session';
 
 /** The old format: the whole ledger as one JSON record (migrated into the tables on first start). */
 const LEGACY_STATE_KEY = 'ledger.state.v1';
@@ -91,5 +92,13 @@ export async function createRuntime(): Promise<Runtime> {
   const api = createApi(deps, kv, Platform.OS);
   let configListener: () => void = () => undefined;
   sync = createSyncRunner(deps, kv, api, Platform.OS, () => configListener());
+  const runner = sync;
+  await initSession({
+    kv,
+    api,
+    deps,
+    replaceLedger: (next) => store.replaceState(next, (s) => ledger.replace(s)),
+    syncNow: () => runner.syncNow(),
+  });
   return { deps, kv, initialPrefs, sync, api, onConfigChange: (listener) => { configListener = listener; } };
 }

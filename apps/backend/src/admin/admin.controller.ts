@@ -9,8 +9,10 @@ import { AllocationService } from '../allocation.service.js';
 import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
 import type { PaymentProviders } from '../providers.js';
-import { AdminAuth, can, clearCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
-import { ADMIN_CSS, ADMIN_JS, passwordField, csrf, esc, fmtDate, html, ksh, layout, notice, type Html } from './views.js';
+import QRCode from 'qrcode';
+import { AdminAuth, can, clearCookie, clearPendingCookie, PENDING_COOKIE, pendingCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
+import { otpauthUrl } from './totp.js';
+import { ADMIN_CSS, ADMIN_JS, passwordField, csrf, esc, fmtDate, html, ksh, layout, notice, raw, type Html } from './views.js';
 
 export const ADMIN_DATABASE = Symbol('ADMIN_DATABASE');
 export const ADMIN_PROVIDERS = Symbol('ADMIN_PROVIDERS');
@@ -118,10 +120,43 @@ export class AdminController {
 
   @Post('login')
   async login(@Body() form: Form, @Req() req: Req, @Res() res: Res) {
-    const result = await this.auth.login(form?.email ?? '', form?.password ?? '');
+    const result = await this.auth.login(form?.email ?? '', form?.password ?? '', String(req.headers['user-agent'] ?? ''));
     if (!result.ok) return this.back(res, '/admin/login', result.message, true);
     const secure = !!req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if ('pending' in result) {
+      res.setHeader('Set-Cookie', pendingCookie(result.pending, secure));
+      return res.redirect(303, '/admin/login/code');
+    }
     res.setHeader('Set-Cookie', sessionCookie(result.token, secure));
+    res.redirect(303, '/admin');
+  }
+
+  /** 2-step sign-in: the code from the authenticator app (or a recovery code). */
+  @Get('login/code')
+  codePage(@Req() req: Req, @Res() res: Res, @Query('err') err?: string) {
+    if (!readCookie(req.headers.cookie as string | undefined, PENDING_COOKIE)) return res.redirect(303, '/admin/login');
+    this.send(res, layout('2-step sign-in', null, html`${notice(err, 'error')}
+      <form method="post" action="/admin/login/code" class="panel">
+        <label for="code">Code from your authenticator app</label>
+        <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" required autofocus>
+        <p class="muted">Lost your phone? Enter one of your recovery codes instead (like <code>k7f2-9qx4</code>).</p>
+        <button>Continue</button>
+      </form><p><a href="/admin/login">Start again</a></p>`));
+  }
+
+  @Post('login/code')
+  async loginCode(@Body() form: Form, @Req() req: Req, @Res() res: Res) {
+    const pending = readCookie(req.headers.cookie as string | undefined, PENDING_COOKIE);
+    const result = await this.auth.completeLogin(pending, form?.code ?? '', String(req.headers['user-agent'] ?? ''));
+    if (!result.ok) {
+      if (result.restart) {
+        res.setHeader('Set-Cookie', clearPendingCookie());
+        return this.back(res, '/admin/login', result.message, true);
+      }
+      return this.back(res, '/admin/login/code', result.message, true);
+    }
+    const secure = !!req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.setHeader('Set-Cookie', [clearPendingCookie(), sessionCookie(result.token, secure)]);
     res.redirect(303, '/admin');
   }
 
@@ -175,16 +210,16 @@ export class AdminController {
     if (!session) return;
     const term = q.trim();
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, i.status AS device_status, coalesce(w.total_balance_cache, 0) AS tokens
-       FROM accounts a JOIN installations i ON i.id = a.installation_id LEFT JOIN token_wallets w ON w.owner_id = a.id
-       WHERE $1 = '' OR a.account_name ILIKE '%' || $1 || '%' OR a.phone_number LIKE '%' || $1 || '%' OR a.id = $1
+      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, coalesce(i.status, 'NO DEVICE') AS device_status, coalesce(w.total_balance_cache, 0) AS tokens, u.email
+       FROM accounts a LEFT JOIN installations i ON i.id = a.installation_id LEFT JOIN token_wallets w ON w.owner_id = a.id LEFT JOIN users u ON u.id = a.user_id
+       WHERE $1 = '' OR a.account_name ILIKE '%' || $1 || '%' OR a.phone_number LIKE '%' || $1 || '%' OR a.id = $1 OR u.email ILIKE '%' || $1 || '%'
        ORDER BY a.created_at DESC LIMIT 200`,
       [term],
     );
     this.send(res, layout('Accounts', session, html`
-      <form method="get" class="panel"><label for="q">Search name, phone or account ID</label><input id="q" name="q" value="${term}"><button class="secondary">Search</button></form>
-      <div class="panel"><table><tr><th>Name</th><th>Phone</th><th class="num">Balance</th><th class="num">Tokens</th><th>Device</th><th>Created</th></tr>
-      ${rows.map((r) => html`<tr><td><a href="/admin/accounts/${r.id}">${r.account_name}</a></td><td>${r.phone_number}</td><td class="num">${ksh(r.balance)}</td><td class="num">${r.tokens}</td>
+      <form method="get" class="panel"><label for="q">Search name, phone, email or account ID</label><input id="q" name="q" value="${term}"><button class="secondary">Search</button></form>
+      <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th class="num">Balance</th><th class="num">Tokens</th><th>Device</th><th>Created</th></tr>
+      ${rows.map((r) => html`<tr><td><a href="/admin/accounts/${r.id}">${r.account_name}</a></td><td>${r.phone_number}</td><td>${r.email ?? html`<span class="muted">not signed in</span>`}</td><td class="num">${ksh(r.balance)}</td><td class="num">${r.tokens}</td>
         <td><span class="pill ${r.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${r.device_status}</span></td><td>${fmtDate(r.created_at)}</td></tr>`)}
       </table>${rows.length ? html`` : html`<p class="muted">No accounts.</p>`}</div>`, '/admin/accounts'));
   }
@@ -193,17 +228,17 @@ export class AdminController {
   async account(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Query() q: { ok?: string; err?: string }) {
     const session = await this.session(req, res);
     if (!session) return;
-    const [a] = await this.db.query<Record<string, unknown>>('SELECT a.*, i.platform, i.status AS device_status, i.last_seen_at FROM accounts a JOIN installations i ON i.id = a.installation_id WHERE a.id = $1', [id]);
+    const [a] = await this.db.query<Record<string, unknown>>('SELECT a.*, i.platform, i.status AS device_status, i.last_seen_at, u.email FROM accounts a LEFT JOIN installations i ON i.id = a.installation_id LEFT JOIN users u ON u.id = a.user_id WHERE a.id = $1', [id]);
     if (!a) return this.send(res, layout('Account not found', session, html`<p class="muted">No such account.</p>`), 404);
     const wallet = await this.money.wallet(id);
-    const allocation = await this.allocations.current(String(a.installation_id));
+    const allocation = a.installation_id ? await this.allocations.current(String(a.installation_id)) : null;
     const txs = await this.db.query<Record<string, unknown>>('SELECT reference, type, amount, fee, balance_after, completed_at, record FROM transactions WHERE account_id = $1 ORDER BY sequence DESC LIMIT 40', [id]);
     const problems = await this.money.reconcile(id);
     const mayGrant = can(session.admin.role, 'GRANT_PROMOTIONAL');
     this.send(res, layout(String(a.account_name), session, html`${this.flash(q)}
       <div class="row">
         <div class="panel"><h2>Account</h2><table>
-          <tr><th>Phone</th><td>${a.phone_number}</td></tr><tr><th>Simulated balance</th><td>${ksh(a.balance)}</td></tr>
+          <tr><th>Phone</th><td>${a.phone_number}</td></tr><tr><th>Sign-in email</th><td>${a.email ?? html`<span class="muted">not signed in yet</span>`}</td></tr><tr><th>Simulated balance</th><td>${ksh(a.balance)}</td></tr>
           <tr><th>Opening balance</th><td>${ksh(a.opening_balance)}</td></tr><tr><th>Airtime</th><td>${ksh(a.airtime_balance)}</td></tr>
           <tr><th>Device</th><td>${a.platform ?? '—'} · <span class="pill ${a.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${a.device_status}</span> · last seen ${fmtDate(a.last_seen_at)}</td></tr>
           <tr><th>Account ID</th><td class="muted">${a.id}</td></tr></table></div>
@@ -533,11 +568,12 @@ export class AdminController {
     const session = await this.session(req, res);
     if (!session) return;
     if (!can(session.admin.role, 'MANAGE_ADMINS')) return this.denied(res, session, new Denied('Only administrators can manage admin users.'));
-    const rows = await this.db.query<Record<string, unknown>>('SELECT id, email, name, role, status, last_login_at, created_at FROM admin_users ORDER BY created_at');
+    const rows = await this.db.query<Record<string, unknown>>('SELECT id, email, name, role, status, last_login_at, created_at, totp_enabled_at FROM admin_users ORDER BY created_at');
     this.send(res, layout('Admin users', session, html`${this.flash(q)}
-      <div class="panel"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr>
-      ${rows.map((u) => html`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td><span class="pill ${u.status === 'ACTIVE' ? 'ok' : 'bad'}">${u.status}</span></td><td>${fmtDate(u.last_login_at)}</td>
-        <td>${u.status === 'ACTIVE' && u.id !== session.admin.id ? html`<form method="post" action="/admin/users/${u.id}/disable" class="inline">${csrf(session)}<button class="secondary">Disable</button></form>` : html``}</td></tr>`)}
+      <div class="panel"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>2-step</th><th>Last sign-in</th><th></th></tr>
+      ${rows.map((u) => html`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td><span class="pill ${u.status === 'ACTIVE' ? 'ok' : 'bad'}">${u.status}</span></td><td>${u.totp_enabled_at ? html`<span class="pill ok">on</span>` : html`<span class="pill">off</span>`}</td><td>${fmtDate(u.last_login_at)}</td>
+        <td>${u.status === 'ACTIVE' && u.id !== session.admin.id ? html`<form method="post" action="/admin/users/${u.id}/disable" class="inline">${csrf(session)}<button class="secondary">Disable</button></form>` : html``}
+          ${u.totp_enabled_at && u.id !== session.admin.id ? html`<form method="post" action="/admin/users/${u.id}/reset-2fa" class="inline">${csrf(session)}<button class="secondary">Reset 2-step</button></form>` : html``}</td></tr>`)}
       </table></div>
       <form method="post" action="/admin/users" class="panel">${csrf(session)}<h2>Add an admin user</h2>
         <label for="em">Email</label><input id="em" name="email" type="email" required><label for="nm">Name</label><input id="nm" name="name" required maxlength="80">
@@ -577,6 +613,201 @@ export class AdminController {
     if (id === session.admin.id) return this.back(res, '/admin/users', 'You cannot disable yourself', true);
     await this.auth.disable(id, this.actor(session));
     this.back(res, '/admin/users', 'User disabled');
+  }
+
+  /** Someone lost their phone and recovery codes: an administrator turns their 2-step sign-in off. */
+  @Post('users/:id/reset-2fa')
+  async reset2fa(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form, 'MANAGE_ADMINS');
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    if (id === session.admin.id) return this.back(res, '/admin/users', 'Manage your own 2-step sign-in from My account', true);
+    await this.auth.resetTotp(id, this.actor(session));
+    this.back(res, '/admin/users', '2-step sign-in turned off for that user; they set it up again after signing in');
+  }
+
+  // ------------------------------------------------------------------------------------------ my account
+
+  @Get('me')
+  async me(@Req() req: Req, @Res() res: Res, @Query() q: { ok?: string; err?: string }) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    const me = await this.auth.profile(session.admin.id);
+    if (!me) return this.send(res, layout('My account', session, html`<p class="muted">Not found.</p>`), 404);
+    const token = readCookie(req.headers.cookie as string | undefined, SESSION_COOKIE);
+    const sessions = await this.auth.sessions(session.admin.id);
+    const device = (ua: string | null) => {
+      if (!ua) return 'Unknown browser';
+      const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+      const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iPhone / iPad' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+      return os ? `${browser} on ${os}` : browser;
+    };
+    this.send(res, layout('My account', session, html`${this.flash(q)}
+      <div class="row">
+        <div class="panel"><h2>Profile</h2><table>
+          <tr><th>Email</th><td>${me.email} <span class="muted">(your sign-in; an administrator can create a new user for a new email)</span></td></tr>
+          <tr><th>Role</th><td>${me.role}</td></tr>
+          <tr><th>Member since</th><td>${fmtDate(me.created_at)}</td></tr>
+          <tr><th>Last sign-in</th><td>${fmtDate(me.last_login_at)}</td></tr></table>
+          <form method="post" action="/admin/me/name">${csrf(session)}<label for="nm">Name</label><input id="nm" name="name" value="${me.name}" required maxlength="80"><button class="secondary">Save name</button></form>
+        </div>
+        <div class="panel"><h2>Password</h2>
+          <p class="muted">${me.password_changed_at ? `Last changed ${fmtDate(me.password_changed_at)}.` : 'Never changed since the account was created.'} Changing it signs you out everywhere else.</p>
+          <form method="post" action="/admin/me/password">${csrf(session)}
+            <label for="cur">Current password</label>${passwordField('cur', 'current', 'current-password')}
+            <label for="new">New password (10+ characters, letters and numbers)</label>${passwordField('new', 'next', 'new-password')}
+            <label for="again">New password again</label>${passwordField('again', 'again', 'new-password')}
+            <button>Change password</button></form>
+        </div>
+      </div>
+      <div class="panel"><h2>2-step sign-in</h2>
+        ${me.totp_enabled_at
+          ? html`<p><span class="pill ok">On</span> since ${fmtDate(me.totp_enabled_at)}. After your password, you also enter the code from your authenticator app.
+              <b>${me.recoveryCodesLeft}</b> recovery code${me.recoveryCodesLeft === 1 ? '' : 's'} left.</p>
+            <div class="row">
+              <form method="post" action="/admin/me/2fa/recovery">${csrf(session)}<label for="rpw">New recovery codes (the old ones stop working) — your password</label>${passwordField('rpw', 'password', 'current-password')}<button class="secondary">Make new recovery codes</button></form>
+              <form method="post" action="/admin/me/2fa/disable">${csrf(session)}<label for="dpw">Turn off 2-step sign-in — your password</label>${passwordField('dpw', 'password', 'current-password')}<button class="danger">Turn off</button></form>
+            </div>`
+          : html`<p><span class="pill bad">Off</span> Protect your account with a code from an authenticator app (Google Authenticator, Microsoft Authenticator, Authy…) in addition to your password.</p>
+            <form method="post" action="/admin/me/2fa/start">${csrf(session)}<button>Set up 2-step sign-in</button></form>`}
+      </div>
+      <div class="panel"><h2>Where you're signed in</h2><table><tr><th>Browser</th><th>Signed in</th><th>Expires</th><th></th></tr>
+        ${sessions.map((s) => html`<tr><td>${device(s.user_agent)}</td><td>${fmtDate(s.created_at)}</td><td>${fmtDate(s.expires_at)}</td><td>${this.auth.isCurrent(s.token_hash, token) ? html`<span class="pill ok">this browser</span>` : html``}</td></tr>`)}
+      </table>${sessions.length > 1 ? html`<form method="post" action="/admin/me/sessions/sign-out-others">${csrf(session)}<button class="secondary">Sign out everywhere else</button></form>` : html``}</div>`, '/admin/me'));
+  }
+
+  @Post('me/name')
+  async myName(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+      await this.auth.rename(session.admin.id, form.name ?? '', this.actor(session));
+      this.back(res, '/admin/me', 'Name saved');
+    } catch (e) {
+      if (e instanceof Denied) return this.denied(res, session, e);
+      this.back(res, '/admin/me', e instanceof Error ? e.message : 'Could not save', true);
+    }
+  }
+
+  @Post('me/password')
+  async myPassword(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+      if ((form.next ?? '') !== (form.again ?? '')) throw new Error('The two new passwords are different');
+      await this.auth.changePassword(session.admin.id, form.current ?? '', form.next ?? '', readCookie(req.headers.cookie as string | undefined, SESSION_COOKIE), this.actor(session));
+      this.back(res, '/admin/me', 'Password changed; other sessions were signed out');
+    } catch (e) {
+      if (e instanceof Denied) return this.denied(res, session, e);
+      this.back(res, '/admin/me', e instanceof Error ? e.message : 'Could not change the password', true);
+    }
+  }
+
+  /** Step 1: show the QR code / key and ask for a code from the app. */
+  @Post('me/2fa/start')
+  async start2fa(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    await this.auth.startTotp(session.admin.id);
+    res.redirect(303, '/admin/me/2fa');
+  }
+
+  @Get('me/2fa')
+  async setup2fa(@Req() req: Req, @Res() res: Res, @Query('err') err?: string) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    const me = await this.auth.profile(session.admin.id);
+    if (!me?.totp_pending_secret) return res.redirect(303, '/admin/me');
+    const secret = me.totp_pending_secret;
+    // Inline SVG (an <img> with a data: URL would be blocked by the CSP).
+    const svg = await QRCode.toString(otpauthUrl(secret, me.email), { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
+    this.send(res, layout('Set up 2-step sign-in', session, html`${notice(err, 'error')}
+      <div class="panel"><ol class="steps">
+        <li>Open your authenticator app and add an account (often a <b>+</b> button).</li>
+        <li>Scan this code:<div class="qr">${raw(svg)}</div>
+          Can't scan? Choose "enter a setup key" and type <code class="key">${secret.replace(/(.{4})/g, '$1 ').trim()}</code> (time-based).</li>
+        <li>Enter the 6-digit code the app shows:
+          <form method="post" action="/admin/me/2fa/confirm">${csrf(session)}<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus aria-label="6-digit code"><button>Turn on</button></form></li>
+      </ol></div><p><a href="/admin/me">Cancel</a></p>`, '/admin/me'));
+  }
+
+  @Post('me/2fa/confirm')
+  async confirm2fa(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    try {
+      const codes = await this.auth.confirmTotp(session.admin.id, form.code ?? '', this.actor(session));
+      this.showRecoveryCodes(res, session, codes, '2-step sign-in is on');
+    } catch (e) {
+      this.back(res, '/admin/me/2fa', e instanceof Error ? e.message : 'Could not turn it on', true);
+    }
+  }
+
+  @Post('me/2fa/recovery')
+  async newRecovery(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    try {
+      const codes = await this.auth.regenerateRecoveryCodes(session.admin.id, form.password ?? '', this.actor(session));
+      this.showRecoveryCodes(res, session, codes, 'New recovery codes');
+    } catch (e) {
+      this.back(res, '/admin/me', e instanceof Error ? e.message : 'Could not make new codes', true);
+    }
+  }
+
+  private showRecoveryCodes(res: Res, session: AdminSession, codes: string[], title: string) {
+    this.send(res, layout(title, session, html`<div class="panel">
+      <p><b>Save these recovery codes now</b> — somewhere safe, away from your phone (a password manager, or printed). Each one signs you in once if you lose your phone. They won't be shown again.</p>
+      <ul class="codes">${codes.map((c) => html`<li><code>${c}</code></li>`)}</ul>
+      <p><a href="/admin/me">I've saved them</a></p></div>`, '/admin/me'));
+  }
+
+  @Post('me/2fa/disable')
+  async disable2fa(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+      await this.auth.disableTotp(session.admin.id, form.password ?? '', this.actor(session));
+      this.back(res, '/admin/me', '2-step sign-in is off');
+    } catch (e) {
+      if (e instanceof Denied) return this.denied(res, session, e);
+      this.back(res, '/admin/me', e instanceof Error ? e.message : 'Could not turn it off', true);
+    }
+  }
+
+  @Post('me/sessions/sign-out-others')
+  async signOutOthers(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form);
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    const n = await this.auth.signOutOthers(session.admin.id, readCookie(req.headers.cookie as string | undefined, SESSION_COOKIE), this.actor(session));
+    this.back(res, '/admin/me', `Signed out ${n} other session${n === 1 ? '' : 's'}`);
   }
 }
 

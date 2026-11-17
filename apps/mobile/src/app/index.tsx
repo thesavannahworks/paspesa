@@ -11,6 +11,7 @@ import {
 import { ExploreCarousel, MyFinances } from '@/components/explore';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAppState } from '@/services/AppState';
+import { useSession } from '@/services/session';
 import { usePreference } from '@/services/preferences';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
@@ -32,6 +33,7 @@ interface QuickAction {
 export default function HomeScreen() {
   const { colors } = useTheme();
   const { account, transactions, messages, favourites, deps } = useAppState();
+  const session = useSession();
   const [hidden, setHidden] = usePreference('balanceHidden', false);
   const [frequentsOpen, setFrequentsOpen] = usePreference('frequentsOpen', true);
   const [tab, setTab] = useState<'apps' | 'send' | 'pay' | 'bundles'>('send');
@@ -49,7 +51,10 @@ export default function HomeScreen() {
     };
   }, [favourites, transactions, deps.config.frequentThreshold]);
 
+  // Sign in (once per device) → set up a new account, or the restored one → a PIN for this device.
+  if (session.required && !session.email) return <Redirect href="/sign-in" />;
   if (!account) return <Redirect href="/setup" />;
+  if (!account.pin && deps.config.pinMode === 'USER_PIN') return <Redirect href="/create-pin" />;
 
   const firstName = account.accountName.split(' ')[0] ?? account.accountName;
   const unread = messages.some((m) => !m.readAt && !m.deletedAt);

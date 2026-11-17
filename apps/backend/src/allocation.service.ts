@@ -62,7 +62,7 @@ export class AllocationService {
 
   private async accountOf(q: Queryable, deviceId: string): Promise<string> {
     const [row] = await q.query<{ id: string; status: string }>(
-      'SELECT a.id, i.status FROM installations i JOIN accounts a ON a.installation_id = i.id WHERE i.id = $1',
+      'SELECT a.id, i.status FROM installations i JOIN accounts a ON a.id = i.account_id WHERE i.id = $1',
       [deviceId],
     );
     if (!row) throw new MonetizationError('NOT_FOUND', 'This device has no synchronized account yet');
@@ -210,7 +210,7 @@ export class AllocationService {
    */
   async forfeitLostDevice(deviceId: string, actor: string, reason: string): Promise<{ forfeited: number }> {
     return this.db.transaction(async (q) => {
-      const [acct] = await q.query<{ id: string }>('SELECT a.id FROM accounts a WHERE a.installation_id = $1', [deviceId]);
+      const [acct] = await q.query<{ id: string }>('SELECT i.account_id AS id FROM installations i WHERE i.id = $1 AND i.account_id IS NOT NULL', [deviceId]);
       await q.query("UPDATE installations SET status = 'LOST' WHERE id = $1", [deviceId]);
       let forfeited = 0;
       if (acct) {

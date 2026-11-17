@@ -121,8 +121,11 @@ export class SyncService {
       results.push({ operationId: op.operationId, entityType: op.entityType, ...outcome });
     }
     // A successful synchronization refreshes the device's offline authorization (§29.4).
-    const allocation = await this.allocations.renew(installationId);
-    return { results, server: await this.serverState(this.db, installationId), allocation };
+    // A device signed out by a sign-in elsewhere only uploads what is left: no renewal, and it is told.
+    const [device] = await this.db.query<{ signed_out_at: Date | null; user_id: string | null }>('SELECT signed_out_at, user_id FROM installations WHERE id = $1', [installationId]);
+    const signedOut = !!device?.signed_out_at && !!device.user_id;
+    const allocation = signedOut ? await this.allocations.current(installationId) : await this.allocations.renew(installationId);
+    return { results, server: await this.serverState(this.db, installationId), allocation, ...(signedOut ? { signedOut: true } : {}) };
   }
 
   /** Server balance and position for this installation (reconciliation, §25.4). */
@@ -131,7 +134,7 @@ export class SyncService {
   }
 
   async serverState(q: Queryable, installationId: string): Promise<SyncServerState | null> {
-    const [a] = await q.query<AccountRow>('SELECT * FROM accounts WHERE installation_id = $1', [installationId]);
+    const [a] = await q.query<AccountRow>('SELECT a.* FROM accounts a JOIN installations i ON i.account_id = a.id WHERE i.id = $1', [installationId]);
     return a ? { balance: Number(a.balance), version: Number(a.version), airtimeBalance: Number(a.airtime_balance) } : null;
   }
 
@@ -173,12 +176,17 @@ export class SyncService {
   }
 
   private async account(q: Queryable, installationId: string): Promise<Account | null> {
-    const [row] = await q.query<AccountRow>('SELECT * FROM accounts WHERE installation_id = $1 FOR UPDATE', [installationId]);
+    const [row] = await q.query<AccountRow>('SELECT a.* FROM accounts a JOIN installations i ON i.account_id = a.id WHERE i.id = $1 FOR UPDATE OF a', [installationId]);
     return row ? toAccount(row) : null;
   }
 
   private async apply(q: Queryable, installationId: string, op: SyncOperation): Promise<Outcome> {
     if (!isObj(op.payload)) return review('VALIDATION', 'payload missing');
+    // After a sign-in on another device, this one may only upload what it recorded before that moment.
+    const [device] = await q.query<{ signed_out_at: Date | null; user_id: string | null }>('SELECT signed_out_at, user_id FROM installations WHERE id = $1', [installationId]);
+    if (device?.signed_out_at && device.user_id && Date.parse(String(op.createdAt)) > new Date(device.signed_out_at).getTime()) {
+      return review('SIGNED_OUT', 'Recorded after this device was signed out (the account moved to another device)');
+    }
     switch (op.operationType) {
       case 'CREATE_ACCOUNT':
         return this.createAccount(q, installationId, op);
@@ -214,6 +222,13 @@ export class SyncService {
       [a.id, installationId, a.accountName, normalizeKenyanPhone(a.phoneNumber), a.openingBalance, a.createdAt],
     );
     await this.insertTransaction(q, a.id, t);
+    // The device now works on this account; a signed-in person without an account owns it.
+    await q.query('UPDATE installations SET account_id = $1 WHERE id = $2', [a.id, installationId]);
+    await q.query(
+      `UPDATE accounts SET user_id = i.user_id FROM installations i
+       WHERE accounts.id = $1 AND i.id = $2 AND i.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM accounts o WHERE o.user_id = i.user_id)`,
+      [a.id, installationId],
+    );
     return applied;
   }
 
@@ -351,7 +366,7 @@ export class SyncService {
 
   /** Transactions after a sequence number (retrieve changes, §24 — used for reconciliation and later devices). */
   async pull(installationId: string, afterSequence: number) {
-    const [a] = await this.db.query<AccountRow>('SELECT * FROM accounts WHERE installation_id = $1', [installationId]);
+    const [a] = await this.db.query<AccountRow>('SELECT a.* FROM accounts a JOIN installations i ON i.account_id = a.id WHERE i.id = $1', [installationId]);
     if (!a) return { account: null, transactions: [] as SyncTransaction[] };
     const rows = await this.db.query<{ record: SyncTransaction }>(
       'SELECT record FROM transactions WHERE account_id = $1 AND sequence > $2 ORDER BY sequence LIMIT 500',

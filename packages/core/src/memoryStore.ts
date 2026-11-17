@@ -199,6 +199,21 @@ export class MemoryStore extends MemoryAccess implements LocalStore {
     return next;
   }
 
+  /**
+   * Replaces everything (sign-out wipe, restoring an account onto this device). `write` must durably
+   * replace the saved ledger first; the new state becomes visible only after it succeeds.
+   */
+  replaceState(next: MemoryState, write: (state: MemoryState) => Promise<void>): Promise<void> {
+    const run = async () => {
+      const state = normalizeState(clone(next));
+      await write(clone(state));
+      this.state = state;
+    };
+    const done = this.queue.then(run, run);
+    this.queue = done.catch(() => undefined);
+    return done;
+  }
+
   snapshot(): MemoryState {
     return clone(this.state);
   }

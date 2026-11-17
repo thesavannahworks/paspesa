@@ -6,7 +6,7 @@
  * constraints (operation ID, reference, sequence — duplicate protection at the database level, §25);
  * the full record is kept as JSON in `data` so new optional fields need no migration.
  */
-import type { ChangeSet } from './changes';
+import { stateToChangeSet, type ChangeSet } from './changes';
 import { normalizeState, type MemoryState } from './memoryStore';
 
 export const SQL_SCHEMA_VERSION = 1;
@@ -84,7 +84,21 @@ export async function loadSqlLedger(db: SqlExecutor): Promise<MemoryState | null
 
 /** Writes one unit's changes in a single transaction (all rows or none). */
 export async function applySqlChanges(db: SqlExecutor, c: ChangeSet): Promise<void> {
+  await db.transaction((tx) => writeChanges(tx, c));
+}
+
+const LEDGER_TABLES = ['ledger_account', 'ledger_transactions', 'ledger_movements', 'ledger_messages', 'ledger_outbox', 'ledger_favourites'];
+
+/** Replaces the whole ledger in one transaction (sign-out wipe, or an account restored from the server). */
+export async function replaceSqlLedger(db: SqlExecutor, state: MemoryState): Promise<void> {
   await db.transaction(async (tx) => {
+    for (const table of LEDGER_TABLES) await tx.run(`DELETE FROM ${table}`, []);
+    await writeChanges(tx, stateToChangeSet(state));
+  });
+}
+
+async function writeChanges(tx: Omit<SqlExecutor, 'transaction'>, c: ChangeSet): Promise<void> {
+  {
     if (c.account) {
       await tx.run('INSERT OR REPLACE INTO ledger_account (id, data) VALUES (?, ?)', [c.account.id, JSON.stringify(c.account)]);
     }
@@ -120,6 +134,6 @@ export async function applySqlChanges(db: SqlExecutor, c: ChangeSet): Promise<vo
       await tx.run('DELETE FROM ledger_favourites', []);
       for (const f of c.favourites) await tx.run('INSERT INTO ledger_favourites (id, data) VALUES (?, ?)', [f.id, JSON.stringify(f)]);
     }
-  });
+  }
 }
 

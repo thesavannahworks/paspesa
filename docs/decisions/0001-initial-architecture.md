@@ -233,3 +233,28 @@ activation, which needs the product-owner inputs listed below (§52).
   - Every change is audited as `admin:<email>` with a reason where the action needs one.
   - The first administrator is created with the CLI (`admin:create`); there is no default password.
 - **Still open:** editing fee schedules centrally; 2-factor sign-in once the back office is hosted.
+
+## Account sign-in, one active device, admin 2-step sign-in (2026-11-17)
+- **Sign-in (owner decision):** email + 6-digit code; required the first time on a device and after
+  signing out, then the Paspesa PIN as before. Only when a server is configured (offline-only builds skip it).
+  Codes: 10 minutes, 5 tries, salted hash stored, one a minute and 10 a day per email (20 per device);
+  the answer never reveals whether an email has an account. Email via SMTP (`SMTP_*`), printed to the
+  console when not configured.
+- **One active device per account:** transactions are numbered on the device that records them, so two
+  devices recording at once would collide. Signing in elsewhere moves the account (`accounts.installation_id`
+  = active device, `installations.account_id` = the account a device works on). The old device may still
+  upload operations it recorded before the move (later ones go to review as SIGNED_OUT); it learns it was
+  signed out from the push response or `/v1/auth/me`, returns tokens set aside on it, and wipes itself.
+- **Restore:** a device that signs in to an existing account downloads it (`/v1/account/restore`):
+  transactions, confirmation messages (as read), favourites; the balance is re-derived and must match.
+  The PIN never leaves a device (people reuse real PINs), so the new device creates one.
+- **Conflict:** a device with its own account signing in with an email that already owns another account
+  must choose to switch (its own account stays on the server, without a device).
+- **Sign-out (Profile):** uploads first; if something can't be uploaded (offline) it says so and offers
+  "sign out anyway". Clears the ledger, the profile photo and biometrics on the device.
+- **Back office — My account:** name, password change (current password required; signs out other
+  sessions), optional 2-step sign-in with an authenticator app (TOTP, RFC 6238; QR + setup key; 10
+  one-time recovery codes stored hashed; reuse of a code refused), sessions list with "sign out everywhere
+  else". Administrators can reset another admin's 2-step sign-in (lost phone). All audited.
+- **Still open:** requiring 2-step sign-in for every admin once hosted; changing an account's email.
+

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { Field, PrimaryButton, Screen, T } from '@/components/ui';
 import { useAppState } from '@/services/AppState';
+import { useSession } from '@/services/session';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -21,7 +22,9 @@ export default function SetupScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const needsPin = deps.config.pinMode === 'USER_PIN';
+  const session = useSession();
 
+  if (session.required && !session.email) return <Redirect href="/sign-in" />;
   if (account) return <Redirect href="/" />;
 
   const edit = (setter: (v: string) => void) => (v: string) => {

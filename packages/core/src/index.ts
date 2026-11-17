@@ -24,3 +24,4 @@ export * from './sync';
 export * from './pricing';
 export * from './tokens';
 export * from './payments';
+export * from './signIn';

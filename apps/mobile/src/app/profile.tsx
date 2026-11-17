@@ -4,10 +4,11 @@ import { router, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { UserAvatar } from '@/components/UserAvatar';
-import { Inert, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
+import { Inert, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
 import { CameraIcon, ChevronLeftIcon, ChevronRightIcon, TokenIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
 import { useProfilePhoto } from '@/services/profilePhoto';
 import { useSyncStatus } from '@/services/sync';
+import { messageOf, signOut, useSession } from '@/services/session';
 import { useAccount } from '@/services/AppState';
 import { useTheme, type ThemeChoice } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -81,10 +82,62 @@ export default function ProfileScreen() {
         App Version {Constants.expoConfig?.version ?? '1.0.0'}
       </T>
       <SyncLine />
+      <SignOutSection />
 
       <ThemeSheet visible={themeOpen} onClose={() => setThemeOpen(false)} />
       <PhotoSheet visible={photoOpen} onClose={() => setPhotoOpen(false)} />
     </Screen>
+  );
+}
+
+/** Who is signed in on this device, and signing out (everything is uploaded first). */
+function SignOutSection() {
+  const { colors } = useTheme();
+  const session = useSession();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  if (!session.email) return null;
+
+  const run = async (force: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await signOut(force);
+      if (!r.ok) setWaiting(r.waiting);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={{ marginTop: s(26) }}>
+      <T variant="label" color={colors.textSecondary}>Signed in as {session.email}</T>
+      <View style={{ marginTop: s(12) }}>
+        <OutlineButton title="Sign out" onPress={() => { setWaiting(0); setError(null); setOpen(true); }} />
+      </View>
+      <Sheet visible={open} title="Sign out of Paspesa?" onClose={() => !busy && setOpen(false)}>
+        <View style={{ paddingHorizontal: s(20), paddingBottom: s(24) }}>
+          <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>
+            {waiting
+              ? `${waiting} simulation${waiting === 1 ? " hasn't" : "s haven't"} been backed up yet — you seem to be offline. Connect to the internet and try again, or sign out anyway and lose ${waiting === 1 ? 'it' : 'them'}.`
+              : `This device will be cleared. Your account, balance and history stay backed up — sign in with ${session.email} to continue here or on another device.`}
+          </T>
+          {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(12) }}>{error}</T> : null}
+          <View style={{ marginTop: s(20) }}>
+            <PrimaryButton title={waiting ? 'Try again' : 'Sign out'} onPress={() => void run(false)} loading={busy} />
+          </View>
+          {waiting ? (
+            <View style={{ marginTop: s(12) }}>
+              <OutlineButton title="Sign out anyway" onPress={() => void run(true)} />
+            </View>
+          ) : null}
+        </View>
+      </Sheet>
+    </View>
   );
 }
 

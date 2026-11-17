@@ -67,7 +67,9 @@ export type SyncResultCode =
   | 'PRICING_MISMATCH'
   | 'INSUFFICIENT_TOKENS'
   | 'AUTHORIZATION_EXPIRED'
-  | 'PAYMENT_NOT_VERIFIED';
+  | 'PAYMENT_NOT_VERIFIED'
+  /** Recorded after this device was signed out by a sign-in on another device. */
+  | 'SIGNED_OUT';
 
 export interface SyncOperationResult {
   operationId: string;
@@ -99,6 +101,8 @@ export interface SyncPushResponse {
   server: SyncServerState | null;
   /** Present when the server reports on allocations: null = this device has none. */
   allocation?: ServerAllocation | null;
+  /** The account was moved to another device (a sign-in there): upload what is left, then sign out. */
+  signedOut?: boolean;
 }
 
 export interface SyncTransport {

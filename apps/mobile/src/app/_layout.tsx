@@ -1,12 +1,13 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '@/components/AppLock';
 import { AppStateProvider, useAppState } from '@/services/AppState';
-import { PreferencesProvider } from '@/services/preferences';
+import { PreferencesProvider, usePreference } from '@/services/preferences';
+import { onWiped, useSession } from '@/services/session';
 import { createRuntime, type Runtime } from '@/services/runtime';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
@@ -38,6 +39,29 @@ function SyncBridge({ runtime }: { runtime: Runtime }) {
     runtime.sync.start();
     return off;
   }, [runtime, refresh]);
+  return null;
+}
+
+/**
+ * Signing out (here, or because the account moved to another device) wipes this device: clear the
+ * person's preferences and go to the sign-in screen.
+ */
+function SessionBridge() {
+  const { refresh } = useAppState();
+  const session = useSession();
+  const [, setPhoto] = usePreference<string | null>('profilePhoto', null);
+  const [, setBiometrics] = usePreference('biometricsEnabled', false);
+  const previous = useRef(session.email);
+  useEffect(() => onWiped(() => { setPhoto(null); setBiometrics(false); }), [setPhoto, setBiometrics]);
+  useEffect(() => {
+    if (previous.current && !session.email) {
+      // Leave every open screen first, then show the (now empty) ledger.
+      if (router.canDismiss()) router.dismissAll();
+      router.replace('/sign-in');
+      void refresh();
+    }
+    previous.current = session.email;
+  }, [session.email, refresh]);
   return null;
 }
 
@@ -75,6 +99,7 @@ export default function RootLayout() {
             <ThemedStack />
             <AppLock />
             <SyncBridge runtime={runtime} />
+            <SessionBridge />
           </AppStateProvider>
         </ThemeProvider>
       </PreferencesProvider>
