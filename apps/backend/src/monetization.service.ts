@@ -1,14 +1,20 @@
 /**
  * Monetization foundation on the server (White Paper §26–33, Phase 6). The backend is authoritative for
  * pricing and token accounting (§27.6, §28.4). Nothing here is switched on for users yet: simulations stay
- * UNMETERED (product-owner decision) until token packages, a payment provider and activation are agreed.
+ * UNMETERED (product-owner decision) until a payment provider is connected and payments are switched on.
+ * Owner decisions (2026-11-17): 1 token = KSh 1; buying tokens is 'pay KSh N, get N tokens'; Recharge is free;
+ * free simulations may run offline (a back-office setting).
  *
  * Every wallet change runs in one database transaction with the wallet row locked, writes ledger lines per
  * grant lot, updates the lots and the balance caches together, and is idempotent on its reference.
  */
 import { randomUUID } from 'node:crypto';
 import {
+  DEFAULT_MONETIZATION_SETTINGS,
   DEFAULT_PRICING,
+  directPrice,
+  normalizeKenyanPhone,
+  tokensForShillings,
   GRANT_ENTRY,
   canMovePayment,
   canMoveRefund,
@@ -19,6 +25,7 @@ import {
   reconcileWallet,
   validatePricingRule,
   walletBalances,
+  type MonetizationSettings,
   type PaymentRecord,
   type PaymentStatus,
   type PricingConfiguration,
@@ -40,6 +47,7 @@ export class MonetizationError extends Error {
 /** A payment provider (M-PESA STK push, card…). None is connected yet; tests use a sandbox. */
 export interface PaymentProvider {
   readonly name: string;
+  /** Sends the payment request (an M-PESA STK prompt to `payment.payerPhone`). */
   initiate(payment: PaymentRecord): Promise<{ providerReference: string }>;
   /** The provider's actual status. Throws on timeout — which is NOT a failure (§33.1). */
   checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED'>;
@@ -55,12 +63,12 @@ const toLot = (r: LotRow): TokenLot => ({
 
 interface PaymentRow {
   id: string; owner_id: string; payment_type: PaymentRecord['paymentType']; provider: string; provider_reference: string | null; idempotency_key: string;
-  amount: number; currency: 'KES'; status: PaymentStatus; package_id: string | null; related_simulation_id: string | null;
+  amount: number; currency: 'KES'; status: PaymentStatus; tokens: number | null; payer_phone: string | null; related_simulation_id: string | null;
   simulation_status: PaymentRecord['simulationStatus']; refund_status: PaymentRecord['refundStatus']; created_at: Date; verified_at: Date | null;
 }
 const toPayment = (r: PaymentRow): PaymentRecord => ({
   id: r.id, ownerId: r.owner_id, paymentType: r.payment_type, provider: r.provider, providerReference: r.provider_reference, idempotencyKey: r.idempotency_key,
-  amount: Number(r.amount), currency: r.currency, status: r.status, packageId: r.package_id, relatedSimulationId: r.related_simulation_id,
+  amount: Number(r.amount), currency: r.currency, status: r.status, tokens: r.tokens === null ? null : Number(r.tokens), payerPhone: r.payer_phone, relatedSimulationId: r.related_simulation_id,
   simulationStatus: r.simulation_status, refundStatus: r.refund_status, createdAt: iso(r.created_at)!, verifiedAt: iso(r.verified_at),
 });
 
@@ -290,25 +298,90 @@ export class MonetizationService {
     await q.query('INSERT INTO payment_events (payment_id, event, detail) VALUES ($1, $2, $3)', [paymentId, event, detail === null ? null : JSON.stringify(detail)]);
   }
 
-  /** Starts a token purchase (§31). Idempotent on the client's key: a repeated request never charges twice. */
-  async initiateTokenPurchase(input: { accountId: string; packageId: string; idempotencyKey: string }, provider: PaymentProvider): Promise<PaymentRecord> {
-    const [pkg] = await this.db.query<{ price: number; status: string }>('SELECT price, status FROM token_packages WHERE id = $1', [input.packageId]);
-    if (!pkg || pkg.status !== 'ACTIVE') throw new MonetizationError('NOT_FOUND', 'Token package not available');
-    return this.startPayment({ accountId: input.accountId, idempotencyKey: input.idempotencyKey, type: 'TOKEN_PURCHASE', amount: Number(pkg.price), packageId: input.packageId, simulationId: null }, provider);
+  // ------------------------------------------------------------------------------------------- settings
+
+  async settings(): Promise<MonetizationSettings> {
+    const [row] = await this.db.query<{ settings: Partial<MonetizationSettings> }>('SELECT settings FROM monetization_settings WHERE id = 1');
+    return { ...DEFAULT_MONETIZATION_SETTINGS, ...(row?.settings ?? {}) };
+  }
+
+  /** Back-office change of settings (audited). */
+  async updateSettings(patch: Partial<MonetizationSettings>, actor: string): Promise<MonetizationSettings> {
+    const current = await this.settings();
+    const next = { ...current, ...patch };
+    if (typeof next.paymentRequired !== 'boolean' || typeof next.freeSimulationsOffline !== 'boolean') throw new MonetizationError('VALIDATION', 'Switches must be true or false');
+    if (!Number.isSafeInteger(next.shillingsPerToken) || next.shillingsPerToken < 1) throw new MonetizationError('VALIDATION', 'Shillings per token must be a whole number of at least 1');
+    if (!Number.isSafeInteger(next.minimumPurchase) || next.minimumPurchase < 1) throw new MonetizationError('VALIDATION', 'Minimum purchase must be at least KSh 1');
+    await this.db.transaction(async (q) => {
+      await q.query('INSERT INTO monetization_settings (id, settings) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET settings = excluded.settings, updated_at = now()', [JSON.stringify(next)]);
+      await q.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, before_value, after_value) VALUES ($1, $2, $3, $4, $5, $6)', [
+        actor, 'UPDATE_MONETIZATION_SETTINGS', 'SETTINGS', 'monetization', JSON.stringify(current), JSON.stringify(next),
+      ]);
+    });
+    return next;
+  }
+
+  // ------------------------------------------------------------------------------------------- purchases
+
+  private payer(phone: string): string {
+    const normalized = normalizeKenyanPhone(phone);
+    if (!normalized) throw new MonetizationError('VALIDATION', 'Enter a valid M-PESA number');
+    return normalized;
   }
 
   /**
-   * Starts a direct pay-per-simulation payment (§32). The shilling price of a simulation is not agreed yet
-   * (§52), so the caller supplies it; activation waits for that decision. The simulation is authorized only
-   * once this payment is verified successful.
+   * Buys tokens (§31): pay KSh N, get N tokens at the token rate (1 token = KSh 1, owner decision). Idempotent
+   * on the client's key: a repeated request never charges twice. Tokens are credited only after verification.
    */
-  async initiateDirectPayment(input: { accountId: string; simulationId: string; amount: number; idempotencyKey: string }, provider: PaymentProvider): Promise<PaymentRecord> {
-    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new MonetizationError('NOT_CONFIGURED', 'No direct price is configured');
-    return this.startPayment({ accountId: input.accountId, idempotencyKey: input.idempotencyKey, type: 'DIRECT_SIMULATION', amount: input.amount, packageId: null, simulationId: input.simulationId }, provider);
+  async initiateTokenPurchase(input: { accountId: string; shillings: number; phone: string; idempotencyKey: string }, provider: PaymentProvider): Promise<PaymentRecord> {
+    const settings = await this.settings();
+    if (!Number.isSafeInteger(input.shillings) || input.shillings < settings.minimumPurchase) throw new MonetizationError('VALIDATION', `The smallest purchase is KSh ${settings.minimumPurchase}`);
+    const tokens = tokensForShillings(input.shillings, settings);
+    if (tokens < 1) throw new MonetizationError('VALIDATION', 'That amount buys no tokens');
+    return this.startPayment(
+      { accountId: input.accountId, idempotencyKey: input.idempotencyKey, type: 'TOKEN_PURCHASE', amount: input.shillings, tokens, phone: this.payer(input.phone), simulationId: null },
+      provider,
+    );
+  }
+
+  /**
+   * Pay-per-simulation (§32): the price is the simulation's token cost in shillings (20 tokens → KSh 20),
+   * computed here from the server's pricing — never taken from the client. Free simulations need no payment.
+   * The simulation is authorized only once this payment is verified successful.
+   */
+  async initiateDirectPayment(
+    input: { accountId: string; simulationId: string; type: SimulationType; simulationAmount: number; phone: string; idempotencyKey: string },
+    provider: PaymentProvider,
+  ): Promise<{ payment: PaymentRecord; pricing: PricingSnapshot }> {
+    const pricing = await this.quote(input.accountId, input.type, input.simulationAmount);
+    const amount = directPrice(pricing, await this.settings());
+    if (amount <= 0) throw new MonetizationError('VALIDATION', 'This simulation is free; no payment is needed');
+    const payment = await this.startPayment(
+      { accountId: input.accountId, idempotencyKey: input.idempotencyKey, type: 'DIRECT_SIMULATION', amount, tokens: null, phone: this.payer(input.phone), simulationId: input.simulationId },
+      provider,
+    );
+    return { payment, pricing };
+  }
+
+  /** Re-checks every payment still waiting on the provider (run periodically). */
+  async verifyPendingPayments(provider: PaymentProvider): Promise<number> {
+    const pending = await this.db.query<{ id: string }>("SELECT id FROM payments WHERE status = 'PENDING' AND provider = $1 ORDER BY created_at LIMIT 50", [provider.name]);
+    for (const p of pending) await this.verifyPayment(p.id, provider);
+    return pending.length;
+  }
+
+  async paymentByProviderReference(provider: string, reference: string): Promise<PaymentRecord | null> {
+    const [row] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE provider = $1 AND provider_reference = $2', [provider, reference]);
+    return row ? toPayment(row) : null;
+  }
+
+  async payment(ownerId: string, id: string): Promise<PaymentRecord | null> {
+    const [row] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    return row ? toPayment(row) : null;
   }
 
   private async startPayment(
-    input: { accountId: string; idempotencyKey: string; type: PaymentRecord['paymentType']; amount: number; packageId: string | null; simulationId: string | null },
+    input: { accountId: string; idempotencyKey: string; type: PaymentRecord['paymentType']; amount: number; tokens: number | null; phone: string; simulationId: string | null },
     provider: PaymentProvider,
   ): Promise<PaymentRecord> {
     const payment = await this.db.transaction(async (q) => {
@@ -316,13 +389,13 @@ export class MonetizationService {
       if (existing) return { record: toPayment(existing), created: false };
       const record: PaymentRecord = {
         id: randomUUID(), ownerId: input.accountId, paymentType: input.type, provider: provider.name, providerReference: null, idempotencyKey: input.idempotencyKey,
-        amount: input.amount, currency: 'KES', status: 'INITIATED', packageId: input.packageId, relatedSimulationId: input.simulationId,
+        amount: input.amount, currency: 'KES', status: 'INITIATED', tokens: input.tokens, payerPhone: input.phone, relatedSimulationId: input.simulationId,
         simulationStatus: input.type === 'DIRECT_SIMULATION' ? 'AWAITING_PAYMENT' : 'NOT_APPLICABLE', refundStatus: 'NONE', createdAt: this.now(), verifiedAt: null,
       };
       await q.query(
-        `INSERT INTO payments (id, owner_id, payment_type, provider, provider_reference, idempotency_key, amount, currency, status, package_id, related_simulation_id, simulation_status, refund_status, created_at)
-         VALUES ($1, $2, $3, $4, NULL, $5, $6, 'KES', 'INITIATED', $7, $8, $9, 'NONE', $10)`,
-        [record.id, record.ownerId, record.paymentType, record.provider, record.idempotencyKey, record.amount, record.packageId, record.relatedSimulationId, record.simulationStatus, record.createdAt],
+        `INSERT INTO payments (id, owner_id, payment_type, provider, provider_reference, idempotency_key, amount, currency, status, tokens, payer_phone, related_simulation_id, simulation_status, refund_status, created_at)
+         VALUES ($1, $2, $3, $4, NULL, $5, $6, 'KES', 'INITIATED', $7, $8, $9, $10, 'NONE', $11)`,
+        [record.id, record.ownerId, record.paymentType, record.provider, record.idempotencyKey, record.amount, record.tokens, record.payerPhone, record.relatedSimulationId, record.simulationStatus, record.createdAt],
       );
       await this.paymentEvent(q, record.id, 'INITIATED');
       return { record, created: true };
@@ -365,9 +438,9 @@ export class MonetizationService {
       const [after] = await q.query<PaymentRow>('SELECT * FROM payments WHERE id = $1', [paymentId]);
       return toPayment(after!);
     });
-    if (updated.status === 'SUCCESSFUL' && updated.paymentType === 'TOKEN_PURCHASE' && updated.packageId) {
-      const [pkg] = await this.db.query<{ tokens: number }>('SELECT tokens FROM token_packages WHERE id = $1', [updated.packageId]);
-      await this.grant({ accountId: updated.ownerId, category: 'PURCHASED', quantity: Number(pkg!.tokens), reference: `payment:${updated.id}`, actor: `payment:${updated.provider}` });
+    if (updated.status === 'SUCCESSFUL' && updated.paymentType === 'TOKEN_PURCHASE' && updated.tokens) {
+      // Idempotent on the payment reference: repeated verifications or callbacks never credit twice.
+      await this.grant({ accountId: updated.ownerId, category: 'PURCHASED', quantity: updated.tokens, reference: `payment:${updated.id}`, actor: `payment:${updated.provider}` });
     }
     return updated;
   }

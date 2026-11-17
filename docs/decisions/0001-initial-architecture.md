@@ -170,6 +170,14 @@ activation, which needs the product-owner inputs listed below (§52).
   credit (the §33 mechanism chosen until a provider is picked). No provider is connected; tests use a sandbox.
 - **API:** read-only `GET /v1/pricing`, `POST /v1/pricing/quote`, `GET /v1/wallet`. Changes go through the
   server admin CLI (`npm run admin -w @paspesa/backend`) until the admin back office has administrator login.
-- **Needs product-owner input before activation:** token package names/sizes/prices; payment provider;
-  the shilling price of a direct pay-per-simulation; whether Recharge (General Operations) is priced; the
-  offline free-simulation policy (§29.6); device allocations for offline token use come in Phase 7.
+- **Owner decisions (2026-11-17), not in White Paper v0.3:** 1 token = KSh 1 — pay-per-simulation costs
+  the token cost in shillings (KSh 100 simulation → 20 tokens → KSh 20) and buying tokens is "pay KSh N, get
+  N tokens" (no fixed packages; the token-package table was removed). Recharge is never priced (charging is
+  per transaction simulation). Free simulations may run offline, as a back-office setting
+  (`freeSimulationsOffline`, with `paymentRequired` off until activation) delivered with `GET /v1/pricing`.
+- **Payment provider:** M-PESA STK Push through Safaricom Daraja (`apps/backend/src/mpesa.ts`), configured
+  only by backend environment (`MPESA_*`, see `apps/backend/.env.example`). Daraja sandbox keys are free and
+  immediate; going live needs a Paybill/Till and Safaricom's go-live approval (or an aggregator — the
+  provider is pluggable). Status is confirmed with the STK Query API; callbacks only trigger that check.
+- **Still open:** live provider route (own shortcode vs aggregator); device allocations for offline token
+  use (Phase 7).

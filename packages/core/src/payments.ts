@@ -33,8 +33,10 @@ export interface PaymentRecord {
   amount: number;
   currency: 'KES';
   status: PaymentStatus;
-  /** TOKEN_PURCHASE: the package bought. */
-  packageId: string | null;
+  /** TOKEN_PURCHASE: tokens bought (1 token = KSh 1, no fixed packages). */
+  tokens: number | null;
+  /** M-PESA number the STK prompt is sent to. */
+  payerPhone: string | null;
   /** DIRECT_SIMULATION: the simulation's operation ID. */
   relatedSimulationId: string | null;
   simulationStatus: SimulationPaymentStatus;
@@ -79,14 +81,4 @@ export function mayAuthorizeSimulation(p: PaymentRecord): boolean {
 /** Paid but the simulation failed and the user has not yet been made whole (§33). */
 export function needsRefund(p: PaymentRecord): boolean {
   return p.paymentType === 'DIRECT_SIMULATION' && p.status === 'SUCCESSFUL' && p.simulationStatus === 'FAILED' && (p.refundStatus === 'NONE' || p.refundStatus === 'REFUND_PENDING');
-}
-
-/** A token package (§35.3). Prices are set by the product owner; none are seeded. */
-export interface TokenPackage {
-  id: string;
-  name: string;
-  tokens: number;
-  /** Whole Kenya shillings. */
-  price: number;
-  status: 'ACTIVE' | 'INACTIVE';
 }

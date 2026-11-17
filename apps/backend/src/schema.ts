@@ -205,13 +205,11 @@ CREATE TABLE IF NOT EXISTS token_spends (
   PRIMARY KEY (wallet_id, simulation_id)
 );
 
--- Token packages (§35.3). Prices come from the product owner; none are seeded.
-CREATE TABLE IF NOT EXISTS token_packages (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  tokens BIGINT NOT NULL CHECK (tokens > 0),
-  price BIGINT NOT NULL CHECK (price > 0),
-  status TEXT NOT NULL
+-- Back-office monetization settings (one row): payment switch, offline-free rule, token rate.
+CREATE TABLE IF NOT EXISTS monetization_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  settings JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Commercial payments (§30–33, §37.13), separate from simulated transactions.
@@ -225,7 +223,8 @@ CREATE TABLE IF NOT EXISTS payments (
   amount BIGINT NOT NULL CHECK (amount > 0),
   currency TEXT NOT NULL,
   status TEXT NOT NULL,
-  package_id TEXT REFERENCES token_packages(id),
+  tokens BIGINT,
+  payer_phone TEXT,
   related_simulation_id TEXT,
   simulation_status TEXT NOT NULL,
   refund_status TEXT NOT NULL,

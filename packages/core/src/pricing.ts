@@ -10,6 +10,12 @@
  * Precedence (§27.4): account + type → account default → global type → global default.
  * Every price is returned with a snapshot of the rule and version used (§27.5), so later configuration
  * changes never alter historical costs. The backend is authoritative for pricing (§27.6).
+ *
+ * Product-owner decisions (2026-11-17):
+ *  - 1 token = KSh 1. A pay-per-simulation costs the token cost in shillings (20 tokens → KSh 20), and
+ *    buying tokens is "pay KSh N, get N tokens" (no fixed packages).
+ *  - Recharge (General Operations top-up) is never priced: charging happens per transaction simulation.
+ *  - Whether free simulations (0 tokens) may run offline is a back-office setting.
  */
 import type { PricingSnapshot, SimulationType } from './types';
 
@@ -66,6 +72,43 @@ export const DEFAULT_PRICING_RULE: PricingRule = {
 export const DEFAULT_PRICING: PricingConfiguration = { version: 1, rules: [DEFAULT_PRICING_RULE] };
 
 export class PricingConfigError extends Error {}
+
+/** Shillings per token (AGREED 2026-11-17: 1 token = KSh 1). */
+export const SHILLINGS_PER_TOKEN = 1;
+
+/** Simulations that cost tokens. Recharge is free: charging is per transaction simulation (owner decision). */
+export const PRICED_TYPES: readonly SimulationType[] = ['SEND_MONEY', 'POCHI', 'BUY_GOODS', 'PAYBILL', 'WITHDRAW', 'AIRTIME'];
+
+/** Back-office monetization settings, delivered to devices with the pricing configuration. */
+export interface MonetizationSettings {
+  /** Off until activation: while false every simulation runs free (UNMETERED). */
+  paymentRequired: boolean;
+  /** Free simulations (0 tokens) may run offline without a device token allocation (§29.6, owner: yes). */
+  freeSimulationsOffline: boolean;
+  /** 1 token = KSh 1. */
+  shillingsPerToken: number;
+  /** Smallest token purchase in shillings. */
+  minimumPurchase: number;
+}
+
+export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
+  paymentRequired: false,
+  freeSimulationsOffline: true,
+  shillingsPerToken: SHILLINGS_PER_TOKEN,
+  minimumPurchase: 1,
+};
+
+/** Shilling price of a pay-per-simulation: its token cost at the token rate. */
+export const directPrice = (pricing: PricingSnapshot, settings: Pick<MonetizationSettings, 'shillingsPerToken'> = DEFAULT_MONETIZATION_SETTINGS) =>
+  pricing.tokenCost * settings.shillingsPerToken;
+
+/** Tokens received for a purchase of `shillings`. */
+export const tokensForShillings = (shillings: number, settings: Pick<MonetizationSettings, 'shillingsPerToken'> = DEFAULT_MONETIZATION_SETTINGS) =>
+  Math.floor(shillings / settings.shillingsPerToken);
+
+/** May this simulation run offline without a token allocation? Only free ones, and only if the setting allows. */
+export const mayRunOfflineWithoutAllocation = (pricing: PricingSnapshot, settings: MonetizationSettings) =>
+  pricing.tokenCost === 0 && settings.freeSimulationsOffline;
 
 /** Checks a rule is usable. Returns the problems found (empty = valid). */
 export function validatePricingRule(rule: PricingRule): string[] {
@@ -129,6 +172,12 @@ export function resolvePricingRule(config: PricingConfiguration, input: { accoun
 
 /** Price of one simulation, with the snapshot that must be stored with it (§27.5). */
 export function priceSimulation(config: PricingConfiguration, input: { accountId: string; type: SimulationType; amount: number; at: string }): PricingSnapshot {
+  if (!PRICED_TYPES.includes(input.type)) {
+    return {
+      formula: 'FULL_AMOUNT', freeThreshold: 0, amountPerToken: null, tierConfiguration: null, resolvedRule: `not-priced (${input.type})`,
+      accountOverride: null, configVersion: config.version, tokenCost: 0, appliedConfigAt: input.at,
+    };
+  }
   const rule = resolvePricingRule(config, input);
   return {
     formula: rule.formula,

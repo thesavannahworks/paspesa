@@ -167,15 +167,14 @@ function sandbox(results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | '
 }
 
 describe('payments (§31–33, §47.8)', () => {
-  it('tokens are credited only after verification, exactly once; a timeout is not a failure', async () => {
+  it('buying tokens: pay KSh N, get N tokens — only after verification, exactly once; a timeout is not a failure', async () => {
     const { accountId } = await newAccount();
-    await db.query("INSERT INTO token_packages (id, name, tokens, price, status) VALUES ('pkg-100', '100 tokens', 100, 50, 'ACTIVE') ON CONFLICT (id) DO NOTHING");
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const p = await money.initiateTokenPurchase({ accountId, packageId: 'pkg-100', idempotencyKey: 'buy-1' }, provider);
-    expect(p).toMatchObject({ status: 'PENDING', amount: 50, paymentType: 'TOKEN_PURCHASE' });
+    const p = await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0759981287', idempotencyKey: 'buy-1' }, provider);
+    expect(p).toMatchObject({ status: 'PENDING', amount: 150, tokens: 150, payerPhone: '254759981287', paymentType: 'TOKEN_PURCHASE' });
     // a repeated request (double tap, retry) is the same payment, not a second charge
-    expect((await money.initiateTokenPurchase({ accountId, packageId: 'pkg-100', idempotencyKey: 'buy-1' }, provider)).id).toBe(p.id);
+    expect((await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0759981287', idempotencyKey: 'buy-1' }, provider)).id).toBe(p.id);
     expect(provider.initiated()).toBe(1);
 
     expect((await money.verifyPayment(p.id, provider)).status).toBe('PENDING'); // not confirmed yet
@@ -184,36 +183,48 @@ describe('payments (§31–33, §47.8)', () => {
     expect((await money.wallet(accountId)).balances.total).toBe(0); // nothing credited unverified
 
     results[p.providerReference!] = 'SUCCESSFUL';
-    expect((await money.verifyPayment(p.id, provider)).status).toBe('SUCCESSFUL');
+    expect(await money.verifyPendingPayments(provider)).toBeGreaterThanOrEqual(1);
     await money.verifyPayment(p.id, provider); // repeated callback / check
-    expect((await money.wallet(accountId)).balances).toMatchObject({ PURCHASED: 100, total: 100 });
+    expect((await money.wallet(accountId)).balances).toMatchObject({ PURCHASED: 150, total: 150 });
     const events = await db.query<{ event: string }>('SELECT event FROM payment_events WHERE payment_id = $1 ORDER BY id', [p.id]);
     expect(events.map((e) => e.event)).toEqual(['INITIATED', 'PENDING', 'STATUS_CHECK_TIMEOUT', 'VERIFIED_SUCCESSFUL']);
+    await expect(money.initiateTokenPurchase({ accountId, shillings: 0, phone: '0759981287', idempotencyKey: 'buy-0' }, provider)).rejects.toThrow(/smallest purchase/);
+    await expect(money.initiateTokenPurchase({ accountId, shillings: 10, phone: '12345', idempotencyKey: 'buy-bad' }, provider)).rejects.toThrow(/valid M-PESA number/);
   });
 
-  it('a direct payment authorizes its simulation only when verified; a failed simulation gets a refundable credit once', async () => {
+  it('pay-per-simulation costs the token price in shillings (KSh 100 simulation → KSh 20); authorized only when verified; a failed simulation gets a refundable credit once', async () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const p = await money.initiateDirectPayment({ accountId, simulationId: 'op-direct', amount: 10, idempotencyKey: 'direct-1' }, provider);
-    expect(p.simulationStatus).toBe('AWAITING_PAYMENT');
+    const { payment: p, pricing } = await money.initiateDirectPayment({ accountId, simulationId: 'op-direct', type: 'SEND_MONEY', simulationAmount: 100, phone: '0759981287', idempotencyKey: 'direct-1' }, provider);
+    expect([pricing.tokenCost, p.amount, p.simulationStatus]).toEqual([20, 20, 'AWAITING_PAYMENT']);
     results[p.providerReference!] = 'SUCCESSFUL';
     expect((await money.verifyPayment(p.id, provider)).simulationStatus).toBe('AUTHORIZED');
     const failed = await money.recordDirectSimulationResult(p.id, 'FAILED');
     expect(failed).toMatchObject({ status: 'SUCCESSFUL', simulationStatus: 'FAILED', refundStatus: 'REFUNDABLE_CREDIT' });
     await money.recordDirectSimulationResult(p.id, 'FAILED');
     const credits = await db.query<{ amount: number }>('SELECT amount FROM payment_credits WHERE payment_id = $1', [p.id]);
-    expect(credits.map((c) => Number(c.amount))).toEqual([10]);
+    expect(credits.map((c) => Number(c.amount))).toEqual([20]);
   });
 
-  it('a failed direct payment never authorizes the simulation and owes nothing', async () => {
+  it('a failed direct payment never authorizes the simulation; free simulations and Recharge need no payment', async () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const p = await money.initiateDirectPayment({ accountId, simulationId: 'op-x', amount: 10, idempotencyKey: 'direct-x' }, provider);
+    const { payment: p } = await money.initiateDirectPayment({ accountId, simulationId: 'op-x', type: 'BUY_GOODS', simulationAmount: 50, phone: '0759981287', idempotencyKey: 'direct-x' }, provider);
     results[p.providerReference!] = 'FAILED';
     expect(await money.verifyPayment(p.id, provider)).toMatchObject({ status: 'FAILED', simulationStatus: 'FAILED', refundStatus: 'NONE' });
-    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-y', amount: 0, idempotencyKey: 'direct-y' }, provider)).rejects.toThrow(/No direct price/);
+    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-y', type: 'BUY_GOODS', simulationAmount: 20, phone: '0759981287', idempotencyKey: 'direct-y' }, provider)).rejects.toThrow(/free/);
+    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-z', type: 'RECHARGE', simulationAmount: 5_000, phone: '0759981287', idempotencyKey: 'direct-z' }, provider)).rejects.toThrow(/free/);
+  });
+
+  it('back-office settings: defaults, audited changes, validation', async () => {
+    expect(await money.settings()).toEqual({ paymentRequired: false, freeSimulationsOffline: true, shillingsPerToken: 1, minimumPurchase: 1 });
+    expect((await money.updateSettings({ freeSimulationsOffline: false }, 'admin:test')).freeSimulationsOffline).toBe(false);
+    expect((await money.settings()).freeSimulationsOffline).toBe(false);
+    await expect(money.updateSettings({ shillingsPerToken: 0 }, 'admin:test')).rejects.toThrow(/at least 1/);
+    expect((await db.query("SELECT 1 FROM audit_log WHERE action = 'UPDATE_MONETIZATION_SETTINGS'")).length).toBe(1);
+    await money.updateSettings({ freeSimulationsOffline: true }, 'admin:test');
   });
 });
 

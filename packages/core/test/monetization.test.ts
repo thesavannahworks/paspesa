@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_MONETIZATION_SETTINGS,
   DEFAULT_PRICING,
+  directPrice,
+  mayRunOfflineWithoutAllocation,
+  tokensForShillings,
   DEFAULT_PRICING_RULE,
   canMovePayment,
   canMoveRefund,
@@ -123,7 +127,7 @@ describe('token wallet (§28, §47.5)', () => {
 describe('payments (§33)', () => {
   const p = (patch: Partial<PaymentRecord>): PaymentRecord => ({
     id: 'pay', ownerId: 'a', paymentType: 'DIRECT_SIMULATION', provider: 'sandbox', providerReference: null, idempotencyKey: 'k', amount: 10, currency: 'KES',
-    status: 'SUCCESSFUL', packageId: null, relatedSimulationId: 'op', simulationStatus: 'FAILED', refundStatus: 'NONE', createdAt: AT, verifiedAt: AT, ...patch,
+    status: 'SUCCESSFUL', tokens: null, payerPhone: '254759981287', relatedSimulationId: 'op', simulationStatus: 'FAILED', refundStatus: 'NONE', createdAt: AT, verifiedAt: AT, ...patch,
   });
   it('a timeout keeps the payment pending; final states never change', () => {
     expect(canMovePayment('PENDING', 'PENDING')).toBe(true);
@@ -136,5 +140,23 @@ describe('payments (§33)', () => {
     expect(needsRefund(p({ simulationStatus: 'SUCCESSFUL' }))).toBe(false);
     expect(canMoveRefund('NONE', 'REFUNDABLE_CREDIT')).toBe(true);
     expect(canMoveRefund('REFUNDED', 'NONE')).toBe(false);
+  });
+});
+
+describe('owner decisions of 2026-11-17', () => {
+  it('1 token = KSh 1: a KSh 100 simulation costs 20 tokens or KSh 20 paid directly; KSh 50 buys 50 tokens', () => {
+    const p = priceSimulation(DEFAULT_PRICING, { accountId: 'a', type: 'SEND_MONEY', amount: 100, at: AT });
+    expect([p.tokenCost, directPrice(p), tokensForShillings(50)]).toEqual([20, 20, 50]);
+  });
+  it('Recharge is never priced, whatever the amount', () => {
+    expect(priceSimulation(DEFAULT_PRICING, { accountId: 'a', type: 'RECHARGE', amount: 250_000, at: AT })).toMatchObject({ tokenCost: 0, resolvedRule: 'not-priced (RECHARGE)' });
+  });
+  it('free simulations may run offline while the back-office setting allows it; payment stays off until activation', () => {
+    expect(DEFAULT_MONETIZATION_SETTINGS).toMatchObject({ paymentRequired: false, freeSimulationsOffline: true, shillingsPerToken: 1 });
+    const free = priceSimulation(DEFAULT_PRICING, { accountId: 'a', type: 'BUY_GOODS', amount: 20, at: AT });
+    const paid = priceSimulation(DEFAULT_PRICING, { accountId: 'a', type: 'BUY_GOODS', amount: 21, at: AT });
+    expect(mayRunOfflineWithoutAllocation(free, DEFAULT_MONETIZATION_SETTINGS)).toBe(true);
+    expect(mayRunOfflineWithoutAllocation(free, { ...DEFAULT_MONETIZATION_SETTINGS, freeSimulationsOffline: false })).toBe(false);
+    expect(mayRunOfflineWithoutAllocation(paid, DEFAULT_MONETIZATION_SETTINGS)).toBe(false);
   });
 });

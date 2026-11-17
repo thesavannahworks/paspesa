@@ -9,11 +9,20 @@
  *   npm run admin -w @paspesa/backend -- wallet:show <accountId>
  *   npm run admin -w @paspesa/backend -- wallet:reconcile <accountId>
  *   npm run admin -w @paspesa/backend -- accounts
+ *   npm run admin -w @paspesa/backend -- settings:show
+ *   npm run admin -w @paspesa/backend -- settings:set freeSimulationsOffline false
  *
  * Uses DATABASE_URL, or the embedded database in PGLITE_DIR (default ./.data/pglite). Stop the running
  * backend first when using the embedded database (it allows one process at a time).
  */
 import type { PricingRule, TokenCategory } from '@paspesa/core';
+
+// Settings and secrets (DATABASE_URL, MPESA_*) from apps/backend/.env when present (git-ignored).
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // no .env file: use the environment as is
+}
 import { openDatabase } from './database.js';
 import { MonetizationService } from './monetization.service.js';
 
@@ -48,11 +57,20 @@ try {
       print(problems.length ? { consistent: false, problems } : { consistent: true });
       break;
     }
+    case 'settings:show':
+      print(await money.settings());
+      break;
+    case 'settings:set': {
+      const [key, raw] = args;
+      const value = raw === 'true' ? true : raw === 'false' ? false : Number(raw);
+      print(await money.updateSettings({ [key!]: value }, actor));
+      break;
+    }
     case 'accounts':
       print(await db.query('SELECT id, installation_id, account_name, phone_number, balance FROM accounts ORDER BY created_at'));
       break;
     default:
-      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | accounts');
+      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | settings:show | settings:set <key> <value> | accounts');
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
