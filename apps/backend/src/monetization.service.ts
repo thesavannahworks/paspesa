@@ -398,6 +398,11 @@ export class MonetizationService {
     return row ? toPayment(row) : null;
   }
 
+  /** The account's payments, newest first (purchase history). */
+  async payments(ownerId: string): Promise<PaymentRecord[]> {
+    return (await this.db.query<PaymentRow>('SELECT * FROM payments WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 100', [ownerId])).map(toPayment);
+  }
+
   async payment(ownerId: string, id: string): Promise<PaymentRecord | null> {
     const [row] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE id = $1 AND owner_id = $2', [id, ownerId]);
     return row ? toPayment(row) : null;

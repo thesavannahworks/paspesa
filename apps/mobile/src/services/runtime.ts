@@ -2,6 +2,8 @@ import * as Crypto from 'expo-crypto';
 import { DEFAULT_CONFIG, MemoryStore, normalizeState, stateToChangeSet, systemClock, type EngineDeps, type MemoryState } from '@paspesa/core';
 import { openKeyValueStore, type KeyValueStore } from './kv';
 import { openLedgerPersistence } from './ledger';
+import { Platform } from 'react-native';
+import { createApi, loadCachedServerConfig, type PaspesaApi } from './api';
 import { createSyncRunner, type SyncRunner } from './sync';
 
 /** The old format: the whole ledger as one JSON record (migrated into the tables on first start). */
@@ -14,6 +16,10 @@ export interface Runtime {
   kv: KeyValueStore;
   /** Uploads to the backend when EXPO_PUBLIC_PASPESA_API_URL is set; otherwise does nothing. */
   sync: SyncRunner;
+  /** Backend API (wallet, payments, allocations); `available` is false without a server. */
+  api: PaspesaApi;
+  /** The app shell registers what to do when the server's pricing/settings change (refresh screens). */
+  onConfigChange(listener: () => void): void;
   /** Preferences loaded at start-up (theme, balance visibility, …). Never financial data. */
   initialPrefs: Record<string, unknown>;
 }
@@ -81,6 +87,9 @@ export async function createRuntime(): Promise<Runtime> {
     installationId,
   };
 
-  sync = createSyncRunner(deps, kv);
-  return { deps, kv, initialPrefs, sync };
+  await loadCachedServerConfig(deps, kv);
+  const api = createApi(deps, kv, Platform.OS);
+  let configListener: () => void = () => undefined;
+  sync = createSyncRunner(deps, kv, api, Platform.OS, () => configListener());
+  return { deps, kv, initialPrefs, sync, api, onConfigChange: (listener) => { configListener = listener; } };
 }

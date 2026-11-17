@@ -8,16 +8,13 @@
  * (the server de-duplicates by operation ID).
  */
 import { outboxSummary, syncOutbox, type EngineDeps, type SyncPushRequest, type SyncPushResponse, type SyncReport, type SyncTransport } from '@paspesa/core';
-import * as Crypto from 'expo-crypto';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
+import { apiUrl, refreshServerConfig, request, ensureToken, type PaspesaApi } from './api';
 import type { KeyValueStore } from './kvTypes';
 
-const TOKEN_KEY = 'sync.token';
-const REGISTERED_KEY = 'sync.registered';
 const INTERVAL_MS = 60_000;
 const DEBOUNCE_MS = 1_500;
-const TIMEOUT_MS = 20_000;
 
 export interface SyncStatus {
   enabled: boolean;
@@ -35,46 +32,10 @@ export interface SyncRunner {
   start(): void;
 }
 
-export const apiUrl = (): string | null => {
-  const url = process.env.EXPO_PUBLIC_PASPESA_API_URL?.trim();
-  return url ? url.replace(/\/+$/, '') : null;
-};
-
-async function request<T>(url: string, init: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal, headers: { 'content-type': 'application/json', ...(init.headers ?? {}) } });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
-      throw new Error(body?.error?.message ?? `Server error ${res.status}`);
-    }
-    return (await res.json()) as T;
-  } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error('The server did not respond in time');
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** The installation's secret: created on this device, only its hash is kept by the server. */
-async function ensureToken(kv: KeyValueStore, base: string, installationId: string): Promise<string> {
-  let token = await kv.get(TOKEN_KEY);
-  if (!token) {
-    const bytes = new Uint8Array(32);
-    Crypto.getRandomValues(bytes);
-    token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    await kv.set(TOKEN_KEY, token);
-  }
-  if ((await kv.get(REGISTERED_KEY)) !== base) {
-    await request(`${base}/v1/installations`, { method: 'POST', body: JSON.stringify({ installationId, token }) });
-    await kv.set(REGISTERED_KEY, base);
-  }
-  return token;
-}
-
 let current: SyncRunner | null = null;
+
+/** Ask for a sync soon (e.g. before returning tokens, which needs all spending uploaded). */
+export const kickSync = () => current?.kick();
 
 /** Live sync status for screens (Profile shows it). */
 export function useSyncStatus(): SyncStatus | null {
@@ -83,7 +44,8 @@ export function useSyncStatus(): SyncStatus | null {
   return status;
 }
 
-export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore): SyncRunner {
+/** onConfigChange: pricing or back-office settings changed (screens should refresh). */
+export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: PaspesaApi, platform: string, onConfigChange: () => void = () => undefined): SyncRunner {
   const base = apiUrl();
   const listeners = new Set<(s: SyncStatus) => void>();
   let state: SyncStatus = { enabled: !!base, running: false, waiting: 0, needsReview: 0, lastError: null, lastSyncedAt: null };
@@ -109,7 +71,9 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore): SyncRunne
     }
     publish({ running: true });
     try {
-      const token = await ensureToken(kv, base, deps.installationId);
+      const token = await ensureToken(kv, base, deps.installationId, platform);
+      // Back-office pricing and settings (payment switch, offline rules) follow every sync.
+      if (await refreshServerConfig(api, deps, kv).catch(() => false)) onConfigChange();
       const transport: SyncTransport = {
         push: (body: SyncPushRequest) => request<SyncPushResponse>(`${base}/v1/sync/push`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) }),
       };
@@ -128,6 +92,8 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore): SyncRunne
   };
 
   function kick() {
+    // A new change is waiting: show it straight away (not "up to date") until the upload finishes.
+    void refreshCounts().catch(() => undefined);
     if (!base) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {

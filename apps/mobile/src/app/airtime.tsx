@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ConfirmView, PinView, authFields, type PinAuth } from '@/components/journey';
 import { ContactPicker } from '@/components/ContactPicker';
+import { PaySheet, type PaymentChoice } from '@/components/PaySheet';
 import { AddFavouriteSheet, FavouritesStrip } from '@/components/payments';
 import { BadgeCard, CircleButton, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T } from '@/components/ui';
 import { AirtimeIcon, ChevronRightIcon, CloseIcon, ContactIcon, GlobalAirtimeIcon } from '@/icons';
@@ -47,20 +48,22 @@ export default function AirtimeScreen() {
   const [result, setResult] = useState<TransactionRecord | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [contactsOpen, setContactsOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payment, setPayment] = useState<PaymentChoice | null>(null);
 
   const favs = useMemo(
     () => favouritesFor(['AIRTIME'], favourites, transactions, deps.config.frequentThreshold),
     [favourites, transactions, deps.config.frequentThreshold],
   );
 
-  const changed = () => { setErrors({}); submission.reset(); };
+  const changed = () => { setErrors({}); setPayment(null); submission.reset(); };
   const request = (): Omit<SimulationRequest, 'operationId'> | null => {
     const value = parseWholeShillings(amount);
     if (value === null) return null;
     return { type: 'AIRTIME', variant: target, amount: value, counterparty: target === 'OTHER' ? { phone } : {} };
   };
   const req = request();
-  const quote = req ? quoteSimulation(account, deps.config, req) : null;
+  const quote = req ? quoteSimulation(account, deps.config, req, { ignorePayment: true }) : null;
 
   const onTopUp = () => {
     if (!quote) return setErrors({ amount: 'Enter an amount in whole shillings' });
@@ -70,7 +73,7 @@ export default function AirtimeScreen() {
 
   const onPin = async (auth: PinAuth) => {
     if (!req) return;
-    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth) }));
+    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth), ...(payment ?? {}) }));
     if (!res.ok) return setPinError(res.error.message);
     setPinError(null);
     await refresh();
@@ -105,6 +108,7 @@ export default function AirtimeScreen() {
   if (step === 'confirm' && quote?.ok) {
     const q = quote.quote;
     return (
+      <>
       <ConfirmView
         badge={badge(64)}
         title="Airtime Top Up"
@@ -112,9 +116,17 @@ export default function AirtimeScreen() {
           ? [{ label: 'Amount', value: formatKsh(q.amount) }, { label: 'Transaction cost', value: formatConfirmTransactionCost(q.fee) }]
           : [{ label: 'Original Amount', value: formatAmount(q.amount) }, { label: 'Phone number', value: toLocalPhone(q.counterparty.phone ?? '') }]}
         actionLabel="Confirm"
-        onConfirm={() => setStep('pin')}
+        onConfirm={() => (deps.config.monetization.paymentRequired && q.pricing.tokenCost > 0 && !payment ? setPayOpen(true) : setStep('pin'))}
         onBack={() => setStep('form')}
       />
+      <PaySheet
+        visible={payOpen}
+        tokenCost={q.pricing.tokenCost}
+        simulation={{ operationId: submission.operationId(), type: 'AIRTIME', amount: q.amount }}
+        onClose={() => setPayOpen(false)}
+        onChosen={(choice) => { setPayment(choice); setPayOpen(false); setStep('pin'); }}
+      />
+      </>
     );
   }
 

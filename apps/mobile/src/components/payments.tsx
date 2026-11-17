@@ -38,6 +38,7 @@ import { useAccount, useAppState } from '@/services/AppState';
 import { usePreference } from '@/services/preferences';
 import { useSubmission } from '@/services/useSubmission';
 import { ContactPicker } from '@/components/ContactPicker';
+import { PaySheet, type PaymentChoice } from '@/components/PaySheet';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 import { ConfirmView, PinView, ResultAction, SuccessView, authFields, type PinAuth } from './journey';
@@ -115,6 +116,8 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const [addCharge, setAddCharge] = useState(false);
   const [balanceHidden] = usePreference('balanceHidden', false);
   const [contactsOpen, setContactsOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payment, setPayment] = useState<PaymentChoice | null>(null);
 
   const favs = useMemo(
     () => favouritesFor([type], favourites, transactions, deps.config.frequentThreshold),
@@ -137,6 +140,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     setForm(next);
     setEdited(nextEdited);
     setErrors({});
+    setPayment(null);
     submission.reset();
   };
 
@@ -173,7 +177,8 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     return { type, amount, counterparty: counterpartyOf(type, form), ...(withCharge ? { addWithdrawalCharge: true } : {}) };
   };
   const req = request();
-  const quote = req ? quoteSimulation(account, deps.config, req) : null;
+  // Payment (tokens / M-PESA) is settled on the pay sheet, so the form and confirm pages quote without it.
+  const quote = req ? quoteSimulation(account, deps.config, req, { ignorePayment: true }) : null;
 
   const onContinue = () => {
     if (!quote) return setErrors({ amount: 'Enter an amount in whole shillings' });
@@ -183,7 +188,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
 
   const onPin = async (auth: PinAuth) => {
     if (!req) return;
-    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth) }));
+    const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth), ...(payment ?? {}) }));
     if (!res.ok) {
       setPinError(res.error.message);
       return;
@@ -243,15 +248,25 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         ],
       },
     }[type];
+    const needsPayment = deps.config.monetization.paymentRequired && q.pricing.tokenCost > 0;
     return (
-      <ConfirmView
-        badge={<Avatar name={type === 'PAYBILL' ? c.businessName ?? '' : partyName} size={64} fontSize={24} />}
-        title={spec.title}
-        rows={spec.rows}
-        actionLabel={spec.action}
-        onConfirm={() => setStep('pin')}
-        onBack={() => setStep('form')}
-      />
+      <>
+        <ConfirmView
+          badge={<Avatar name={type === 'PAYBILL' ? c.businessName ?? '' : partyName} size={64} fontSize={24} />}
+          title={spec.title}
+          rows={spec.rows}
+          actionLabel={spec.action}
+          onConfirm={() => (needsPayment && !payment ? setPayOpen(true) : setStep('pin'))}
+          onBack={() => setStep('form')}
+        />
+        <PaySheet
+          visible={payOpen}
+          tokenCost={q.pricing.tokenCost}
+          simulation={{ operationId: submission.operationId(), type, amount: q.amount }}
+          onClose={() => setPayOpen(false)}
+          onChosen={(choice) => { setPayment(choice); setPayOpen(false); setStep('pin'); }}
+        />
+      </>
     );
   }
 

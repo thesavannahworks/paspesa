@@ -13,6 +13,8 @@
  *   POST /v1/allocations          [auth]  set aside N more tokens on this device for offline use
  *   POST /v1/allocations/renew    [auth]  refresh the offline authorization (every sync also does this)
  *   POST /v1/allocations/release  [auth]  return unused tokens (only once the device is fully synced)
+ *   GET  /v1/payments         [auth]   this account's payments (purchase history)
+ *   POST /v1/payments/simulation [auth] pay one simulation directly (STK for its token cost in KSh, §32)
  *   POST /v1/payments/tokens  [auth]   buy tokens: STK prompt for KSh N → N tokens once verified (§31)
  *   GET  /v1/payments/:id     [auth]   payment status (re-checked with the provider while pending)
  *   GET  /v1/payments/providers [auth] payment providers switched on (Daraja, Kopo Kopo, IntaSend, Paystack, PayHero)
@@ -265,6 +267,36 @@ class PaymentsController {
     const [a] = await this.db.query<{ id: string }>('SELECT id FROM accounts WHERE installation_id = $1', [installationId]);
     if (!a) throw fail(HttpStatus.NOT_FOUND, 'NO_ACCOUNT', 'The account has not been synchronized yet');
     return a.id;
+  }
+
+  @Get()
+  @UseGuards(InstallationAuthGuard)
+  async history(@Req() req: AuthedRequest) {
+    return { payments: await this.money.payments(await this.accountId(req.installationId!)) };
+  }
+
+  /** Pay-per-simulation: the price is computed here from pricing; the simulation ID is the journey's operation ID. */
+  @Post('simulation')
+  @HttpCode(200)
+  @UseGuards(InstallationAuthGuard)
+  async paySimulation(
+    @Req() req: AuthedRequest,
+    @Body() body: { simulationId?: unknown; type?: unknown; amount?: unknown; phone?: unknown; idempotencyKey?: unknown; provider?: unknown },
+  ) {
+    if (typeof body?.simulationId !== 'string' || !SIMULATION_TYPES.includes(body.type as (typeof SIMULATION_TYPES)[number]) || typeof body.amount !== 'number'
+      || typeof body.phone !== 'string' || typeof body.idempotencyKey !== 'string' || body.idempotencyKey.length < 8 || body.idempotencyKey.length > 100) {
+      throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'simulationId, type, amount, phone and idempotencyKey are required');
+    }
+    const provider = this.pick(body.provider);
+    const accountId = await this.accountId(req.installationId!);
+    try {
+      return await this.money.initiateDirectPayment({
+        accountId, simulationId: body.simulationId, type: body.type as (typeof SIMULATION_TYPES)[number], simulationAmount: body.amount, phone: body.phone, idempotencyKey: body.idempotencyKey,
+      }, provider);
+    } catch (e) {
+      if (e instanceof MonetizationError) return moneyError(e);
+      throw fail(HttpStatus.BAD_GATEWAY, 'PROVIDER_ERROR', e instanceof Error ? e.message : 'Payment provider error');
+    }
   }
 
   /** Which providers are switched on (to compare them while choosing). */

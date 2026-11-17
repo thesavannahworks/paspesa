@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Inert, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
-import { CameraIcon, ChevronLeftIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
+import { CameraIcon, ChevronLeftIcon, ChevronRightIcon, TokenIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
 import { useProfilePhoto } from '@/services/profilePhoto';
 import { useSyncStatus } from '@/services/sync';
 import { useAccount } from '@/services/AppState';
@@ -42,6 +42,23 @@ export default function ProfileScreen() {
           <Stat label="Tariff" value="Prepaid" />
         </View>
       </View>
+
+      {/* Paspesa's own token wallet: balance, buying, setting aside on this phone, history (§26–31). */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Paspesa Tokens"
+        onPress={() => router.push('/wallet')}
+        style={[styles.tokensCard, { backgroundColor: colors.surface }]}
+      >
+        <View style={[styles.tileIcon, { backgroundColor: colors.raised, marginBottom: 0 }]}><TokenIcon size={28} /></View>
+        <View style={{ flex: 1, marginLeft: s(14) }}>
+          <T variant="bodyStrong" style={{ fontSize: s(18) }}>Paspesa Tokens</T>
+          <T variant="label" color={colors.textSecondary} style={{ marginTop: s(3), fontSize: s(15) }}>
+            {account.tokenAllocation ? `${account.tokenAllocation.remaining} on this phone · buy, balance, history` : 'Buy tokens, balance and history'}
+          </T>
+        </View>
+        <ChevronRightIcon size={22} color={colors.textSecondary} />
+      </Pressable>
 
       <T variant="heading" style={{ marginTop: s(34), fontSize: s(22) }}>Quick actions</T>
       <View style={styles.tileRow}>
@@ -172,6 +189,7 @@ function ThemeSheet({ visible, onClose }: { visible: boolean; onClose: () => voi
 }
 
 const styles = StyleSheet.create({
+  tokensCard: { flexDirection: 'row', alignItems: 'center', borderRadius: s(14), padding: s(16), marginTop: s(20) },
   card: { borderRadius: s(16), padding: s(22) },
   cameraBadge: { position: 'absolute', right: s(-14), bottom: s(-6), width: s(44), height: s(44), borderRadius: s(22), alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
   tileRow: { flexDirection: 'row', gap: s(12), marginTop: s(16) },

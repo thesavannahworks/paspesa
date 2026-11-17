@@ -611,3 +611,14 @@ export const PersonIcon = make((c, a) => (
     <Path d="M16.6 4.4 18 3" stroke={a} />
   </>
 ));
+
+// ---------------------------------------------------------------- Paspesa tokens
+
+/** Paspesa token: a coin with a red "P" (Paspesa's own mark, not an M-PESA asset). */
+export const TokenIcon = make((c, a) => (
+  <>
+    <Circle cx={12} cy={12} r={8.6} stroke={c} />
+    <Circle cx={12} cy={12} r={6.2} stroke={c} strokeWidth={0.9} />
+    <Path d="M10.4 15.6V8.6h2.4a2 2 0 0 1 0 4h-2.4" stroke={a} />
+  </>
+));

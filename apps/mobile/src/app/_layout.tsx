@@ -29,6 +29,7 @@ function ThemedStack() {
 function SyncBridge({ runtime }: { runtime: Runtime }) {
   const { refresh } = useAppState();
   useEffect(() => {
+    runtime.onConfigChange(() => void refresh());
     let wasRunning = false;
     const off = runtime.sync.subscribe((s) => {
       if (wasRunning && !s.running) void refresh();
