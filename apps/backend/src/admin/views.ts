@@ -49,7 +49,7 @@ export function layout(title: string, session: AdminSession | null, body: Html, 
     : html``;
   const who = session ? html`<div class="who">${session.admin.name} · <b>${session.admin.role}</b></div>` : html``;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} · Paspesa back office</title><link rel="stylesheet" href="/admin/assets/admin.css"></head>
+<title>${esc(title)} · Paspesa back office</title><link rel="stylesheet" href="/admin/assets/admin.css"><script src="/admin/assets/admin.js" defer></script></head>
 <body class="${session ? 'app' : 'plain'}">${nav.value}<main><header><h1>${esc(title)}</h1>${who.value}</header>${body.value}</main></body></html>`;
 }
 
@@ -65,7 +65,29 @@ export const fmtDate = (v: unknown) => {
 
 export const ksh = (n: unknown) => `KSh ${Number(n ?? 0).toLocaleString('en-KE')}`;
 
+/** A password input with a Show/Hide button (the button stays hidden if scripts don't run). */
+export const passwordField = (id: string, name: string, autocomplete: string) =>
+  html`<div class="pw"><input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}" required><button type="button" class="secondary pw-toggle" data-for="${id}" aria-controls="${id}" aria-pressed="false" hidden>Show</button></div>`;
+
+/** Served at /admin/assets/admin.js — the back office's only script (inline scripts are blocked by the CSP). */
+export const ADMIN_JS = `document.querySelectorAll('.pw-toggle').forEach(function (b) {
+  var input = document.getElementById(b.getAttribute('data-for'));
+  if (!input) return;
+  b.hidden = false;
+  b.addEventListener('click', function () {
+    var show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    b.textContent = show ? 'Hide' : 'Show';
+    b.setAttribute('aria-pressed', String(show));
+    b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    input.focus();
+  });
+  b.setAttribute('aria-label', 'Show password');
+});
+`;
+
 export const ADMIN_CSS = `
+.pw{display:flex;gap:8px;align-items:center;max-width:420px}.pw input{flex:1}.pw .pw-toggle{margin-top:0;white-space:nowrap}
 :root{--bg:#f5f6f8;--panel:#fff;--text:#16181d;--muted:#5d6572;--line:#e3e6ea;--accent:#2e9e3f;--accent-soft:#e8f6ea;--red:#c62f3b;--red-soft:#fdecee;color-scheme:light}
 @media (prefers-color-scheme:dark){:root{--bg:#111316;--panel:#1b1e23;--text:#eceef1;--muted:#9aa2ae;--line:#2b3038;--accent:#3fbd52;--accent-soft:#163020;--red:#ff6b76;--red-soft:#3a1a1e;color-scheme:dark}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}

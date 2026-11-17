@@ -7,6 +7,12 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "node scripts/dev.mjs --web",
+    "backend": "npm run dev -w @paspesa/backend",
+    "app": "npm run start -w @paspesa/mobile",
+    "web": "npm run web -w @paspesa/mobile",
+    "admin": "npm run admin -w @paspesa/backend --",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }

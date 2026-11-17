@@ -39,6 +39,8 @@ import { usePreference } from '@/services/preferences';
 import { useSubmission } from '@/services/useSubmission';
 import { ContactPicker } from '@/components/ContactPicker';
 import { PaySheet, type PaymentChoice } from '@/components/PaySheet';
+import { usePayGate } from '@/services/payGate';
+import { checkServerConfig } from '@/services/sync';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 import { ConfirmView, PinView, ResultAction, SuccessView, authFields, type PinAuth } from './journey';
@@ -118,6 +120,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const [contactsOpen, setContactsOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [payment, setPayment] = useState<PaymentChoice | null>(null);
+  const payGate = usePayGate(deps);
 
   const favs = useMemo(
     () => favouritesFor([type], favourites, transactions, deps.config.frequentThreshold),
@@ -188,7 +191,15 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
 
   const onPin = async (auth: PinAuth) => {
     if (!req) return;
+    // Payments may have been switched on in the back office while this page was open.
+    if (!payment) await checkServerConfig(2_000);
     const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth), ...(payment ?? {}) }));
+    if (!res.ok && res.error.code === 'PAYMENT_REQUIRED' && !payment) {
+      setPinError(null);
+      setStep('confirm');
+      setPayOpen(true);
+      return;
+    }
     if (!res.ok) {
       setPinError(res.error.message);
       return;
@@ -248,7 +259,11 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         ],
       },
     }[type];
-    const needsPayment = deps.config.monetization.paymentRequired && q.pricing.tokenCost > 0;
+    const onConfirm = async () => {
+      if (payment || !req) return setStep('pin');
+      if (await payGate.needsPayment(account, req)) setPayOpen(true);
+      else setStep('pin');
+    };
     return (
       <>
         <ConfirmView
@@ -256,7 +271,8 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
           title={spec.title}
           rows={spec.rows}
           actionLabel={spec.action}
-          onConfirm={() => (needsPayment && !payment ? setPayOpen(true) : setStep('pin'))}
+          onConfirm={() => void onConfirm()}
+          busy={payGate.checking}
           onBack={() => setStep('form')}
         />
         <PaySheet

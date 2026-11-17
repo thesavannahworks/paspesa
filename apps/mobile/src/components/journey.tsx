@@ -16,7 +16,7 @@ import { FIXED_TEXT, s } from '@/theme/scale';
 // ---------------------------------------------------------------- Confirm
 
 export function ConfirmView({
-  badge, title, rows, actionLabel, onConfirm, onBack, error,
+  badge, title, rows, actionLabel, onConfirm, onBack, error, busy,
 }: {
   badge: ReactNode;
   title: string;
@@ -25,10 +25,12 @@ export function ConfirmView({
   onConfirm: () => void;
   onBack: () => void;
   error?: string | null;
+  /** Checking the latest settings with the server (a moment). */
+  busy?: boolean;
 }) {
   const { colors } = useTheme();
   return (
-    <Screen footer={<PrimaryButton title={actionLabel} onPress={onConfirm} />}>
+    <Screen footer={<PrimaryButton title={actionLabel} onPress={onConfirm} loading={busy} />}>
       <ScreenHeader title="Confirm" onBack={onBack} />
       <View style={{ height: s(208) }} />
       <BadgeCard badge={badge}>

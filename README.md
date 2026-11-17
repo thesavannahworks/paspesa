@@ -23,6 +23,20 @@ npm test                    # core business-rule tests
 npm run typecheck
 ```
 
+### Everyday commands (from the repo root)
+
+```bash
+npm run dev        # backend + app together: scan the QR code with Expo Go, or press w for the browser
+npm run dev:web    # backend + app, opened in the browser
+npm run backend    # backend only (http://localhost:3000, back office at /admin)
+npm run app        # app only (Expo)
+npm run web        # app only, in the browser
+npm run admin -- admin:list     # admin commands (see "Run the backend" below)
+```
+
+`npm run dev` reuses a backend that is already running, and points the app at it through this computer's
+Wi-Fi address so a phone can reach it. A value in `apps/mobile/.env` overrides that. Stop with Ctrl+C.
+
 ### Run the app
 
 ```bash
@@ -54,6 +68,6 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
 - **Back office:** open `http://localhost:3000/admin` (accounts, devices, payments, review queue, pricing,
   fees, settings, audit log, admin users). Create the first administrator once, with the backend stopped
   when using the embedded database:
-  `npm run admin -w @paspesa/backend -- admin:create you@example.com "Your Name" ADMIN '<10+ chars, letters and numbers>'`.
+  `npm run admin -- admin:create you@example.com "Your Name" ADMIN '<10+ chars, letters and numbers>'`.
   Add further users (Administrator, Operator, Viewer) from the Admin users page.
 - **Admin commands** (scripting; same operations as the back office): `npm run admin -w @paspesa/backend -- help`.

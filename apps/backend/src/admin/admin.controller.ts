@@ -10,7 +10,7 @@ import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
 import type { PaymentProviders } from '../providers.js';
 import { AdminAuth, can, clearCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
-import { ADMIN_CSS, csrf, esc, fmtDate, html, ksh, layout, notice, type Html } from './views.js';
+import { ADMIN_CSS, ADMIN_JS, passwordField, csrf, esc, fmtDate, html, ksh, layout, notice, type Html } from './views.js';
 
 export const ADMIN_DATABASE = Symbol('ADMIN_DATABASE');
 export const ADMIN_PROVIDERS = Symbol('ADMIN_PROVIDERS');
@@ -29,7 +29,7 @@ type Form = Record<string, string | undefined>;
 
 const SIM_TYPES: SimulationType[] = ['SEND_MONEY', 'POCHI', 'BUY_GOODS', 'PAYBILL', 'AIRTIME', 'WITHDRAW', 'RECHARGE'];
 const SECURITY_HEADERS: Record<string, string> = {
-  'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Cache-Control': 'no-store',
@@ -97,12 +97,21 @@ export class AdminController {
     res.status(200).send(ADMIN_CSS);
   }
 
+  /** The only script: show/hide on password fields. Served from here so inline scripts stay forbidden. */
+  @Get('assets/admin.js')
+  js(@Res() res: Res) {
+    res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(ADMIN_JS);
+  }
+
   @Get('login')
   loginPage(@Res() res: Res, @Query('err') err?: string) {
     this.send(res, layout('Sign in', null, html`${notice(err, 'error')}
       <form method="post" action="/admin/login" class="panel">
         <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required>
-        <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+        <label for="password">Password</label>${passwordField('password', 'password', 'current-password')}
         <button>Sign in</button>
       </form><p class="muted">Paspesa back office — authorised staff only.</p>`));
   }
@@ -533,7 +542,7 @@ export class AdminController {
       <form method="post" action="/admin/users" class="panel">${csrf(session)}<h2>Add an admin user</h2>
         <label for="em">Email</label><input id="em" name="email" type="email" required><label for="nm">Name</label><input id="nm" name="name" required maxlength="80">
         <label for="rl">Role</label><select id="rl" name="role"><option value="VIEWER">Viewer — read only</option><option value="OPERATOR">Operator — day-to-day operations</option><option value="ADMIN">Administrator — everything</option></select>
-        <label for="pw">Temporary password (10+ characters, letters and numbers)</label><input id="pw" name="password" type="password" autocomplete="new-password" required>
+        <label for="pw">Temporary password (10+ characters, letters and numbers)</label>${passwordField('pw', 'password', 'new-password')}
         <button>Add user</button></form>`, '/admin/users'));
   }
 

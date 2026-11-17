@@ -81,6 +81,10 @@ describe('back office', () => {
     expect(res.headers.get('location')).toBe('/admin/login');
     const login = await fetch(`${base}/admin/login`);
     expect(login.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(login.headers.get('content-security-policy')).toContain("script-src 'self'");
+    expect(login.headers.get('content-security-policy')).not.toContain('unsafe-inline');
+    expect(await login.text()).toMatch(/class="secondary pw-toggle" data-for="password"[^>]*hidden>Show</);
+    expect((await fetch(`${base}/admin/assets/admin.js`)).headers.get('content-type')).toMatch(/javascript/);
     expect(login.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(login.headers.get('x-powered-by')).toBeNull();
   });

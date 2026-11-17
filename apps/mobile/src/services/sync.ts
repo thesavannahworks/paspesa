@@ -15,6 +15,10 @@ import type { KeyValueStore } from './kvTypes';
 
 const INTERVAL_MS = 60_000;
 const DEBOUNCE_MS = 1_500;
+/** Back-office settings (payment switch, pricing) are re-read this often while the app is open. */
+const CONFIG_POLL_MS = 15_000;
+/** Longest the Send/Pay button waits for the server's latest settings before using the ones it has. */
+const CONFIG_CHECK_MS = 3_000;
 
 export interface SyncStatus {
   enabled: boolean;
@@ -37,6 +41,14 @@ let current: SyncRunner | null = null;
 /** Ask for a sync soon (e.g. before returning tokens, which needs all spending uploaded). */
 export const kickSync = () => current?.kick();
 
+let configCheck: ((timeoutMs: number) => Promise<void>) | null = null;
+/**
+ * Re-reads pricing and back-office settings now (waits at most `timeoutMs`; offline it returns at once
+ * with the last known settings). Journeys call it before the PIN so a change made in the back office a
+ * moment ago applies to the simulation being confirmed.
+ */
+export const checkServerConfig = (timeoutMs = CONFIG_CHECK_MS): Promise<void> => configCheck?.(timeoutMs) ?? Promise.resolve();
+
 /** Live sync status for screens (Profile shows it). */
 export function useSyncStatus(): SyncStatus | null {
   const [status, setStatus] = useState<SyncStatus | null>(() => current?.status() ?? null);
@@ -57,6 +69,14 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
     state = { ...state, ...patch };
     for (const l of listeners) l(state);
   };
+
+  const checkConfig = async (timeoutMs: number) => {
+    if (!base) return;
+    // The fetch keeps going after a timeout and still applies what it gets.
+    const fetched = refreshServerConfig(api, deps, kv).then((changed) => { if (changed) onConfigChange(); }, () => undefined);
+    await Promise.race([fetched, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
+  };
+  configCheck = checkConfig;
 
   const refreshCounts = async () => {
     const s = await outboxSummary(deps.store);
@@ -116,6 +136,9 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
       if (!base) return;
       kick();
       setInterval(() => void run(), INTERVAL_MS);
+      setInterval(() => {
+        if (AppState.currentState === 'active') void checkConfig(10_000);
+      }, CONFIG_POLL_MS);
       AppState.addEventListener('change', (s) => {
         if (s === 'active') kick();
       });

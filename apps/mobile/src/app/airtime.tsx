@@ -22,6 +22,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ConfirmView, PinView, authFields, type PinAuth } from '@/components/journey';
 import { ContactPicker } from '@/components/ContactPicker';
 import { PaySheet, type PaymentChoice } from '@/components/PaySheet';
+import { usePayGate } from '@/services/payGate';
+import { checkServerConfig } from '@/services/sync';
 import { AddFavouriteSheet, FavouritesStrip } from '@/components/payments';
 import { BadgeCard, CircleButton, Field, Inert, PrimaryButton, Screen, ScreenHeader, SegmentedTabs, T } from '@/components/ui';
 import { AirtimeIcon, ChevronRightIcon, CloseIcon, ContactIcon, GlobalAirtimeIcon } from '@/icons';
@@ -50,6 +52,7 @@ export default function AirtimeScreen() {
   const [contactsOpen, setContactsOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [payment, setPayment] = useState<PaymentChoice | null>(null);
+  const payGate = usePayGate(deps);
 
   const favs = useMemo(
     () => favouritesFor(['AIRTIME'], favourites, transactions, deps.config.frequentThreshold),
@@ -73,7 +76,15 @@ export default function AirtimeScreen() {
 
   const onPin = async (auth: PinAuth) => {
     if (!req) return;
+    // Payments may have been switched on in the back office while this page was open.
+    if (!payment) await checkServerConfig(2_000);
     const res = await submission.run((operationId) => processSimulation(deps, { ...req, operationId, ...authFields(auth), ...(payment ?? {}) }));
+    if (!res.ok && res.error.code === 'PAYMENT_REQUIRED' && !payment) {
+      setPinError(null);
+      setStep('confirm');
+      setPayOpen(true);
+      return;
+    }
     if (!res.ok) return setPinError(res.error.message);
     setPinError(null);
     await refresh();
@@ -116,7 +127,12 @@ export default function AirtimeScreen() {
           ? [{ label: 'Amount', value: formatKsh(q.amount) }, { label: 'Transaction cost', value: formatConfirmTransactionCost(q.fee) }]
           : [{ label: 'Original Amount', value: formatAmount(q.amount) }, { label: 'Phone number', value: toLocalPhone(q.counterparty.phone ?? '') }]}
         actionLabel="Confirm"
-        onConfirm={() => (deps.config.monetization.paymentRequired && q.pricing.tokenCost > 0 && !payment ? setPayOpen(true) : setStep('pin'))}
+        onConfirm={() => void (async () => {
+          if (payment || !req) return setStep('pin');
+          if (await payGate.needsPayment(account, req)) setPayOpen(true);
+          else setStep('pin');
+        })()}
+        busy={payGate.checking}
         onBack={() => setStep('form')}
       />
       <PaySheet
