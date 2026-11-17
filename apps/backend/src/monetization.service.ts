@@ -375,6 +375,11 @@ export class MonetizationService {
     return row ? toPayment(row) : null;
   }
 
+  async paymentForProvider(provider: string, id: string): Promise<PaymentRecord | null> {
+    const [row] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE id = $1 AND provider = $2', [id, provider]);
+    return row ? toPayment(row) : null;
+  }
+
   async payment(ownerId: string, id: string): Promise<PaymentRecord | null> {
     const [row] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE id = $1 AND owner_id = $2', [id, ownerId]);
     return row ? toPayment(row) : null;
@@ -386,7 +391,8 @@ export class MonetizationService {
   ): Promise<PaymentRecord> {
     const payment = await this.db.transaction(async (q) => {
       const [existing] = await q.query<PaymentRow>('SELECT * FROM payments WHERE owner_id = $1 AND idempotency_key = $2', [input.accountId, input.idempotencyKey]);
-      if (existing) return { record: toPayment(existing), created: false };
+      // A retry of a request the provider never accepted sends the prompt again (same payment, no new charge).
+      if (existing) return { record: toPayment(existing), created: existing.status === 'INITIATED' && !existing.provider_reference };
       const record: PaymentRecord = {
         id: randomUUID(), ownerId: input.accountId, paymentType: input.type, provider: provider.name, providerReference: null, idempotencyKey: input.idempotencyKey,
         amount: input.amount, currency: 'KES', status: 'INITIATED', tokens: input.tokens, payerPhone: input.phone, relatedSimulationId: input.simulationId,

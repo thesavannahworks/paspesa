@@ -179,5 +179,11 @@ activation, which needs the product-owner inputs listed below (§52).
   only by backend environment (`MPESA_*`, see `apps/backend/.env.example`). Daraja sandbox keys are free and
   immediate; going live needs a Paybill/Till and Safaricom's go-live approval (or an aggregator — the
   provider is pluggable). Status is confirmed with the STK Query API; callbacks only trigger that check.
+- **Several providers side by side (owner request, to compare before choosing):** Daraja, Kopo Kopo,
+  IntaSend, Paystack (M-PESA mobile money) and PayHero adapters (`apps/backend/src/providers.ts`). Each is
+  switched on by its own environment keys; a purchase may name one, else `PAYMENT_PROVIDER` / the first
+  configured. `GET /v1/payments/providers` lists them. Built from public docs; details the docs did not
+  confirm (Kopo Kopo production URL, IntaSend status path, PayHero status endpoint) are marked unverified
+  and overridable by `*_BASE_URL`. Live testing with real keys is deferred by the owner.
 - **Still open:** live provider route (own shortcode vs aggregator); device allocations for offline token
   use (Phase 7).

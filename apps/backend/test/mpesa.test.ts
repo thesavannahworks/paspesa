@@ -144,3 +144,21 @@ describe('payment endpoints', () => {
     }
   });
 });
+
+describe('provider registry', () => {
+  it('switches on exactly the providers whose credentials are set; PAYMENT_PROVIDER picks the default', async () => {
+    const { providersFromEnv } = await import('../src/providers.js');
+    expect(providersFromEnv({}).all).toEqual([]);
+    const env = {
+      MPESA_CONSUMER_KEY: 'k', MPESA_CONSUMER_SECRET: 's', MPESA_SHORTCODE: '174379', MPESA_PASSKEY: 'p', MPESA_CALLBACK_URL: 'https://x/cb',
+      INTASEND_SECRET_KEY: 'ISSecretKey_test', PAYSTACK_SECRET_KEY: 'sk_test_x',
+      KOPOKOPO_CLIENT_ID: 'id', KOPOKOPO_CLIENT_SECRET: 'secret', KOPOKOPO_TILL: 'K000000', KOPOKOPO_CALLBACK_URL: 'https://x/k',
+      PAYHERO_API_USERNAME: 'u', PAYHERO_API_PASSWORD: 'p', PAYHERO_CHANNEL_ID: '123', PAYHERO_CALLBACK_URL: 'https://x/p',
+      PAYMENT_PROVIDER: 'intasend',
+    };
+    const r = providersFromEnv(env);
+    expect(r.all.map((p) => p.name)).toEqual(['mpesa-daraja', 'kopokopo', 'intasend', 'paystack', 'payhero']);
+    expect(r.default?.name).toBe('intasend');
+    expect(providersFromEnv({ ...env, PAYMENT_PROVIDER: undefined }).default?.name).toBe('mpesa-daraja');
+  });
+});

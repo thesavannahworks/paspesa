@@ -6,7 +6,8 @@
  *   HOST          default 0.0.0.0 (reachable from a phone on the same Wi-Fi)
  *   DATABASE_URL  postgres://… — a PostgreSQL server. When not set, the embedded PostgreSQL (PGlite)
  *                 is used with its data in PGLITE_DIR (default ./.data/pglite).
- *   MPESA_*       M-PESA STK Push (Daraja) credentials — see src/mpesa.ts. Without them payments are off.
+ *   Payment providers (any combination; see src/providers.ts and .env.example): MPESA_* (Daraja),
+ *   KOPOKOPO_*, INTASEND_*, PAYSTACK_*, PAYHERO_*; PAYMENT_PROVIDER picks the default. None → payments off.
  */
 import { openDatabase } from './database.js';
 import { createApp } from './app.js';
@@ -18,7 +19,7 @@ try {
   // no .env file: use the environment as is
 }
 import { MonetizationService } from './monetization.service.js';
-import { DarajaProvider, darajaConfigFromEnv } from './mpesa.js';
+import { providersFromEnv } from './providers.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -26,17 +27,20 @@ const databaseUrl = process.env.DATABASE_URL || undefined;
 const pgliteDir = process.env.PGLITE_DIR ?? './.data/pglite';
 
 const db = await openDatabase(databaseUrl ? { databaseUrl } : { pgliteDir });
-const mpesa = darajaConfigFromEnv(process.env);
-const paymentProvider = mpesa ? new DarajaProvider(mpesa) : null;
-const app = await createApp(db, { paymentProvider });
+const paymentProviders = providersFromEnv(process.env);
+const app = await createApp(db, { paymentProviders });
 app.enableShutdownHooks();
 await app.listen(port, host);
-if (paymentProvider) {
-  // Confirm payments still waiting on M-PESA (callbacks only speed this up).
+if (paymentProviders.all.length) {
+  // Confirm payments still waiting on their provider (callbacks only speed this up).
   const money = new MonetizationService(db);
-  setInterval(() => void money.verifyPendingPayments(paymentProvider).catch((e) => console.warn('[paspesa] payment check failed', e)), 20_000);
+  setInterval(() => {
+    for (const provider of paymentProviders.all) {
+      void money.verifyPendingPayments(provider).catch((e) => console.warn(`[paspesa] ${provider.name} payment check failed`, e));
+    }
+  }, 20_000);
 }
-console.log(`[paspesa] payments: ${mpesa ? `M-PESA STK Push (${mpesa.environment})` : 'not configured'}`);
+console.log(`[paspesa] payments: ${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
 console.log(`[paspesa] backend listening on http://${host}:${port} (database: ${db.kind === 'postgres' ? 'PostgreSQL' : `embedded PostgreSQL in ${pgliteDir}`})`);
 
 const stop = async () => {

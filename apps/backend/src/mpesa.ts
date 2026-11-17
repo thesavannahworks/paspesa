@@ -112,6 +112,12 @@ export class DarajaProvider implements PaymentProvider {
     return { providerReference: res.body.CheckoutRequestID };
   }
 
+  /** Daraja callback body: { Body: { stkCallback: { CheckoutRequestID, ResultCode, … } } }. */
+  callbackReference(body: unknown): { providerReference: string } | null {
+    const ref = (body as { Body?: { stkCallback?: { CheckoutRequestID?: unknown } } } | null)?.Body?.stkCallback?.CheckoutRequestID;
+    return typeof ref === 'string' ? { providerReference: ref } : null;
+  }
+
   async checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED'> {
     const res = await this.post<{ ResultCode?: string | number; errorCode?: string; errorMessage?: string }>('/mpesa/stkpushquery/v1/query', {
       BusinessShortCode: this.config.shortCode,

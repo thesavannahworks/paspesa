@@ -11,7 +11,8 @@
  *   GET  /v1/wallet           [auth]   token balances by category and recent ledger (§28)
  *   POST /v1/payments/tokens  [auth]   buy tokens: STK prompt for KSh N → N tokens once verified (§31)
  *   GET  /v1/payments/:id     [auth]   payment status (re-checked with the provider while pending)
- *   POST /v1/payments/mpesa/callback   M-PESA result notice: only triggers a verification, never trusted
+ *   GET  /v1/payments/providers [auth] payment providers switched on (Daraja, Kopo Kopo, IntaSend, Paystack, PayHero)
+ *   POST /v1/payments/:provider/callback   result notice (Daraja: mpesa/callback): only triggers a verification
  *
  * Authentication: each installation creates a random secret on the device and registers it; the server
  * stores only its SHA-256 hash. Requests send `Authorization: Bearer <secret>`.
@@ -43,10 +44,11 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SYNC_API_VERSION, type SyncOperation, type SyncPushRequest } from '@paspesa/core';
 import type { Database } from './database.js';
 import { MonetizationError, MonetizationService, type PaymentProvider } from './monetization.service.js';
+import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
 
 export const DATABASE = Symbol('DATABASE');
-export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
+export const PAYMENT_PROVIDERS = Symbol('PAYMENT_PROVIDERS');
 const MAX_OPERATIONS = 200;
 
 const fail = (status: HttpStatus, code: string, message: string) => new HttpException({ error: { code, message } }, status);
@@ -199,12 +201,18 @@ class PaymentsController {
   constructor(
     @Inject(MonetizationService) private readonly money: MonetizationService,
     @Inject(DATABASE) private readonly db: Database,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider | null,
+    @Inject(PAYMENT_PROVIDERS) private readonly providers: PaymentProviders,
   ) {}
 
-  private requireProvider(): PaymentProvider {
-    if (!this.provider) throw fail(HttpStatus.SERVICE_UNAVAILABLE, 'PAYMENTS_NOT_CONFIGURED', 'Payments are not set up on this server yet');
-    return this.provider;
+  private pick(name: unknown): PaymentProvider {
+    if (name !== undefined && typeof name !== 'string') throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'provider must be a name');
+    const provider = name ? this.providers.byName(name) : this.providers.default;
+    if (!provider) {
+      throw name
+        ? fail(HttpStatus.BAD_REQUEST, 'PROVIDER_NOT_CONFIGURED', `Payment provider "${name}" is not set up on this server`)
+        : fail(HttpStatus.SERVICE_UNAVAILABLE, 'PAYMENTS_NOT_CONFIGURED', 'Payments are not set up on this server yet');
+    }
+    return provider;
   }
 
   private async accountId(installationId: string): Promise<string> {
@@ -213,19 +221,28 @@ class PaymentsController {
     return a.id;
   }
 
+  /** Which providers are switched on (to compare them while choosing). */
+  @Get('providers')
+  @UseGuards(InstallationAuthGuard)
+  list() {
+    return { providers: this.providers.all.map((p) => p.name), default: this.providers.default?.name ?? null };
+  }
+
   @Post('tokens')
   @HttpCode(200)
   @UseGuards(InstallationAuthGuard)
-  async buyTokens(@Req() req: AuthedRequest, @Body() body: { shillings?: unknown; phone?: unknown; idempotencyKey?: unknown }) {
-    const provider = this.requireProvider();
+  async buyTokens(@Req() req: AuthedRequest, @Body() body: { shillings?: unknown; phone?: unknown; idempotencyKey?: unknown; provider?: unknown }) {
     if (typeof body?.shillings !== 'number' || typeof body.phone !== 'string' || typeof body.idempotencyKey !== 'string' || body.idempotencyKey.length < 8 || body.idempotencyKey.length > 100) {
       throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'shillings, phone and idempotencyKey are required');
     }
+    const provider = this.pick(body.provider);
     const accountId = await this.accountId(req.installationId!);
     try {
       return await this.money.initiateTokenPurchase({ accountId, shillings: body.shillings, phone: body.phone, idempotencyKey: body.idempotencyKey }, provider);
     } catch (e) {
-      return moneyError(e);
+      if (e instanceof MonetizationError) return moneyError(e);
+      // The provider refused or could not be reached: the payment stays INITIATED and can be retried.
+      throw fail(HttpStatus.BAD_GATEWAY, 'PROVIDER_ERROR', e instanceof Error ? e.message : 'Payment provider error');
     }
   }
 
@@ -234,31 +251,38 @@ class PaymentsController {
   async status(@Req() req: AuthedRequest, @Param('id') id: string) {
     const payment = await this.money.payment(await this.accountId(req.installationId!), id);
     if (!payment) throw fail(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Payment not found');
-    return payment.status === 'PENDING' && this.provider ? this.money.verifyPayment(payment.id, this.provider) : payment;
+    const provider = this.providers.byName(payment.provider);
+    return payment.status === 'PENDING' && provider ? this.money.verifyPayment(payment.id, provider) : payment;
   }
 
-  /** Daraja posts the STK result here. The body is not trusted: it only triggers a status query (§31). */
-  @Post('mpesa/callback')
+  /**
+   * Provider result notices (Daraja keeps its own path, mpesa/callback). The body is never trusted: it only
+   * tells us which payment to re-check with the provider's API (§31).
+   */
+  @Post(':provider/callback')
   @HttpCode(200)
-  async mpesaCallback(@Body() body: { Body?: { stkCallback?: { CheckoutRequestID?: unknown } } }) {
-    const ref = body?.Body?.stkCallback?.CheckoutRequestID;
-    if (this.provider && typeof ref === 'string') {
-      const payment = await this.money.paymentByProviderReference(this.provider.name, ref);
-      if (payment) await this.money.verifyPayment(payment.id, this.provider);
+  async callback(@Param('provider') name: string, @Body() body: unknown) {
+    const provider = this.providers.byName(name === 'mpesa' ? 'mpesa-daraja' : name);
+    const ref = provider && 'callbackReference' in provider ? (provider as PaymentProvider & CallbackAware).callbackReference(body) : null;
+    if (provider && ref) {
+      const payment = ref.providerReference
+        ? await this.money.paymentByProviderReference(provider.name, ref.providerReference)
+        : await this.money.paymentForProvider(provider.name, ref.paymentId!);
+      if (payment) await this.money.verifyPayment(payment.id, provider).catch(() => undefined);
     }
-    return { ResultCode: 0, ResultDesc: 'Accepted' };
+    return name === 'mpesa' ? { ResultCode: 0, ResultDesc: 'Accepted' } : { received: true };
   }
 }
 
 @Module({})
 class AppModule {
-  static with(db: Database, provider: PaymentProvider | null): DynamicModule {
+  static with(db: Database, providers: PaymentProviders): DynamicModule {
     return {
       module: AppModule,
       controllers: [HealthController, InstallationsController, SyncController, MonetizationController, PaymentsController],
       providers: [
         { provide: DATABASE, useValue: db },
-        { provide: PAYMENT_PROVIDER, useValue: provider },
+        { provide: PAYMENT_PROVIDERS, useValue: providers },
         { provide: SyncService, useFactory: () => new SyncService(db) },
         { provide: MonetizationService, useFactory: () => new MonetizationService(db) },
         InstallationAuthGuard,
@@ -268,8 +292,9 @@ class AppModule {
 }
 
 /** Builds the Nest application around an opened database (used by main.ts and the tests). */
-export async function createApp(db: Database, options: { paymentProvider?: PaymentProvider | null } = {}) {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, options.paymentProvider ?? null), { logger: ['error', 'warn', 'log'], bodyParser: true });
+export async function createApp(db: Database, options: { paymentProvider?: PaymentProvider | null; paymentProviders?: PaymentProviders } = {}) {
+  const providers = options.paymentProviders ?? providerRegistry(options.paymentProvider ? [options.paymentProvider] : []);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, providers), { logger: ['error', 'warn', 'log'], bodyParser: true });
   app.enableCors(); // the web build (another origin) talks to the API too
   app.useBodyParser('json', { limit: '2mb' });
   return app;
