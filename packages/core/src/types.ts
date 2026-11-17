@@ -191,7 +191,21 @@ export interface OutboxEntry {
   lastAttemptAt: string | null;
   status: OutboxStatus;
   lastError: string | null;
+  /**
+   * What changed, captured when the change happened (settings and favourites). Transactions need none:
+   * their records never change, so the sync payload is read from the record itself.
+   */
+  payload?: OutboxPayload;
 }
+
+/** Explicit changes, not resulting state: the server applies and validates them itself (§39). */
+export type OutboxPayload =
+  | { kind: 'PIN_CHANGED' }
+  | { kind: 'DETAILS'; accountName: string; phoneNumber: string }
+  | { kind: 'RECHARGE_SENDER'; defaults: { name: string; phone: string } | null }
+  | { kind: 'AIRTIME_RESET'; amount: number }
+  | { favourite: Favourite }
+  | { favouriteId: string };
 
 /** Field-level validation errors keyed by field name. */
 export type FieldErrors = Record<string, string>;

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '@/components/AppLock';
-import { AppStateProvider } from '@/services/AppState';
+import { AppStateProvider, useAppState } from '@/services/AppState';
 import { PreferencesProvider } from '@/services/preferences';
 import { createRuntime, type Runtime } from '@/services/runtime';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
@@ -23,6 +23,21 @@ function ThemedStack() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.screen }, animation: 'slide_from_right' }} />
     </>
   );
+}
+
+/** Starts background sync and refreshes the screens' data after each sync run. */
+function SyncBridge({ runtime }: { runtime: Runtime }) {
+  const { refresh } = useAppState();
+  useEffect(() => {
+    let wasRunning = false;
+    const off = runtime.sync.subscribe((s) => {
+      if (wasRunning && !s.running) void refresh();
+      wasRunning = s.running;
+    });
+    runtime.sync.start();
+    return off;
+  }, [runtime, refresh]);
+  return null;
 }
 
 export default function RootLayout() {
@@ -58,6 +73,7 @@ export default function RootLayout() {
           <AppStateProvider deps={runtime.deps}>
             <ThemedStack />
             <AppLock />
+            <SyncBridge runtime={runtime} />
           </AppStateProvider>
         </ThemeProvider>
       </PreferencesProvider>

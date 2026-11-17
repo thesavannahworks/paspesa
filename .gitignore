@@ -7,3 +7,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# backend embedded database (PGlite)
+.data/

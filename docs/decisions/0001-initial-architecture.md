@@ -119,3 +119,32 @@ were then measured element by element against the screenshots (same 1080 px phon
   Records are kept whole as JSON beside the indexed columns, so new optional fields need no migration.
 - Migration: on first start the old single record (`ledger.state.v1`) is written to the tables in one
   transaction and removed only afterwards; an interrupted migration just repeats the removal.
+
+## Backend and synchronization (2026-11-17)
+- **Stack:** NestJS 12 (ES modules, run with `tsx`) + PostgreSQL, as proposed by the White Paper (owner
+  confirmed). No cloud host yet (owner decision): it runs on a developer machine. With no `DATABASE_URL` it
+  uses PGlite — the PostgreSQL engine embedded in Node — so nothing has to be installed; the same SQL runs on
+  a real PostgreSQL server. Dependencies are injected by explicit token (no decorator metadata), so the tests
+  run on Vitest like core.
+- **Identity (§24.5):** anonymous installation. The device creates a random secret and registers it with its
+  installation ID; the server keeps only the SHA-256 hash. Registration is idempotent (retry-safe).
+- **Contract** (`packages/core/src/sync.ts`, shared by app and server): `POST /v1/sync/push` carries outbox
+  operations (CREATE_ACCOUNT, CREATE_SIMULATION, UPDATE_ACCOUNT_SETTINGS, UPSERT/DELETE_FAVOURITE); each gets
+  SYNCED or NEEDS_REVIEW with a code. `GET /v1/sync/state` and `/v1/sync/pull` support reconciliation (§25.4).
+- **Server authority (§39.1):** balances are never taken from the phone. Each transaction is recomputed with
+  the shared engine (`checkSyncedTransaction`): it must follow the account's last position and match the
+  fee, amount and balances. Settings travel as explicit changes captured when they happened (outbox
+  `payload`), e.g. an airtime reset must clear exactly the server's airtime balance.
+- **Idempotency (§24.2, §25):** each operation is processed once per installation (`sync_operations`,
+  fingerprinted on its immutable content). A retry returns the stored verdict (DUPLICATE); the same ID with
+  different content is an OPERATION_CONFLICT. One database transaction per operation, serialized per
+  installation with an advisory lock.
+- **Never silently dropped (§24.4):** failed checks go to `sync_review` and the phone marks the records
+  NEEDS_REVIEW; nothing is applied. Settings changes are written to `audit_log` (§37.15).
+- **Not uploaded:** the simulated PIN (only "PIN changed" is recorded), wrong-PIN notices, and message
+  read/star/delete state — they stay on the device.
+- **App:** sync is off unless `EXPO_PUBLIC_PASPESA_API_URL` is set. It uploads on start, ~1.5 s after each
+  new local change, on returning to the foreground and every minute; failures leave everything queued.
+  Profile shows the backup state.
+- **Later:** multi-device download (pull is in place; applying it on a second device comes with
+  registration), admin review of `sync_review`, deployment to a host.

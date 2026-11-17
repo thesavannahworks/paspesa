@@ -27,7 +27,7 @@ export async function setPin(
     const now = deps.clock.now();
     const updated: Account = { ...account, pin: { salt, hash: await deps.pinHasher.hash(input.newPin, salt) }, updatedAt: now };
     await tx.putAccount(updated);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now, { kind: 'PIN_CHANGED' }));
     return { ok: true as const, account: updated };
   });
 }
@@ -63,7 +63,7 @@ export async function updateAccountDetails(
     const now = deps.clock.now();
     const updated: Account = { ...account, accountName, phoneNumber: phone!, updatedAt: now };
     await tx.putAccount(updated);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now, { kind: 'DETAILS', accountName, phoneNumber: phone! }));
     return { ok: true as const, account: updated };
   });
 }
@@ -90,7 +90,7 @@ export async function updateRechargeSenderDefaults(
     const now = deps.clock.now();
     const updated: Account = { ...account, rechargeSenderDefaults: defaults, updatedAt: now };
     await tx.putAccount(updated);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now, { kind: 'RECHARGE_SENDER', defaults }));
     return { ok: true as const, account: updated };
   });
 }
@@ -113,7 +113,7 @@ export async function resetAirtimeBalance(deps: EngineDeps): Promise<Ok<{ accoun
       updatedAt: now,
     };
     await tx.putAccount(updated);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'UPDATE_ACCOUNT_SETTINGS', now, { kind: 'AIRTIME_RESET', amount: account.airtimeBalance }));
     return { ok: true as const, account: updated, amountReset: account.airtimeBalance };
   });
 }
@@ -180,7 +180,7 @@ export async function addFavourite(
       createdAt: now,
     };
     await tx.upsertFavourite(favourite);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favourite.id, 'UPSERT_FAVOURITE', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favourite.id, 'UPSERT_FAVOURITE', now, { favourite }));
     return { ok: true as const, favourite };
   });
 }
@@ -189,7 +189,7 @@ export async function removeFavourite(deps: EngineDeps, favouriteId: string): Pr
   return deps.store.runAtomic(async (tx) => {
     const now = deps.clock.now();
     await tx.deleteFavourite(favouriteId);
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favouriteId, 'DELETE_FAVOURITE', now));
+    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'FAVOURITE', favouriteId, 'DELETE_FAVOURITE', now, { favouriteId }));
     return { ok: true as const };
   });
 }

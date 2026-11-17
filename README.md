@@ -10,8 +10,9 @@ UI references: [`reference-screenshots/`](reference-screenshots)
 ## Layout
 
 ```
-packages/core   @paspesa/core — engine, fee schedules, messages, ledger, statements (tested)
+packages/core   @paspesa/core — engine, fee schedules, messages, ledger, statements, sync contract (tested)
 apps/mobile     @paspesa/mobile — Expo app (Android / iOS / web from one codebase)
+apps/backend    @paspesa/backend — NestJS + PostgreSQL: account persistence and synchronization API
 ```
 
 ## Getting started
@@ -34,4 +35,19 @@ npx expo start --web        # or open in a browser at http://localhost:8081
 - **Browser:** use `localhost`. Web Crypto (used to hash the Paspesa PIN) only works on secure origins.
 
 Data is stored on the device (SQLite on the phone, IndexedDB in the browser). It survives restarts.
-Clearing app or browser data erases it, until account sync arrives in a later phase.
+Clearing app or browser data erases it; the backend (below) keeps a synchronized copy.
+
+### Run the backend (optional, no cloud host needed)
+
+```bash
+npm run dev -w @paspesa/backend     # http://0.0.0.0:3000 — health check: /v1/health
+npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
+```
+
+- **Database:** with no configuration it uses an embedded PostgreSQL (PGlite), data in
+  `apps/backend/.data/pglite`. To use a real PostgreSQL server (your local PostgreSQL now, a hosted one later),
+  create a database and set `DATABASE_URL=postgres://user:password@localhost:5432/paspesa`.
+- **Connect the app:** copy `apps/mobile/.env.example` to `apps/mobile/.env`, set
+  `EXPO_PUBLIC_PASPESA_API_URL=http://<your computer's Wi-Fi IP>:3000` (or `http://localhost:3000` for the web
+  build), then restart `npx expo start --clear`. Profile shows the backup state.
+- **Windows firewall:** allow Node.js on private networks the first time, or the phone can't reach port 3000.

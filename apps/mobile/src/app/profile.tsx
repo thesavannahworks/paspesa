@@ -7,6 +7,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { Inert, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
 import { CameraIcon, ChevronLeftIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
 import { useProfilePhoto } from '@/services/profilePhoto';
+import { useSyncStatus } from '@/services/sync';
 import { useAccount } from '@/services/AppState';
 import { useTheme, type ThemeChoice } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -62,11 +63,24 @@ export default function ProfileScreen() {
       <T variant="label" color={colors.textSecondary} style={{ marginTop: s(30) }}>
         App Version {Constants.expoConfig?.version ?? '1.0.0'}
       </T>
+      <SyncLine />
 
       <ThemeSheet visible={themeOpen} onClose={() => setThemeOpen(false)} />
       <PhotoSheet visible={photoOpen} onClose={() => setPhotoOpen(false)} />
     </Screen>
   );
+}
+
+/** Backup / sync state (White Paper §24.1), shown only when a backend is configured. */
+function SyncLine() {
+  const { colors } = useTheme();
+  const st = useSyncStatus();
+  if (!st?.enabled) return null;
+  const text = st.running ? 'Backing up…'
+    : st.needsReview ? `Backup: ${st.needsReview} item${st.needsReview === 1 ? '' : 's'} need review`
+    : st.waiting ? `Backup: ${st.waiting} waiting${st.lastError ? ' (offline)' : ''}`
+    : st.lastSyncedAt ? 'Backup: up to date' : 'Backup: waiting to connect';
+  return <T variant="label" color={st.needsReview ? colors.red : colors.textSecondary} style={{ marginTop: s(6) }}>{text}</T>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

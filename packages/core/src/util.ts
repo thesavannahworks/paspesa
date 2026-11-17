@@ -33,6 +33,7 @@ export function outboxEntry(
   entityId: string,
   operationType: OutboxEntry['operationType'],
   now: string,
+  payload?: OutboxEntry['payload'],
 ): OutboxEntry {
   return {
     id: ids.uuid(),
@@ -47,6 +48,7 @@ export function outboxEntry(
     lastAttemptAt: null,
     status: 'PENDING',
     lastError: null,
+    ...(payload ? { payload } : {}),
   };
 }
 
