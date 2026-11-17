@@ -51,3 +51,5 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   `EXPO_PUBLIC_PASPESA_API_URL=http://<your computer's Wi-Fi IP>:3000` (or `http://localhost:3000` for the web
   build), then restart `npx expo start --clear`. Profile shows the backup state.
 - **Windows firewall:** allow Node.js on private networks the first time, or the phone can't reach port 3000.
+- **Admin commands** (pricing, token grants, expiry, wallet checks) until the admin back office exists:
+  `npm run admin -w @paspesa/backend -- help`. Stop the running backend first when using the embedded database.

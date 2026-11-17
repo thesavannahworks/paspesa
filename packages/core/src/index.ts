@@ -21,3 +21,6 @@ export * from './qr';
 export * from './changes';
 export * from './sqlLedger';
 export * from './sync';
+export * from './pricing';
+export * from './tokens';
+export * from './payments';

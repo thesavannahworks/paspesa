@@ -148,3 +148,28 @@ were then measured element by element against the screenshots (same 1080 px phon
   Profile shows the backup state.
 - **Later:** multi-device download (pull is in place; applying it on a second device comes with
   registration), admin review of `sync_review`, deployment to a host.
+
+## Monetization foundation — Phase 6 (2026-11-17)
+Built, not switched on: simulations stay UNMETERED (owner decision) and the app is unchanged until
+activation, which needs the product-owner inputs listed below (§52).
+- **Pricing engine** (`packages/core/src/pricing.ts`): FULL_AMOUNT (default: free up to KSh 20, KSh 5 per
+  token), EXCESS_AMOUNT and TIERED (validated: contiguous ranges from KSh 0). Precedence account+type →
+  account → global type → global. Each price comes with the snapshot to store (§27.5). Rule changes are new
+  versions (old ones kept, the previous one ends at the new effective date) and are audited.
+- **Token wallet** (`packages/core/src/tokens.ts`, server tables `token_wallets/lots/ledger/spends`): one
+  wallet per account; grant lots per credit (idempotent per source reference; purchased tokens never
+  expire); spend order promotional → admin → purchased, within a category the lot expiring first; one
+  spend per simulation (retries return it); reversal restores the exact lots as separate entries; expiry is
+  a permanent entry per lot with its original grant; balance caches are recomputed in the same transaction
+  and `reconcile` checks lots against the ledger. Wallet rows are locked per operation (no overspending).
+- **Payments** (`packages/core/src/payments.ts`, tables `payments`, `payment_events`, `payment_credits`):
+  token purchase and direct pay-per-simulation records with separate payment / simulation / refund states.
+  Idempotent on the client's key; a provider callback is never trusted alone — status is verified with the
+  provider; a timeout keeps the payment PENDING; tokens are credited once from a verified purchase; a direct
+  payment authorizes its simulation only when verified; a paid simulation that fails gets a refundable
+  credit (the §33 mechanism chosen until a provider is picked). No provider is connected; tests use a sandbox.
+- **API:** read-only `GET /v1/pricing`, `POST /v1/pricing/quote`, `GET /v1/wallet`. Changes go through the
+  server admin CLI (`npm run admin -w @paspesa/backend`) until the admin back office has administrator login.
+- **Needs product-owner input before activation:** token package names/sizes/prices; payment provider;
+  the shilling price of a direct pay-per-simulation; whether Recharge (General Operations) is priced; the
+  offline free-simulation policy (§29.6); device allocations for offline token use come in Phase 7.
