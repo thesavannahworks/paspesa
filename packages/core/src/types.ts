@@ -58,6 +58,11 @@ export interface Account {
   airtimeResetTotal: number;
   /** User-configured default sender for General Operations recharge; null = use config default (Paspesa). */
   rechargeSenderDefaults: { name: string; phone: string } | null;
+  /**
+   * Tokens reserved for THIS device for offline use (White Paper §29), as last confirmed by the server and
+   * reduced by local spending since. Absent/null = no allocation. Never uploaded: the server keeps its own.
+   */
+  tokenAllocation?: LocalTokenAllocation | null;
   /** Simulated Paspesa PIN (never the real M-PESA PIN). Null when no PIN has been set. */
   pin: { salt: string; hash: string } | null;
   currency: 'KES';
@@ -65,6 +70,17 @@ export interface Account {
   updatedAt: string;
   /** Incremented on every committed balance change; used for optimistic checks during sync. */
   version: number;
+}
+
+/** A device token allocation as known on the device (§29, §27.6). */
+export interface LocalTokenAllocation {
+  allocationId: string;
+  /** Tokens left to spend offline on this device. */
+  remaining: number;
+  /** After this, paid offline simulations stop until the device renews online (§29.4). */
+  authorizationExpiresAt: string;
+  /** The pricing configuration authorized with the allocation; offline prices use it (§27.6). */
+  pricing: import('./pricing').PricingConfiguration;
 }
 
 /** The other party of a transaction. Which fields apply depends on the transaction type. */
@@ -111,7 +127,9 @@ export interface TransactionRecord {
   feeScheduleVersion: number;
   configVersion: number;
   paymentMethod: PaymentMethod;
-  /** Pricing snapshot for token-funded simulations (monetization phase). Null while UNMETERED. */
+  /** DIRECT: the verified Paspesa payment that paid for this simulation (§32). */
+  directPaymentId?: string;
+  /** Pricing snapshot for token-funded or directly-paid simulations (§27.5). Null while UNMETERED. */
   pricing: PricingSnapshot | null;
   /** Stable hash of the request, used to detect an operation ID reused for a different request. */
   requestFingerprint: string;
@@ -229,6 +247,10 @@ export type SimulationErrorCode =
   | 'AIRTIME_BALANCE_LIMIT'
   | 'UNSUPPORTED_AMOUNT'
   | 'INSUFFICIENT_BALANCE'
+  | 'PAYMENT_REQUIRED'
+  | 'INSUFFICIENT_TOKENS'
+  | 'AUTHORIZATION_EXPIRED'
+  | 'AUTHORIZATION_REQUIRED'
   | 'NO_ACCOUNT'
   | 'ACCOUNT_EXISTS'
   | 'OPERATION_CONFLICT'

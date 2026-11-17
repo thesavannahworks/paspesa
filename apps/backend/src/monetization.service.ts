@@ -23,6 +23,7 @@ import {
   planExpiry,
   priceSimulation,
   reconcileWallet,
+  reservedTotal,
   validatePricingRule,
   walletBalances,
   type MonetizationSettings,
@@ -55,9 +56,9 @@ export interface PaymentProvider {
 
 const iso = (v: unknown) => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 
-interface LotRow { id: string; wallet_id: string; source_category: TokenCategory; original_quantity: number; remaining_quantity: number; created_at: Date; expires_at: Date | null; source_reference: string }
+interface LotRow { id: string; wallet_id: string; source_category: TokenCategory; original_quantity: number; remaining_quantity: number; reserved_quantity: number; created_at: Date; expires_at: Date | null; source_reference: string }
 const toLot = (r: LotRow): TokenLot => ({
-  id: r.id, walletId: r.wallet_id, category: r.source_category, originalQuantity: Number(r.original_quantity), remainingQuantity: Number(r.remaining_quantity),
+  id: r.id, walletId: r.wallet_id, category: r.source_category, originalQuantity: Number(r.original_quantity), remainingQuantity: Number(r.remaining_quantity), reservedQuantity: Number(r.reserved_quantity ?? 0),
   createdAt: iso(r.created_at)!, expiresAt: iso(r.expires_at), sourceReference: r.source_reference,
 });
 
@@ -132,18 +133,21 @@ export class MonetizationService {
 
   // ------------------------------------------------------------------------------------------- wallet
 
-  private async lockWallet(q: Queryable, accountId: string): Promise<string> {
+  /** @internal shared with AllocationService */
+  async lockWallet(q: Queryable, accountId: string): Promise<string> {
     await q.query('INSERT INTO token_wallets (id, owner_id) VALUES ($1, $2) ON CONFLICT (owner_id) DO NOTHING', [randomUUID(), accountId]);
     const [w] = await q.query<{ id: string }>('SELECT id FROM token_wallets WHERE owner_id = $1 FOR UPDATE', [accountId]);
     if (!w) throw new MonetizationError('NOT_FOUND', 'Account not found');
     return w.id;
   }
 
-  private async lots(q: Queryable, walletId: string): Promise<TokenLot[]> {
+  /** @internal */
+  async lots(q: Queryable, walletId: string): Promise<TokenLot[]> {
     return (await q.query<LotRow>('SELECT * FROM token_lots WHERE wallet_id = $1 ORDER BY created_at, id FOR UPDATE', [walletId])).map(toLot);
   }
 
-  private async ledgerLine(q: Queryable, e: Omit<TokenLedgerEntry, 'id' | 'createdAt'>) {
+  /** @internal */
+  async ledgerLine(q: Queryable, e: Omit<TokenLedgerEntry, 'id' | 'createdAt'>) {
     await q.query(
       `INSERT INTO token_ledger (id, wallet_id, entry_type, source_category, quantity, direction, reference_type, reference_id, grant_lot_id, device_id, created_at, expires_at, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
@@ -152,7 +156,8 @@ export class MonetizationService {
   }
 
   /** Recomputes the caches from the lots (kept equal to the ledger, §28.4). */
-  private async refreshCaches(q: Queryable, walletId: string) {
+  /** @internal */
+  async refreshCaches(q: Queryable, walletId: string) {
     const b = walletBalances(await this.lots(q, walletId), this.now());
     await q.query(
       `UPDATE token_wallets SET total_balance_cache = $2, purchased_balance_cache = $3, promotional_balance_cache = $4, admin_balance_cache = $5,
@@ -250,7 +255,8 @@ export class MonetizationService {
         const lots = await this.lots(q, w.id);
         for (const e of planExpiry(lots, this.now())) {
           const lot = lots.find((l) => l.id === e.lotId)!;
-          await q.query('UPDATE token_lots SET remaining_quantity = 0 WHERE id = $1', [e.lotId]);
+          // Only the unreserved part expires; tokens reserved on a device are settled at release / forfeiture.
+          await q.query('UPDATE token_lots SET remaining_quantity = remaining_quantity - $2 WHERE id = $1', [e.lotId, e.quantity]);
           await this.ledgerLine(q, {
             walletId: w.id, entryType: 'EXPIRATION', category: e.category, quantity: e.quantity, direction: 'DEBIT', referenceType: 'EXPIRY',
             referenceId: lot.sourceReference, lotId: e.lotId, deviceId: null, expiresAt: lot.expiresAt, metadata: { originalGrant: lot.sourceReference, expiredOn: lot.expiresAt },
@@ -265,7 +271,7 @@ export class MonetizationService {
 
   async wallet(accountId: string) {
     const [w] = await this.db.query<{ id: string }>('SELECT id FROM token_wallets WHERE owner_id = $1', [accountId]);
-    if (!w) return { balances: { PROMOTIONAL: 0, ADMIN: 0, PURCHASED: 0, total: 0 }, ledger: [] };
+    if (!w) return { balances: { PROMOTIONAL: 0, ADMIN: 0, PURCHASED: 0, total: 0 }, reservedForDevices: 0, ledger: [] };
     const lots = (await this.db.query<LotRow>('SELECT * FROM token_lots WHERE wallet_id = $1', [w.id])).map(toLot);
     const ledger = await this.db.query<Record<string, unknown>>(
       'SELECT entry_type, source_category, quantity, direction, reference_type, reference_id, created_at FROM token_ledger WHERE wallet_id = $1 ORDER BY seq DESC LIMIT 100',
@@ -273,6 +279,7 @@ export class MonetizationService {
     );
     return {
       balances: walletBalances(lots, this.now()),
+      reservedForDevices: reservedTotal(lots),
       ledger: ledger.map((e) => ({ type: e.entry_type, category: e.source_category, quantity: Number(e.quantity), direction: e.direction, reference: `${e.reference_type}:${e.reference_id}`, at: iso(e.created_at) })),
     };
   }
@@ -287,6 +294,16 @@ export class MonetizationService {
       referenceType: e.reference_type, referenceId: String(e.reference_id), lotId: String(e.grant_lot_id), deviceId: null, createdAt: iso(e.created_at)!, expiresAt: null, metadata: null,
     })) as TokenLedgerEntry[];
     const problems = reconcileWallet(lots, ledger);
+    // Reserved tokens must be exactly what active device allocations still hold (§29).
+    const held = await this.db.query<{ lot_id: string; held: number }>(
+      `SELECT al.lot_id, sum(al.quantity - al.spent)::bigint AS held FROM allocation_lots al
+       JOIN device_allocations d ON d.id = al.allocation_id WHERE d.wallet_id = $1 AND d.status = 'ACTIVE' GROUP BY al.lot_id`,
+      [w.id],
+    );
+    const heldBy = new Map(held.map((h) => [h.lot_id, Number(h.held)] as const));
+    for (const lot of lots) {
+      if ((heldBy.get(lot.id) ?? 0) !== lot.reservedQuantity) problems.push(`Lot ${lot.id}: reserved ${lot.reservedQuantity}, allocations hold ${heldBy.get(lot.id) ?? 0}`);
+    }
     const b = walletBalances(lots, this.now());
     if (Number(w.total_balance_cache) !== b.total) problems.push(`Cached total ${w.total_balance_cache} ≠ ${b.total}`);
     return problems;
@@ -300,8 +317,8 @@ export class MonetizationService {
 
   // ------------------------------------------------------------------------------------------- settings
 
-  async settings(): Promise<MonetizationSettings> {
-    const [row] = await this.db.query<{ settings: Partial<MonetizationSettings> }>('SELECT settings FROM monetization_settings WHERE id = 1');
+  async settings(q: Queryable = this.db): Promise<MonetizationSettings> {
+    const [row] = await q.query<{ settings: Partial<MonetizationSettings> }>('SELECT settings FROM monetization_settings WHERE id = 1');
     return { ...DEFAULT_MONETIZATION_SETTINGS, ...(row?.settings ?? {}) };
   }
 
@@ -312,6 +329,7 @@ export class MonetizationService {
     if (typeof next.paymentRequired !== 'boolean' || typeof next.freeSimulationsOffline !== 'boolean') throw new MonetizationError('VALIDATION', 'Switches must be true or false');
     if (!Number.isSafeInteger(next.shillingsPerToken) || next.shillingsPerToken < 1) throw new MonetizationError('VALIDATION', 'Shillings per token must be a whole number of at least 1');
     if (!Number.isSafeInteger(next.minimumPurchase) || next.minimumPurchase < 1) throw new MonetizationError('VALIDATION', 'Minimum purchase must be at least KSh 1');
+    if (!Number.isSafeInteger(next.offlineAuthorizationDays) || next.offlineAuthorizationDays < 1 || next.offlineAuthorizationDays > 90) throw new MonetizationError('VALIDATION', 'Offline authorization must be 1 to 90 days');
     await this.db.transaction(async (q) => {
       await q.query('INSERT INTO monetization_settings (id, settings) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET settings = excluded.settings, updated_at = now()', [JSON.stringify(next)]);
       await q.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, before_value, after_value) VALUES ($1, $2, $3, $4, $5, $6)', [

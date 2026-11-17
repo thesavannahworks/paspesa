@@ -5,7 +5,7 @@
 import { counterpartyKey, describeCounterparty, getDefinition, type CounterpartyInput } from './catalogue';
 import { checkPin, type EngineDeps } from './engine';
 import { normalizeKenyanPhone } from './phone';
-import type { Account, Counterparty, Favourite, SimulationType, TransactionRecord } from './types';
+import type { Account, Counterparty, Favourite, LocalTokenAllocation, SimulationType, TransactionRecord } from './types';
 import { PIN_PATTERN, fail, outboxEntry, type Failure } from './util';
 
 type Ok<T> = { ok: true } & T;
@@ -154,6 +154,17 @@ export async function setMessageStarred(deps: EngineDeps, messageId: string, sta
 /** Messages shown in the Messages screen (not deleted), oldest first like an SMS thread. */
 export function visibleMessages<T extends { deletedAt?: string | null; createdAt: string }>(messages: readonly T[]): T[] {
   return messages.filter((m) => !m.deletedAt).sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+}
+
+/**
+ * Records this device's token allocation as granted / renewed / released by the server (§29). Local only:
+ * the server keeps the authoritative allocation, so nothing is queued for upload.
+ */
+export async function setTokenAllocation(deps: EngineDeps, allocation: LocalTokenAllocation | null): Promise<void> {
+  await deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (account) await tx.putAccount({ ...account, tokenAllocation: allocation, updatedAt: deps.clock.now() });
+  });
 }
 
 /** Manually save a favourite. The counterparty is validated with the same rules as the transaction. */

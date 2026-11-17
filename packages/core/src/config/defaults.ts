@@ -1,4 +1,5 @@
 import type { FeeSchedule } from '../fees';
+import { DEFAULT_MONETIZATION_SETTINGS, DEFAULT_PRICING, type MonetizationSettings, type PricingConfiguration } from '../pricing';
 import type { SimulationType } from '../types';
 
 /**
@@ -34,6 +35,10 @@ export interface SimulatorConfig {
   feeSchedules: FeeSchedule[];
   /** Which fee schedule each transaction type uses. */
   feeScheduleByType: Record<SimulationType, string>;
+  /** Paspesa token pricing (§27), delivered by the backend. */
+  pricing: PricingConfiguration;
+  /** Back-office monetization settings (payment switch, offline-free rule, authorization length). */
+  monetization: MonetizationSettings;
 }
 
 const EFFECTIVE_FROM = '2026-11-14T00:00:00+03:00';
@@ -126,6 +131,8 @@ export const DEFAULT_CONFIG: SimulatorConfig = {
     WITHDRAW: 'AGENT_WITHDRAWAL',
     RECHARGE: 'ZERO_FEE',
   },
+  pricing: DEFAULT_PRICING,
+  monetization: DEFAULT_MONETIZATION_SETTINGS,
 };
 
 export function getFeeSchedule(config: SimulatorConfig, type: SimulationType): FeeSchedule {

@@ -16,6 +16,7 @@
  */
 import { getDefinition, type CounterpartyInput, type TransactionDefinition } from './catalogue';
 import { getFeeSchedule, type SimulatorConfig } from './config/defaults';
+import { DEFAULT_MONETIZATION_SETTINGS, DEFAULT_PRICING, priceSimulation } from './pricing';
 import { resolveFee } from './fees';
 import { NOTICE_TEMPLATES, findTemplate } from './messages/templates';
 import { messageVariables, renderTemplate, type MessageContext } from './messages/render';
@@ -30,8 +31,10 @@ import type {
   BalanceMovement,
   Counterparty,
   FieldErrors,
+  LocalTokenAllocation,
   MessageRecord,
   PaymentMethod,
+  PricingSnapshot,
   SimulationError,
   SimulationType,
   TransactionRecord,
@@ -58,8 +61,13 @@ export interface SimulationRequest {
   counterparty: CounterpartyInput;
   /** e.g. AIRTIME: 'OWN' | 'OTHER' */
   variant?: string;
-  /** Paspesa service payment method. Defaults to UNMETERED until the monetization phase. */
+  /**
+   * How this simulation is paid for (chosen per simulation, §26): UNMETERED (free while payments are off, or
+   * for 0-token simulations), TOKENS (from this device's allocation, works offline) or DIRECT (paid online).
+   */
   paymentMethod?: PaymentMethod;
+  /** DIRECT: the verified Paspesa payment for this simulation (the server checks it on sync, §32). */
+  directPaymentId?: string;
   /** Simulated Paspesa PIN entered on the PIN screen. Not part of the request fingerprint. */
   pin?: string;
   /**
@@ -100,6 +108,18 @@ export interface Quote {
   feeScheduleId: string;
   feeScheduleVersion: number;
   paymentMethod: PaymentMethod;
+  /** Paspesa token price of this simulation (§27); stored with paid simulations. */
+  pricing: PricingSnapshot;
+}
+
+export interface QuoteOptions {
+  /** When the simulation happens (pricing effective dates). Defaults to now. */
+  at?: string;
+  /**
+   * Server-side checks of an uploaded record skip the device's payment rules: the server verifies the
+   * payment separately against its own wallet, allocations and payments (§27.6, §39.1).
+   */
+  ignorePayment?: boolean;
 }
 
 export type QuoteResult = { ok: true; quote: Quote } | Failure;
@@ -132,12 +152,10 @@ export function quoteSimulation(
   account: Account,
   config: SimulatorConfig,
   request: Omit<SimulationRequest, 'operationId' | 'pin'>,
+  options: QuoteOptions = {},
 ): QuoteResult {
   const definition = getDefinition(request.type);
   const paymentMethod = request.paymentMethod ?? 'UNMETERED';
-  if (paymentMethod !== 'UNMETERED') {
-    return fail('VALIDATION', 'This payment method is not available yet', { paymentMethod: 'Not available yet' });
-  }
 
   const errors: FieldErrors = {};
   const { counterparty, variant, errors: fieldErrors } = definition.normalize(request.counterparty ?? {}, {
@@ -180,6 +198,24 @@ export function quoteSimulation(
     }
   }
 
+  // Paspesa price (§27). Token-funded simulations use the pricing authorized with the allocation (§27.6).
+  const at = options.at ?? new Date().toISOString();
+  const allocation = account.tokenAllocation ?? null;
+  const pricingConfig = paymentMethod === 'TOKENS' && allocation ? allocation.pricing : config.pricing ?? DEFAULT_PRICING;
+  let pricing: PricingSnapshot;
+  try {
+    pricing = priceSimulation(pricingConfig, { accountId: account.id, type: request.type, amount, at });
+  } catch (e) {
+    // Free play never depends on pricing: without a usable rule, an unpaid simulation is simply free.
+    const paymentNeeded = paymentMethod !== 'UNMETERED' || (config.monetization ?? DEFAULT_MONETIZATION_SETTINGS).paymentRequired;
+    if (paymentNeeded) return fail('VALIDATION', 'Pricing is not available right now. Please try again later.', undefined, e);
+    pricing = { formula: 'FULL_AMOUNT', freeThreshold: 0, amountPerToken: null, tierConfiguration: null, resolvedRule: 'unpriced', accountOverride: null, configVersion: 0, tokenCost: 0, appliedConfigAt: at };
+  }
+  if (!options.ignorePayment) {
+    const payment = checkPayment(config, allocation, paymentMethod, pricing.tokenCost, at, request.directPaymentId);
+    if (payment) return payment;
+  }
+
   const balanceBefore = account.currentBalanceCache;
   const isDebit = definition.direction === 'DEBIT';
   const totalDebit = isDebit ? amount + fee.fee : 0;
@@ -208,8 +244,46 @@ export function quoteSimulation(
       feeScheduleId: fee.scheduleId,
       feeScheduleVersion: fee.scheduleVersion,
       paymentMethod,
+      pricing,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Paspesa payment rules (White Paper §26, §29) — all inert while monetization.paymentRequired is off
+// ---------------------------------------------------------------------------
+
+function checkPayment(
+  config: SimulatorConfig,
+  allocation: LocalTokenAllocation | null,
+  method: PaymentMethod,
+  tokenCost: number,
+  at: string,
+  directPaymentId: string | undefined,
+): Failure | null {
+  const settings = config.monetization ?? DEFAULT_MONETIZATION_SETTINGS;
+  const authorized = !!allocation && Date.parse(at) <= Date.parse(allocation.authorizationExpiresAt);
+  if (method === 'TOKENS') {
+    if (tokenCost === 0) return null;
+    if (!allocation) return fail('INSUFFICIENT_TOKENS', 'No tokens are set aside on this phone. Connect to the internet to get some.');
+    if (!authorized) return fail('AUTHORIZATION_EXPIRED', 'Your offline tokens need renewing. Connect to the internet to continue.');
+    if (allocation.remaining < tokenCost) {
+      return fail('INSUFFICIENT_TOKENS', `This simulation needs ${tokenCost} tokens; ${allocation.remaining} are set aside on this phone.`);
+    }
+    return null;
+  }
+  if (method === 'DIRECT') {
+    if (tokenCost === 0) return null;
+    return directPaymentId ? null : fail('PAYMENT_REQUIRED', 'Complete the payment for this simulation first.');
+  }
+  // UNMETERED
+  if (!settings.paymentRequired) return null;
+  if (tokenCost > 0) return fail('PAYMENT_REQUIRED', `This simulation costs ${tokenCost} tokens. Choose how to pay for it.`);
+  // Free simulation: allowed offline unless the back office requires an authorized device (§29.6).
+  if (!settings.freeSimulationsOffline && !authorized) {
+    return fail('AUTHORIZATION_REQUIRED', 'Connect to the internet to authorize this phone for simulations.');
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +324,11 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         return pinFailure;
       }
 
-      const quoted = quoteSimulation(account, deps.config, request);
+      const now = deps.clock.now();
+      const quoted = quoteSimulation(account, deps.config, request, { at: now });
       if (!quoted.ok) return quoted;
       const q = quoted.quote;
 
-      const now = deps.clock.now();
       const sequence = account.version + 1;
       const record: TransactionRecord = {
         id: deps.ids.uuid(),
@@ -279,7 +353,8 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         feeScheduleVersion: q.feeScheduleVersion,
         configVersion: deps.config.version,
         paymentMethod: q.paymentMethod,
-        pricing: null,
+        ...(q.paymentMethod === 'DIRECT' && request.directPaymentId ? { directPaymentId: request.directPaymentId } : {}),
+        pricing: q.paymentMethod === 'UNMETERED' ? null : q.pricing,
         requestFingerprint: fingerprint,
         createdAt: now,
         completedAt: now,
@@ -287,8 +362,11 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         payloadVersion: PAYLOAD_VERSION,
       };
 
+      const allocation = account.tokenAllocation ?? null;
+      const spentTokens = q.paymentMethod === 'TOKENS' ? q.pricing.tokenCost : 0;
       const updatedAccount: Account = {
         ...account,
+        ...(allocation && spentTokens > 0 ? { tokenAllocation: { ...allocation, remaining: allocation.remaining - spentTokens } } : {}),
         currentBalanceCache: q.balanceAfter,
         airtimeBalance: q.airtimeBalanceAfter ?? account.airtimeBalance,
         version: sequence,
@@ -504,6 +582,7 @@ export function requestFingerprint(request: SimulationRequest): string {
     variant: request.variant ?? null,
     counterparty: request.counterparty ?? {},
     paymentMethod: request.paymentMethod ?? 'UNMETERED',
+    ...(request.directPaymentId ? { directPaymentId: request.directPaymentId } : {}),
     ...(request.addWithdrawalCharge ? { addWithdrawalCharge: true } : {}),
   });
 }

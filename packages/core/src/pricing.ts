@@ -64,7 +64,8 @@ export const DEFAULT_PRICING_RULE: PricingRule = {
   amountPerToken: 5,
   tiers: null,
   version: 1,
-  effectiveFrom: '2026-11-14T00:00:00+03:00',
+  // The agreed default applies from the start (any simulation date).
+  effectiveFrom: '2020-01-01T00:00:00+03:00',
   effectiveTo: null,
   status: 'ACTIVE',
 };
@@ -89,6 +90,8 @@ export interface MonetizationSettings {
   shillingsPerToken: number;
   /** Smallest token purchase in shillings. */
   minimumPurchase: number;
+  /** How long a device may spend its allocation offline before renewing online (§29.4, default 3 days). */
+  offlineAuthorizationDays: number;
 }
 
 export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
@@ -96,6 +99,7 @@ export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
   freeSimulationsOffline: true,
   shillingsPerToken: SHILLINGS_PER_TOKEN,
   minimumPurchase: 1,
+  offlineAuthorizationDays: 3,
 };
 
 /** Shilling price of a pay-per-simulation: its token cost at the token rate. */

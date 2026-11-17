@@ -187,3 +187,27 @@ activation, which needs the product-owner inputs listed below (§52).
   and overridable by `*_BASE_URL`. Live testing with real keys is deferred by the owner.
 - **Still open:** live provider route (own shortcode vs aggregator); device allocations for offline token
   use (Phase 7).
+
+## Device token allocations — Phase 7, part 1 (2026-11-17)
+- **Reservation model** (`apps/backend/src/allocation.service.ts`): a device's allocation RESERVES tokens
+  inside their grant lots (`token_lots.reserved_quantity`, `allocation_lots`), so categories and the
+  promotional → admin → purchased order survive. Central spending and expiry use only the unreserved part.
+  DEVICE_ALLOCATION / DEVICE_RELEASE ledger lines record reservations without changing a lot's balance;
+  expenditure from an allocation and LOST_DEVICE_FORFEITURE do. Reconciliation checks both: lots against
+  the ledger, and reserved quantities against active allocations. One active allocation per device.
+- **Offline authorization:** an allocation carries an authorization window (`offlineAuthorizationDays`,
+  default 3, back-office setting) and the pricing configuration to use offline (§27.6). Every sync renews
+  both. After the window, the device cannot start paid token simulations; earlier records still reconcile
+  and the allocation is not returned automatically (§29.4).
+- **Engine:** `paymentMethod` per simulation — TOKENS (from the device allocation, works offline), DIRECT
+  (needs a verified payment id), UNMETERED (free while `paymentRequired` is off, or for 0-token
+  simulations; with `freeSimulationsOffline` off a free simulation needs an authorized device). Paid
+  records store their pricing snapshot. Free play never depends on pricing being available.
+- **Sync:** uploaded TOKENS records are re-priced with the allocation's pricing and spent from its lots
+  (once per simulation); a mismatch is PRICING_MISMATCH for review. DIRECT records must match a verified
+  payment for that simulation. UNMETERED priced records are rejected only while payments are required.
+- **Release** (online) returns unused tokens only when the phone's remaining equals the server's (all
+  spending uploaded). **Lost device** (admin CLI `device:lost`) forfeits every unreconciled reserved token
+  as a permanent, audited ledger event; no transactions are invented.
+- **Limit:** one installation per account today, so "Phone B" (§29.2) arrives with account registration
+  and login; the allocation model is already per device.

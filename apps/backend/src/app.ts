@@ -9,6 +9,10 @@
  *   GET  /v1/pricing          [auth]   active pricing configuration (§27)
  *   POST /v1/pricing/quote    [auth]   token cost of a simulation, with its pricing snapshot
  *   GET  /v1/wallet           [auth]   token balances by category and recent ledger (§28)
+ *   GET  /v1/allocations/current  [auth]  this device's token allocation (§29)
+ *   POST /v1/allocations          [auth]  set aside N more tokens on this device for offline use
+ *   POST /v1/allocations/renew    [auth]  refresh the offline authorization (every sync also does this)
+ *   POST /v1/allocations/release  [auth]  return unused tokens (only once the device is fully synced)
  *   POST /v1/payments/tokens  [auth]   buy tokens: STK prompt for KSh N → N tokens once verified (§31)
  *   GET  /v1/payments/:id     [auth]   payment status (re-checked with the provider while pending)
  *   GET  /v1/payments/providers [auth] payment providers switched on (Daraja, Kopo Kopo, IntaSend, Paystack, PayHero)
@@ -43,6 +47,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SYNC_API_VERSION, type SyncOperation, type SyncPushRequest } from '@paspesa/core';
 import type { Database } from './database.js';
+import { AllocationService } from './allocation.service.js';
 import { MonetizationError, MonetizationService, type PaymentProvider } from './monetization.service.js';
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
@@ -91,14 +96,16 @@ class InstallationsController {
   /** Idempotent: re-registering with the same secret succeeds; a different secret is refused. */
   @Post()
   @HttpCode(200)
-  async register(@Body() body: { installationId?: unknown; token?: unknown }) {
+  async register(@Body() body: { installationId?: unknown; token?: unknown; platform?: unknown; label?: unknown }) {
     const { installationId, token } = body ?? {};
     if (typeof installationId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(installationId)) {
       throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'installationId is invalid');
     }
     if (typeof token !== 'string' || token.length < 32 || token.length > 200) throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'token is invalid');
     const tokenHash = hash(token);
-    await this.db.query('INSERT INTO installations (id, token_hash) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [installationId, tokenHash]);
+    const platform = typeof body.platform === 'string' ? body.platform.slice(0, 20) : null;
+    const label = typeof body.label === 'string' ? body.label.slice(0, 80) : null;
+    await this.db.query('INSERT INTO installations (id, token_hash, platform, label) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING', [installationId, tokenHash, platform, label]);
     const [row] = await this.db.query<{ token_hash: string }>('SELECT token_hash FROM installations WHERE id = $1', [installationId]);
     if (!row || !timingSafeEqual(Buffer.from(row.token_hash), Buffer.from(tokenHash))) {
       throw fail(HttpStatus.CONFLICT, 'ALREADY_REGISTERED', 'This installation is registered with another token');
@@ -196,6 +203,45 @@ const moneyError = (e: unknown): never => {
   throw e;
 };
 
+@Controller('v1/allocations')
+@UseGuards(InstallationAuthGuard)
+class AllocationsController {
+  constructor(@Inject(AllocationService) private readonly allocations: AllocationService) {}
+
+  private async run<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (e) {
+      return moneyError(e);
+    }
+  }
+
+  @Get('current')
+  async current(@Req() req: AuthedRequest) {
+    return { allocation: await this.allocations.current(req.installationId!) };
+  }
+
+  @Post()
+  @HttpCode(200)
+  async allocate(@Req() req: AuthedRequest, @Body() body: { quantity?: unknown }) {
+    if (typeof body?.quantity !== 'number') throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'quantity is required');
+    return { allocation: await this.run(() => this.allocations.allocate(req.installationId!, body.quantity as number)) };
+  }
+
+  @Post('renew')
+  @HttpCode(200)
+  async renew(@Req() req: AuthedRequest) {
+    return { allocation: await this.allocations.renew(req.installationId!) };
+  }
+
+  @Post('release')
+  @HttpCode(200)
+  async release(@Req() req: AuthedRequest, @Body() body: { deviceRemaining?: unknown }) {
+    if (typeof body?.deviceRemaining !== 'number') throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'deviceRemaining is required');
+    return this.run(() => this.allocations.release(req.installationId!, body.deviceRemaining as number));
+  }
+}
+
 @Controller('v1/payments')
 class PaymentsController {
   constructor(
@@ -279,12 +325,17 @@ class AppModule {
   static with(db: Database, providers: PaymentProviders): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, PaymentsController],
+      controllers: [HealthController, InstallationsController, SyncController, MonetizationController, AllocationsController, PaymentsController],
       providers: [
         { provide: DATABASE, useValue: db },
         { provide: PAYMENT_PROVIDERS, useValue: providers },
-        { provide: SyncService, useFactory: () => new SyncService(db) },
         { provide: MonetizationService, useFactory: () => new MonetizationService(db) },
+        { provide: AllocationService, useFactory: (money: MonetizationService) => new AllocationService(db, money), inject: [MonetizationService] },
+        {
+          provide: SyncService,
+          useFactory: (money: MonetizationService, allocations: AllocationService) => new SyncService(db, undefined, money, allocations),
+          inject: [MonetizationService, AllocationService],
+        },
         InstallationAuthGuard,
       ],
     };

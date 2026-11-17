@@ -87,7 +87,7 @@ describe('pricing engine (§27, §47.4)', () => {
 });
 
 const lot = (id: string, category: TokenLot['category'], qty: number, extra: Partial<TokenLot> = {}): TokenLot => ({
-  id, walletId: 'w', category, originalQuantity: qty, remainingQuantity: qty, createdAt: '2026-11-01T00:00:00Z', expiresAt: null, sourceReference: `ref-${id}`, ...extra,
+  id, walletId: 'w', category, originalQuantity: qty, remainingQuantity: qty, reservedQuantity: 0, createdAt: '2026-11-01T00:00:00Z', expiresAt: null, sourceReference: `ref-${id}`, ...extra,
 });
 
 describe('token wallet (§28, §47.5)', () => {

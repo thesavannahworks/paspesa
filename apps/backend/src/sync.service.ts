@@ -21,10 +21,15 @@ import {
   type SyncOperation,
   type SyncOperationResult,
   type SyncResultCode,
+  type SyncPushResponse,
   type SyncServerState,
   type SyncTransaction,
+  type SimulationType,
 } from '@paspesa/core';
+import { priceSimulation } from '@paspesa/core';
+import { AllocationService } from './allocation.service.js';
 import type { Database, Queryable } from './database.js';
+import { MonetizationService } from './monetization.service.js';
 
 type Outcome = { status: 'SYNCED' | 'NEEDS_REVIEW'; code: SyncResultCode; message?: string };
 const applied: Outcome = { status: 'SYNCED', code: 'APPLIED' };
@@ -105,15 +110,19 @@ export class SyncService {
   constructor(
     private readonly db: Database,
     private readonly config: SimulatorConfig = DEFAULT_CONFIG,
+    private readonly money: MonetizationService = new MonetizationService(db),
+    private readonly allocations: AllocationService = new AllocationService(db, money),
   ) {}
 
-  async push(installationId: string, operations: SyncOperation[]): Promise<{ results: SyncOperationResult[]; server: SyncServerState | null }> {
+  async push(installationId: string, operations: SyncOperation[]): Promise<SyncPushResponse> {
     const results: SyncOperationResult[] = [];
     for (const op of operations) {
       const outcome = await this.db.transaction((q) => this.process(q, installationId, op));
       results.push({ operationId: op.operationId, entityType: op.entityType, ...outcome });
     }
-    return { results, server: await this.serverState(this.db, installationId) };
+    // A successful synchronization refreshes the device's offline authorization (§29.4).
+    const allocation = await this.allocations.renew(installationId);
+    return { results, server: await this.serverState(this.db, installationId), allocation };
   }
 
   /** Server balance and position for this installation (reconciliation, §25.4). */
@@ -222,6 +231,8 @@ export class SyncService {
     // Checked here rather than left to the UNIQUE constraint, so one bad record cannot block every retry.
     const [clash] = await q.query('SELECT 1 FROM transactions WHERE account_id = $1 AND (reference = $2 OR id = $3)', [account.id, t.reference, t.id]);
     if (clash) return review('VALIDATION', 'transaction ID or reference already used');
+    const paid = await this.verifyPayment(q, installationId, account.id, t);
+    if (paid) return paid;
 
     await q.query(
       `UPDATE accounts SET balance = $2, airtime_balance = $3, version = $4, updated_at = $5 WHERE id = $1`,
@@ -236,6 +247,33 @@ export class SyncService {
       );
     }
     return applied;
+  }
+
+  /**
+   * How the simulation was paid (§26): TOKENS → spent from this device's allocation; DIRECT → a verified
+   * payment for this simulation; UNMETERED → only while payments are off or for free simulations.
+   */
+  private async verifyPayment(q: Queryable, installationId: string, accountId: string, t: SyncTransaction): Promise<Outcome | null> {
+    if (t.paymentMethod === 'TOKENS') {
+      const spend = await this.allocations.spendSynced(q, {
+        accountId, deviceId: installationId, simulationId: t.operationId, type: t.type as SimulationType, amount: t.amount, completedAt: t.completedAt, claimed: t.pricing,
+      });
+      return spend.ok ? null : review(spend.code, spend.message);
+    }
+    if (t.paymentMethod === 'DIRECT') {
+      const [p] = await q.query<{ id: string; simulation_status: string }>(
+        "SELECT id, simulation_status FROM payments WHERE id = $1 AND owner_id = $2 AND related_simulation_id = $3 AND status = 'SUCCESSFUL' FOR UPDATE",
+        [t.directPaymentId ?? '', accountId, t.operationId],
+      );
+      if (!p || (p.simulation_status !== 'AUTHORIZED' && p.simulation_status !== 'SUCCESSFUL')) return review('PAYMENT_NOT_VERIFIED', 'No verified payment for this simulation');
+      await q.query("UPDATE payments SET simulation_status = 'SUCCESSFUL' WHERE id = $1", [p.id]);
+      return null;
+    }
+    if ((await this.money.settings(q)).paymentRequired) {
+      const cost = priceSimulation(await this.money.pricing(q), { accountId, type: t.type as SimulationType, amount: t.amount, at: t.completedAt }).tokenCost;
+      if (cost > 0) return review('PAYMENT_REQUIRED', `This simulation costs ${cost} tokens`);
+    }
+    return null;
   }
 
   private async insertTransaction(q: Queryable, accountId: string, t: SyncTransaction) {

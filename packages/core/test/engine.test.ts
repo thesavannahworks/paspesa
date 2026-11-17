@@ -116,10 +116,12 @@ describe('transaction engine (§11, §17, §47.1)', () => {
     expect(r.transaction.variant).toBe('OWN');
   });
 
-  it('refuses monetized payment methods until the monetization phase', async () => {
+  it('tokens need a device allocation (free simulations do not)', async () => {
     const { deps } = await makeAccount(1_000);
-    const r = await processSimulation(deps, sendMoney(10, { paymentMethod: 'TOKENS' }));
-    expect(!r.ok && r.error.fieldErrors?.paymentMethod).toBeTruthy();
+    const paid = await processSimulation(deps, sendMoney(100, { paymentMethod: 'TOKENS' }));
+    expect(!paid.ok && paid.error.code).toBe('INSUFFICIENT_TOKENS');
+    const free = await processSimulation(deps, sendMoney(10, { paymentMethod: 'TOKENS' }));
+    expect(free.ok).toBe(true);
   });
 
   it('requires an account', async () => {

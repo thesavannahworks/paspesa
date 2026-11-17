@@ -62,7 +62,12 @@ export type SyncResultCode =
   | 'FEE_MISMATCH'
   | 'VALIDATION'
   | 'NO_ACCOUNT'
-  | 'UNSUPPORTED_VERSION';
+  | 'UNSUPPORTED_VERSION'
+  | 'PAYMENT_REQUIRED'
+  | 'PRICING_MISMATCH'
+  | 'INSUFFICIENT_TOKENS'
+  | 'AUTHORIZATION_EXPIRED'
+  | 'PAYMENT_NOT_VERIFIED';
 
 export interface SyncOperationResult {
   operationId: string;
@@ -80,9 +85,20 @@ export interface SyncServerState {
   airtimeBalance: number;
 }
 
+/** This device's token allocation as the server sees it after the push (§29); renewed by every sync. */
+export interface ServerAllocation {
+  allocationId: string;
+  /** Allocated minus spent as recorded by the server. */
+  remaining: number;
+  authorizationExpiresAt: string;
+  pricing: import('./pricing').PricingConfiguration;
+}
+
 export interface SyncPushResponse {
   results: SyncOperationResult[];
   server: SyncServerState | null;
+  /** Present when the server reports on allocations: null = this device has none. */
+  allocation?: ServerAllocation | null;
 }
 
 export interface SyncTransport {
@@ -228,12 +244,35 @@ export async function syncOutbox(deps: EngineDeps, transport: SyncTransport, bat
         }
       }
     });
+    if (response.allocation !== undefined) await adoptAllocation(deps, response.allocation);
     if (unanswered) {
       report.error = 'The server did not answer every operation';
       return report;
     }
   }
   return report;
+}
+
+/**
+ * Takes the server's view of this device's allocation: remaining = server remaining less token spends made
+ * here that the server has not confirmed yet (so nothing can be spent twice).
+ */
+export async function adoptAllocation(deps: EngineDeps, server: ServerAllocation | null): Promise<void> {
+  await deps.store.runAtomic(async (tx) => {
+    const account = await tx.getAccount();
+    if (!account) return;
+    if (!server) {
+      if (account.tokenAllocation) await tx.putAccount({ ...account, tokenAllocation: null });
+      return;
+    }
+    const pending = (await tx.listTransactions())
+      .filter((t) => t.paymentMethod === 'TOKENS' && t.syncStatus !== 'SYNCED' && t.pricing)
+      .reduce((sum, t) => sum + (t.pricing?.tokenCost ?? 0), 0);
+    await tx.putAccount({
+      ...account,
+      tokenAllocation: { allocationId: server.allocationId, remaining: Math.max(0, server.remaining - pending), authorizationExpiresAt: server.authorizationExpiresAt, pricing: server.pricing },
+    });
+  });
 }
 
 /** Counts for a sync indicator. */
@@ -273,7 +312,8 @@ export function checkSyncedTransaction(account: Account, config: SimulatorConfig
     paymentMethod: t.paymentMethod,
     ...(charge > 0 ? { addWithdrawalCharge: true } : {}),
   };
-  const quoted = quoteSimulation(account, config, request);
+  // The payment is verified separately by the server (allocations, payments), not with device rules.
+  const quoted = quoteSimulation(account, config, request, { at: t.completedAt, ignorePayment: true });
   if (!quoted.ok) return { ok: false, code: 'VALIDATION', message: quoted.error.message };
   const q = quoted.quote;
   if (q.fee !== t.fee || q.amount !== t.amount || q.totalDebit !== t.totalDebit) {

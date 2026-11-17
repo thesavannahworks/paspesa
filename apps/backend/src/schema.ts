@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -249,4 +249,45 @@ CREATE TABLE IF NOT EXISTS payment_credits (
   status TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------- v3: devices and token allocations (§29)
+
+-- Installations are the devices (§37.11): installation-specific identity.
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS label TEXT;
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE';
+
+-- Tokens reserved inside a lot for a device allocation (central spending uses the unreserved part).
+ALTER TABLE token_lots ADD COLUMN IF NOT EXISTS reserved_quantity BIGINT NOT NULL DEFAULT 0;
+
+-- Device token allocations (§37.12): one ACTIVE allocation per device.
+CREATE TABLE IF NOT EXISTS device_allocations (
+  id TEXT PRIMARY KEY,
+  wallet_id TEXT NOT NULL REFERENCES token_wallets(id),
+  device_id TEXT NOT NULL REFERENCES installations(id),
+  allocated_quantity BIGINT NOT NULL DEFAULT 0,
+  spent_quantity BIGINT NOT NULL DEFAULT 0,
+  released_quantity BIGINT NOT NULL DEFAULT 0,
+  forfeited_quantity BIGINT NOT NULL DEFAULT 0,
+  pricing JSONB NOT NULL,
+  authorization_started_at TIMESTAMPTZ NOT NULL,
+  authorization_expires_at TIMESTAMPTZ NOT NULL,
+  last_renewed_at TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'RELEASED', 'FORFEITED')),
+  created_at TIMESTAMPTZ NOT NULL,
+  released_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS device_allocations_one_active ON device_allocations (device_id) WHERE status = 'ACTIVE';
+
+-- Which lots an allocation reserved, and how much of each the device spent.
+CREATE TABLE IF NOT EXISTS allocation_lots (
+  allocation_id TEXT NOT NULL REFERENCES device_allocations(id),
+  lot_id TEXT NOT NULL REFERENCES token_lots(id),
+  category TEXT NOT NULL,
+  quantity BIGINT NOT NULL,
+  spent BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (allocation_id, lot_id)
+);
+
+ALTER TABLE token_spends ADD COLUMN IF NOT EXISTS allocation_id TEXT;
 `;

@@ -9,6 +9,8 @@
  *   npm run admin -w @paspesa/backend -- wallet:show <accountId>
  *   npm run admin -w @paspesa/backend -- wallet:reconcile <accountId>
  *   npm run admin -w @paspesa/backend -- accounts
+ *   npm run admin -w @paspesa/backend -- devices
+ *   npm run admin -w @paspesa/backend -- device:lost <installationId> "<reason>"
  *   npm run admin -w @paspesa/backend -- settings:show
  *   npm run admin -w @paspesa/backend -- settings:set freeSimulationsOffline false
  *
@@ -24,6 +26,7 @@ try {
   // no .env file: use the environment as is
 }
 import { openDatabase } from './database.js';
+import { AllocationService } from './allocation.service.js';
 import { MonetizationService } from './monetization.service.js';
 
 const [command, ...args] = process.argv.slice(2);
@@ -57,6 +60,17 @@ try {
       print(problems.length ? { consistent: false, problems } : { consistent: true });
       break;
     }
+    case 'devices':
+      print(await db.query(
+        `SELECT i.id AS installation_id, i.platform, i.label, i.status, i.last_seen_at, a.account_name,
+                d.allocated_quantity, d.spent_quantity, d.authorization_expires_at
+         FROM installations i LEFT JOIN accounts a ON a.installation_id = i.id
+         LEFT JOIN device_allocations d ON d.device_id = i.id AND d.status = 'ACTIVE' ORDER BY i.created_at`,
+      ));
+      break;
+    case 'device:lost':
+      print(await new AllocationService(db, money).forfeitLostDevice(args[0]!, actor, args[1] ?? 'Reported lost'));
+      break;
     case 'settings:show':
       print(await money.settings());
       break;
@@ -70,7 +84,7 @@ try {
       print(await db.query('SELECT id, installation_id, account_name, phone_number, balance FROM accounts ORDER BY created_at'));
       break;
     default:
-      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | settings:show | settings:set <key> <value> | accounts');
+      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts');
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
