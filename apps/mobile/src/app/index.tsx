@@ -9,6 +9,7 @@ import {
   HomeInternetIcon, LipaIcon, BundlesIcon, InvestIcon, PochiWalletIcon, SharedPayIcon, ScanIcon, SearchIcon, SendMoneyIcon, WithdrawIcon,
 } from '@/icons';
 import { backupRefreshControl } from '@/components/BackupRefresh';
+import { DesktopHome } from '@/components/DesktopHome';
 import { useLayoutFrame } from '@/components/LayoutFrame';
 import { ExploreCarousel, MyFinances } from '@/components/explore';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -42,7 +43,8 @@ export default function HomeScreen() {
   const [page, setPage] = useState(0);
   const [scanCollapsed, setScanCollapsed] = useState(false);
   const lastScrollY = useRef(0);
-  const { contentWidth: width } = useLayoutFrame();
+  const frame = useLayoutFrame();
+  const width = frame.contentWidth;
   const cardWidth = Math.min(width, 520) - s(136);
 
   const frequents = useMemo(() => {
@@ -57,6 +59,7 @@ export default function HomeScreen() {
   if (session.required && !session.email) return <Redirect href="/sign-in" />;
   if (!account) return <Redirect href="/setup" />;
   if (!account.pin && deps.config.pinMode === 'USER_PIN') return <Redirect href="/create-pin" />;
+  if (frame.mode === 'desktop') return <DesktopHome />;
 
   const firstName = account.accountName.split(' ')[0] ?? account.accountName;
   const unread = messages.some((m) => !m.readAt && !m.deletedAt);

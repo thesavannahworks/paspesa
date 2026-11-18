@@ -26,7 +26,8 @@ export interface Runtime {
 }
 
 /** Every preference read at start-up. A key missing here is saved but not restored after a restart. */
-const PREF_KEYS = ['theme', 'balanceHidden', 'frequentsOpen', 'profilePhoto', 'messageZoom', 'biometricsEnabled'];
+// Every preference must be listed here to be loaded at start-up (one not listed resets on each launch).
+const PREF_KEYS = ['theme', 'balanceHidden', 'frequentsOpen', 'profilePhoto', 'messageZoom', 'biometricsEnabled', 'tokenOrder', 'webView'];
 
 /**
  * Builds the offline-first runtime. The ledger lives in tables (SQLite on the phone, IndexedDB in the

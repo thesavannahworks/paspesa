@@ -10,7 +10,7 @@ async function populated() {
   clock.set('2026-11-13T03:06:00.000Z'); // 13 Nov, 6:06 am
   await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 3, counterparty: { name: 'Amina Wanjiru', phone: '254111000222' } });
   clock.set('2026-11-14T05:16:00.000Z'); // 14 Nov, 8:16 am
-  await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 1_000, counterparty: { name: 'Innocent Achoka', tillNumber: '6484844' } });
+  await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 1_000, counterparty: { name: 'Daniel Mutai', tillNumber: '5123456' } });
   await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 2_000, counterparty: { name: 'James Mwangi', phone: '0733123456' } });
   return ctx;
 }
@@ -47,8 +47,8 @@ describe('statements derive from the ledger (§22)', () => {
     const txs = await store.listTransactions();
     const opts = { utcOffsetMinutes: deps.config.utcOffsetMinutes };
     expect(buildStatement(txs, { ...opts, fromDate: '2026-11-13', toDate: '2026-11-13' }).rowCount).toBe(1);
-    expect(buildStatement(txs, { ...opts, search: 'innocent' }).rowCount).toBe(1);
-    expect(buildStatement(txs, { ...opts, search: '6484844' }).rowCount).toBe(1);
+    expect(buildStatement(txs, { ...opts, search: 'daniel' }).rowCount).toBe(1);
+    expect(buildStatement(txs, { ...opts, search: '5123456' }).rowCount).toBe(1);
     const ref = txs.find((t) => t.type === 'SEND_MONEY')!.reference;
     expect(buildStatement(txs, { ...opts, search: ref.toLowerCase() }).rowCount).toBe(1);
     expect(buildStatement(txs, { ...opts, search: 'nobody-matches' }).rowCount).toBe(0);

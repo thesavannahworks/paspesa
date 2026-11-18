@@ -435,8 +435,16 @@ export class MonetizationService {
   ): Promise<PaymentRecord> {
     const payment = await this.db.transaction(async (q) => {
       const [existing] = await q.query<PaymentRow>('SELECT * FROM payments WHERE owner_id = $1 AND idempotency_key = $2', [input.accountId, input.idempotencyKey]);
-      // A retry of a request the provider never accepted sends the prompt again (same payment, no new charge).
-      if (existing) return { record: toPayment(existing), created: existing.status === 'INITIATED' && !existing.provider_reference };
+      // A retry of a request the provider never accepted sends the prompt again (same payment, no new charge),
+      // to the number given this time.
+      if (existing) {
+        const resend = existing.status === 'INITIATED' && !existing.provider_reference;
+        if (resend && existing.payer_phone !== input.phone) {
+          await q.query('UPDATE payments SET payer_phone = $2 WHERE id = $1', [existing.id, input.phone]);
+          existing.payer_phone = input.phone;
+        }
+        return { record: toPayment(existing), created: resend };
+      }
       const record: PaymentRecord = {
         id: randomUUID(), ownerId: input.accountId, paymentType: input.type, provider: provider.name, providerReference: null, idempotencyKey: input.idempotencyKey,
         amount: input.amount, currency: 'KES', status: 'INITIATED', tokens: input.tokens, payerPhone: input.phone, relatedSimulationId: input.simulationId,
@@ -451,7 +459,15 @@ export class MonetizationService {
       return { record, created: true };
     });
     if (!payment.created) return payment.record;
-    const { providerReference } = await provider.initiate(payment.record);
+    let providerReference: string;
+    try {
+      ({ providerReference } = await provider.initiate(payment.record));
+    } catch (e) {
+      // The provider refused to send the prompt: nothing was charged. Kept INITIATED (a retry sends it again);
+      // the reason is recorded for the back office.
+      await this.db.transaction((q) => this.paymentEvent(q, payment.record.id, 'PROVIDER_REFUSED', { error: e instanceof Error ? e.message : String(e) }));
+      throw e;
+    }
     return this.db.transaction(async (q) => {
       await q.query("UPDATE payments SET provider_reference = $2, status = 'PENDING' WHERE id = $1", [payment.record.id, providerReference]);
       await this.paymentEvent(q, payment.record.id, 'PENDING', { providerReference });

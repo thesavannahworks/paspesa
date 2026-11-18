@@ -236,7 +236,7 @@ function MyQr() {
           <View style={styles.qrLogo} pointerEvents="none"><PochiWalletIcon size={50} /></View>
         </View>
         <View style={{ marginTop: s(12) }}><UserAvatar size={82} /></View>
-        <T variant="body" style={{ marginTop: s(12), fontSize: s(16) }} color={colors.textSecondary}>{account.accountName.toUpperCase()}</T>
+        <T variant="body" style={{ marginTop: s(12), fontSize: s(16) }} color={colors.textSecondary}>{account.accountName}</T>
         {amount ? <T variant="bodyStrong" style={{ marginTop: s(6), fontSize: s(17) }}>{formatKsh(amount)}</T> : null}
       </View>
       <View style={{ alignItems: 'flex-end', marginTop: s(12) }}>

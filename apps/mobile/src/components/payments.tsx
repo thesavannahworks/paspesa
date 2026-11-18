@@ -254,7 +254,7 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
         rows: [
           { label: 'Paybill number', value: `${c.paybillNumber ?? ''} - ${c.businessName ?? ''}` },
           { label: 'Account number', value: c.accountReference ?? '' },
-          ...(c.accountName ? [{ label: 'Account name', value: c.accountName.toUpperCase() }] : []),
+          ...(c.accountName ? [{ label: 'Account name', value: c.accountName }] : []),
           amount,
           cost,
         ],
@@ -646,9 +646,9 @@ function PaymentSuccess({ tx }: { tx: TransactionRecord }) {
 
   const partyName = partyNameOf(type, c);
   const lines =
-    type === 'BUY_GOODS' ? [partyName.toUpperCase(), `Till number: ${c.tillNumber ?? ''}`]
-    : type === 'PAYBILL' ? [partyName.toUpperCase(), `Paybill number: ${c.paybillNumber ?? ''}`, `Account number: ${c.accountReference ?? ''}`]
-    : [partyName.toUpperCase(), `Phone number:${toLocalPhone(c.phone ?? '')}`];
+    type === 'BUY_GOODS' ? [partyName, `Till number: ${c.tillNumber ?? ''}`]
+    : type === 'PAYBILL' ? [partyName, `Paybill number: ${c.paybillNumber ?? ''}`, `Account number: ${c.accountReference ?? ''}`]
+    : [partyName, `Phone number:${toLocalPhone(c.phone ?? '')}`];
 
   const actions =
     type === 'SEND_MONEY' ? <>{favAction}<ResultAction icon={<ReverseIcon size={34} />} label={'Reverse\ntransaction'} inert />{schedule}{receipt}</>

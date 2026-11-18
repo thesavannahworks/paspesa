@@ -79,7 +79,7 @@ describe('transaction engine (§11, §17, §47.1)', () => {
     expect(await run({ type: 'SEND_MONEY', amount: 1_000, counterparty: { name: 'A', phone: '0798765432' } })).toBe(13);
     expect(await run({ type: 'POCHI', amount: 1_000, counterparty: { name: 'Mama Mboga', phone: '0798765432' } })).toBe(13);
     expect(await run({ type: 'PAYBILL', amount: 1_000, counterparty: { paybillNumber: '400200', businessName: 'Co-op Bank', accountReference: '4001077' } })).toBe(13);
-    expect(await run({ type: 'BUY_GOODS', amount: 1_000, counterparty: { tillNumber: '6484844', name: 'Innocent Achoka' } })).toBe(0);
+    expect(await run({ type: 'BUY_GOODS', amount: 1_000, counterparty: { tillNumber: '5123456', name: 'Daniel Mutai' } })).toBe(0);
     expect(await run({ type: 'AIRTIME', amount: 1_000, variant: 'OWN', counterparty: {} })).toBe(0);
     expect(await run({ type: 'WITHDRAW', amount: 1_000, counterparty: { agentNumber: '123456' } })).toBe(29);
   });

@@ -100,7 +100,8 @@ export function ScreenHeader({ title, onBack, right }: { title?: string; onBack?
 
 // ---------------------------------------------------------------- buttons
 
-export function PrimaryButton({ title, onPress, disabled, loading, style }: { title: string; onPress: () => void; disabled?: boolean; loading?: boolean; style?: StyleProp<ViewStyle> }) {
+/** `danger`: red, for actions that remove or end something (signing out). */
+export function PrimaryButton({ title, onPress, disabled, loading, style, danger }: { title: string; onPress: () => void; disabled?: boolean; loading?: boolean; style?: StyleProp<ViewStyle>; danger?: boolean }) {
   const { colors } = useTheme();
   const inactive = disabled || loading;
   return (
@@ -111,7 +112,7 @@ export function PrimaryButton({ title, onPress, disabled, loading, style }: { ti
       onPress={onPress}
       style={({ pressed }) => [
         styles.primaryButton,
-        { backgroundColor: disabled ? colors.buttonDisabled : colors.green, opacity: pressed ? 0.85 : 1 },
+        { backgroundColor: disabled ? colors.buttonDisabled : danger ? colors.red : colors.green, opacity: pressed ? 0.85 : 1 },
         style,
       ]}
     >
@@ -122,11 +123,12 @@ export function PrimaryButton({ title, onPress, disabled, loading, style }: { ti
   );
 }
 
-export function OutlineButton({ title, onPress }: { title: string; onPress?: () => void }) {
+export function OutlineButton({ title, onPress, danger }: { title: string; onPress?: () => void; danger?: boolean }) {
   const { colors } = useTheme();
+  const tint = danger ? colors.red : colors.green;
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.green, opacity: pressed ? 0.7 : 1 }]}>
-      <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: colors.green, fontSize: s(18), fontWeight: '500' }}>{title}</Text>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.outlineButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}>
+      <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ color: tint, fontSize: s(18), fontWeight: '500' }}>{title}</Text>
     </Pressable>
   );
 }

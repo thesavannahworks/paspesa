@@ -48,13 +48,13 @@ export function Suspended() {
             <T variant="body" color={colors.textSecondary} center style={{ fontSize: s(15), lineHeight: s(21) }}>
               Signing out clears this account from this device. Anything recorded here that was not backed up is lost. The account itself stays saved.
             </T>
-            <PrimaryButton title="Sign out" loading={busy} onPress={() => { setBusy(true); void signOut(true).finally(() => setBusy(false)); }} style={{ marginTop: s(16) }} />
+            <PrimaryButton danger title="Sign out" loading={busy} onPress={() => { setBusy(true); void signOut(true).finally(() => setBusy(false)); }} style={{ marginTop: s(16) }} />
             <View style={{ marginTop: s(12) }}><OutlineButton title="Cancel" onPress={() => setConfirming(false)} /></View>
           </View>
         ) : (
           <View style={{ marginTop: s(30) }}>
             <PrimaryButton title="Check again" loading={busy} onPress={() => void check()} />
-            {account ? <View style={{ marginTop: s(12) }}><OutlineButton title="Sign out and use another email" onPress={() => setConfirming(true)} /></View> : null}
+            {account ? <View style={{ marginTop: s(12) }}><OutlineButton danger title="Sign out and use another email" onPress={() => setConfirming(true)} /></View> : null}
           </View>
         )}
       </View>

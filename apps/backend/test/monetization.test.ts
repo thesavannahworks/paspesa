@@ -207,6 +207,30 @@ describe('payments (§31–33, §47.8)', () => {
     expect(credits.map((c) => Number(c.amount))).toEqual([20]);
   });
 
+  it('a prompt the provider refuses is noted, charges nothing, and a retry re-sends it to the number given then', async () => {
+    const { accountId } = await newAccount();
+    let refuse = true;
+    const sent: string[] = [];
+    const provider: PaymentProvider = {
+      name: 'sandbox',
+      async initiate(p: PaymentRecord) {
+        if (refuse) throw new Error('M-PESA refused the request: Invalid Access Token');
+        sent.push(p.payerPhone!);
+        return { providerReference: `sbx-${p.id}` };
+      },
+      async checkStatus() { return 'PENDING'; },
+    };
+    await expect(money.initiateTokenPurchase({ accountId, shillings: 50, phone: '0798765432', idempotencyKey: 'refused-1' }, provider)).rejects.toThrow(/Invalid Access Token/);
+    const [row] = await db.query<{ id: string; status: string }>("SELECT id, status FROM payments WHERE idempotency_key = 'refused-1'");
+    expect(row!.status).toBe('INITIATED');
+    const [ev] = await db.query<{ event: string; detail: { error: string } }>('SELECT event, detail FROM payment_events WHERE payment_id = $1 ORDER BY id DESC LIMIT 1', [row!.id]);
+    expect(ev).toMatchObject({ event: 'PROVIDER_REFUSED', detail: { error: 'M-PESA refused the request: Invalid Access Token' } });
+    refuse = false;
+    const retry = await money.initiateTokenPurchase({ accountId, shillings: 50, phone: '0711222333', idempotencyKey: 'refused-1' }, provider);
+    expect([retry.id, retry.status]).toEqual([row!.id, 'PENDING']);
+    expect(sent).toEqual(['254711222333']);
+  });
+
   it('a failed direct payment never authorizes the simulation; free simulations and Recharge need no payment', async () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};

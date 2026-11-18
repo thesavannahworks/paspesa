@@ -35,7 +35,7 @@ describe('Send Money: add withdrawal charges', () => {
     expect(!low.ok && low.error.code).toBe('VALIDATION');
     const till = await processSimulation(deps, {
       operationId: newOp(), type: 'BUY_GOODS', amount: 100, addWithdrawalCharge: true,
-      counterparty: { tillNumber: '6484844', name: 'M' },
+      counterparty: { tillNumber: '5123456', name: 'M' },
     });
     expect(!till.ok && till.error.code).toBe('VALIDATION');
   });

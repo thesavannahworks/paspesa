@@ -9,7 +9,7 @@ describe('Paspesa payment QR', () => {
   });
 
   it('round-trips Buy Goods and Paybill codes', () => {
-    const till = { type: 'BUY_GOODS' as const, counterparty: { tillNumber: '6484844', name: 'Innocent Wafula Achoka' } };
+    const till = { type: 'BUY_GOODS' as const, counterparty: { tillNumber: '5123456', name: 'Daniel Kiprop Mutai' } };
     const bill = { type: 'PAYBILL' as const, counterparty: { paybillNumber: '400200', businessName: 'Co-op', accountReference: 'A1' } };
     expect(parsePaymentQr(encodePaymentQr(till))).toEqual(till);
     expect(parsePaymentQr(encodePaymentQr(bill))).toEqual(bill);

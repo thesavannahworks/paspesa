@@ -34,21 +34,21 @@ describe('General Operations recharge (§10, §47.2)', () => {
   it('retains a custom sender name and phone number', async () => {
     const { deps } = await makeAccount(0);
     const res = await processSimulation(deps, {
-      operationId: newOp(), type: 'RECHARGE', amount: 700, counterparty: { name: 'Protas Juma', phone: '0726 123 928' },
+      operationId: newOp(), type: 'RECHARGE', amount: 700, counterparty: { name: 'Kevin Ouma', phone: '0745 123 456' },
     });
     if (!res.ok) throw new Error(res.error.message);
-    expect(res.transaction.counterparty).toEqual({ name: 'Protas Juma', phone: '254726123928' });
-    expect(res.message!.body).toContain('from PROTAS  JUMA 0726***928');
+    expect(res.transaction.counterparty).toEqual({ name: 'Kevin Ouma', phone: '254745123456' });
+    expect(res.message!.body).toContain('from Kevin  Ouma 0745***456');
   });
 
   it('creates the matching incoming message', async () => {
     const { deps } = await makeAccount(24_371);
     const res = await processSimulation(deps, {
-      operationId: newOp(), type: 'RECHARGE', amount: 700, counterparty: { name: 'Protas Juma', phone: '0726123928' },
+      operationId: newOp(), type: 'RECHARGE', amount: 700, counterparty: { name: 'Kevin Ouma', phone: '0745123456' },
     });
     if (!res.ok) throw new Error(res.error.message);
     expect(res.message!.body).toMatch(
-      new RegExp(`^${res.transaction.reference} Confirmed\\.You have received Ksh700\\.00 from PROTAS  JUMA 0726\\*\\*\\*928 on \\d\\d/\\d\\d/\\d\\d at \\d{1,2}:\\d\\d (AM|PM)  New M-PESA balance is Ksh25,071\\.00\\. Invest & earn daily interest with ZIIDI on https://saf\\.cx/cF6ir$`),
+      new RegExp(`^${res.transaction.reference} Confirmed\\.You have received Ksh700\\.00 from Kevin  Ouma 0745\\*\\*\\*456 on \\d\\d/\\d\\d/\\d\\d at \\d{1,2}:\\d\\d (AM|PM)  New M-PESA balance is Ksh25,071\\.00\\. Invest & earn daily interest with ZIIDI on https://saf\\.cx/cF6ir$`),
     );
   });
 

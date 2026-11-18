@@ -10,7 +10,8 @@ import { AirtimeIcon, LipaIcon, MessageIcon, PersonIcon, ReceiptIcon, SendMoneyI
 import { useAppState } from '@/services/AppState';
 import { syncNow, useSyncStatus } from '@/services/sync';
 import { useTheme } from '@/theme/ThemeProvider';
-import { SIDEBAR_WIDTH } from './LayoutFrame';
+import { SIDEBAR_WIDTH, WEB_VIEW_KEY, type WebView } from './LayoutFrame';
+import { usePreference } from '@/services/preferences';
 
 const HOME_ICON = (color: string) => (
   <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
@@ -62,6 +63,7 @@ export function WebSidebar() {
         })}
       </View>
       <View style={{ flex: 1 }} />
+      <ViewSwitch />
       {account ? (
         <View style={[styles.me, { borderTopColor: colors.divider }]}>
           <UserAvatar size={40} />
@@ -71,6 +73,36 @@ export function WebSidebar() {
           </View>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/** Phone (the app drawn in a phone) or Desktop (dashboard and cards): how the web app is shown here. */
+function ViewSwitch() {
+  const { colors } = useTheme();
+  const [view, setView] = usePreference<WebView>(WEB_VIEW_KEY, 'PHONE');
+  const options: { key: WebView; label: string }[] = [{ key: 'PHONE', label: 'Phone' }, { key: 'DESKTOP', label: 'Desktop' }];
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={[styles.small, { color: colors.textSecondary, marginBottom: 6, marginLeft: 4 }]}>View</Text>
+      <View accessibilityRole="radiogroup" style={[styles.switch, { backgroundColor: colors.raised }]}>
+        {options.map((o) => {
+          const on = view === o.key;
+          return (
+            <Pressable
+              key={o.key}
+              accessibilityRole="radio"
+              accessibilityLabel={`${o.label} view`}
+              accessibilityState={{ checked: on }}
+              aria-checked={on}
+              onPress={() => setView(o.key)}
+              style={[styles.switchItem, on && { backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 1 } }]}
+            >
+              <Text style={{ color: on ? colors.green : colors.textSecondary, fontWeight: on ? '600' : '400', fontSize: 14 }}>{o.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -102,6 +134,8 @@ function BackupLine() {
 }
 
 const styles = StyleSheet.create({
+  switch: { flexDirection: 'row', borderRadius: 10, padding: 3 },
+  switchItem: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 8 },
   side: { width: SIDEBAR_WIDTH, paddingHorizontal: 14, paddingTop: 22, paddingBottom: 14, borderRightWidth: StyleSheet.hairlineWidth },
   brand: { fontSize: 26, fontWeight: '700', paddingHorizontal: 12, marginBottom: 22 },
   item: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 },

@@ -1,12 +1,12 @@
-import { router, Stack } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '@/components/AppLock';
 import { Suspended } from '@/components/Suspended';
-import { computeFrame, LayoutFrameProvider } from '@/components/LayoutFrame';
+import { computeFrame, DESKTOP, LayoutFrameProvider, WEB_VIEW_KEY, type WebView } from '@/components/LayoutFrame';
 import { PhoneKeys, PhoneStatusBar, phoneBodyStyle, phoneScreenStyle } from '@/components/PhoneFrame';
 import { WebSidebar } from '@/components/WebSidebar';
 import { AppStateProvider, useAppState } from '@/services/AppState';
@@ -30,26 +30,54 @@ function ThemedStack() {
   );
 }
 
+/** Phones have no scrollbars: hide the browser's while the app is drawn inside a phone. */
+function usePhoneScrollbars(hidden: boolean) {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!document.getElementById('paspesa-phone-scroll')) {
+      const style = document.createElement('style');
+      style.id = 'paspesa-phone-scroll';
+      style.textContent = 'body.paspesa-phone *{scrollbar-width:none}body.paspesa-phone *::-webkit-scrollbar{display:none}';
+      document.head.appendChild(style);
+    }
+    document.body.classList.toggle('paspesa-phone', hidden);
+  }, [hidden]);
+}
+
 /**
- * Phones: the screens fill the window. Web on a wide screen: a sidebar and the app inside a drawn phone
- * (see LayoutFrame). The same tree in both cases, so resizing the window keeps your place.
+ * Phones: the screens fill the window. Web on a wide screen: a sidebar and the app inside a drawn phone, or
+ * (desktop view) a dashboard for home and a centred card for every other page (see LayoutFrame). The same
+ * tree in every case, so resizing the window or switching the view keeps your place.
  */
 function AppShell() {
   const { colors } = useTheme();
   const { account } = useAppState();
   const session = useSession();
+  const path = usePathname();
+  const [view] = usePreference<WebView>(WEB_VIEW_KEY, 'PHONE');
   const { width, height } = useWindowDimensions();
   const sidebar = !!account && (!session.required || !!session.email) && !session.suspended;
-  const frame = computeFrame(width, height, sidebar);
+  const desktop = view === 'DESKTOP';
+  const fullWidth = path === '/';
+  const frame = computeFrame(width, height, sidebar, desktop, fullWidth);
+  const phone = frame.mode === 'phone';
+  usePhoneScrollbars(phone);
+  const card: ViewStyle = fullWidth
+    ? { width: frame.contentWidth, flex: 1 }
+    : {
+        width: frame.contentWidth, flex: 1, borderRadius: DESKTOP.radius, overflow: 'hidden', backgroundColor: colors.screen,
+        borderWidth: StyleSheet.hairlineWidth, borderColor: colors.divider,
+        shadowColor: '#000', shadowOpacity: colors.mode === 'dark' ? 0.4 : 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 8 },
+      };
   return (
-    <LayoutFrameProvider sidebar={sidebar}>
+    <LayoutFrameProvider sidebar={sidebar} desktop={desktop} fullWidth={fullWidth}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: frame.wide ? colors.page : colors.screen }}>
         {frame.sidebar ? <WebSidebar /> : null}
-        <View style={frame.wide ? styles.stage : styles.fill}>
-          <View style={frame.wide ? phoneBodyStyle(frame.scale) : styles.fill}>
-            {frame.wide ? <PhoneKeys /> : null}
-            <View style={frame.wide ? [phoneScreenStyle, { backgroundColor: colors.screen }] : styles.fill}>
-              {frame.wide ? <PhoneStatusBar /> : null}
+        <View style={phone ? styles.stage : frame.mode === 'desktop' ? styles.desk : styles.fill}>
+          <View style={phone ? phoneBodyStyle(frame.scale) : frame.mode === 'desktop' ? card : styles.fill}>
+            {phone ? <PhoneKeys /> : null}
+            <View style={phone ? [phoneScreenStyle, { backgroundColor: colors.screen }] : styles.fill}>
+              {phone ? <PhoneStatusBar /> : null}
               <View style={styles.fill}>
                 <ThemedStack />
               </View>
@@ -146,4 +174,5 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   fill: { flex: 1, width: '100%' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  desk: { flex: 1, alignItems: 'center', paddingVertical: DESKTOP.margin },
 });

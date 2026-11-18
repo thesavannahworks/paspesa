@@ -9,9 +9,9 @@
  *
  * Placeholders:
  *   {ref} {amount} {fee} {balance} {date} {time} {limit}
- *   {NAME}   counterparty name in capitals, single-spaced (merchants: "BEREA GEN SHOP")
- *   {PERSON} person's name in capitals as M-PESA prints registered names: a two-part name has an
- *            empty middle name, so it shows a double space ("PETER  KAMAU")
+ *   {NAME}   counterparty name as typed, single-spaced (merchants: "Berea Gen Shop")
+ *   {PERSON} person's name as typed, spaced as M-PESA prints registered names: a two-part name has an
+ *            empty middle name, so it shows a double space ("Peter  Kamau")
  *   {name} {phone} {maskedPhone} {till} {paybill} {business} {account}
  *
  * Links in the bodies are display text only: tapping one in Paspesa opens the Paspesa home screen.

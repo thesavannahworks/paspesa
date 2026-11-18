@@ -57,6 +57,24 @@ const REVIEW_HELP: Record<string, { title: string; help: string }> = {
   UNSUPPORTED_VERSION: { title: 'Unsupported app version', help: 'Dismiss it; the person should update the app.' },
 };
 
+
+/** One line on what happened to a payment, for the Payments page. */
+function paymentNote(p: Record<string, unknown>): string {
+  const detail = (p.last_detail ?? null) as { error?: string } | null;
+  if (p.status === 'INITIATED' && !p.provider_reference) {
+    if (p.last_event === 'PROVIDER_REFUSED') {
+      const error = detail?.error ?? 'refused';
+      const hint = /invalid access token/i.test(error)
+        ? ' — the Daraja app on developer.safaricom.co.ke probably lacks the M-Pesa Express product (or the keys belong to another app)'
+        : '';
+      return `Not sent: ${error}${hint}`;
+    }
+    return 'Not sent yet';
+  }
+  if (p.status === 'PENDING') return p.last_event === 'STATUS_CHECK_TIMEOUT' ? `Status check failed: ${detail?.error ?? 'no answer'}` : 'Prompt sent; waiting for the customer';
+  return '';
+}
+
 @Controller('admin')
 export class AdminController {
   private readonly auth: AdminAuth;
@@ -420,7 +438,10 @@ export class AdminController {
     if (!session) return;
     const status = ['INITIATED', 'PENDING', 'SUCCESSFUL', 'FAILED'].includes(q.status ?? '') ? q.status! : '';
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT p.*, a.account_name FROM payments p JOIN accounts a ON a.id = p.owner_id WHERE $1 = '' OR p.status = $1 ORDER BY p.created_at DESC LIMIT 300`,
+      `SELECT p.*, a.account_name, e.event AS last_event, e.detail AS last_detail
+       FROM payments p JOIN accounts a ON a.id = p.owner_id
+       LEFT JOIN LATERAL (SELECT event, detail FROM payment_events WHERE payment_id = p.id ORDER BY id DESC LIMIT 1) e ON true
+       WHERE $1 = '' OR p.status = $1 ORDER BY p.created_at DESC LIMIT 300`,
       [status],
     );
     const credits = await this.db.query<Record<string, unknown>>('SELECT c.*, a.account_name FROM payment_credits c JOIN accounts a ON a.id = c.owner_id ORDER BY c.created_at DESC LIMIT 100');
@@ -428,11 +449,19 @@ export class AdminController {
     this.send(res, layout('Payments', session, html`${this.flash(q)}
       <form method="get" class="panel"><label for="status">Status</label><select id="status" name="status">
         ${['', 'INITIATED', 'PENDING', 'SUCCESSFUL', 'FAILED'].map((s) => html`<option value="${s}" ${s === status ? html`selected` : html``}>${s || 'All'}</option>`)}</select><button class="secondary">Filter</button></form>
-      <div class="panel"><table><tr><th>When</th><th>Account</th><th>Type</th><th>Provider</th><th class="num">KSh</th><th class="num">Tokens</th><th>Payment</th><th>Simulation</th><th>Refund</th><th></th></tr>
+      <div class="panel"><ol class="steps">
+        <li><b>INITIATED</b> — Paspesa asked the provider to send the M-PESA prompt. If the provider refused, the note says why
+          (nothing was charged; the user can simply try again).</li>
+        <li><b>PENDING</b> — the prompt was sent; waiting for the customer to enter their PIN. The app checks every few seconds.</li>
+        <li><b>Check status</b> asks the provider right now whether a PENDING payment was paid — use it when a customer says they
+          paid but the app did not continue (Paspesa never trusts a callback alone).</li>
+      </ol></div>
+      <div class="panel"><table><tr><th>When</th><th>Account</th><th>Type</th><th>Provider</th><th class="num">KSh</th><th class="num">Tokens</th><th>Payment</th><th>Note</th><th>Simulation</th><th>Refund</th><th></th></tr>
       ${rows.map((p) => html`<tr><td>${fmtDate(p.created_at)}</td><td><a href="/admin/accounts/${p.owner_id}">${p.account_name}</a></td><td>${p.payment_type}</td><td>${p.provider}</td>
         <td class="num">${p.amount}</td><td class="num">${p.tokens ?? '—'}</td>
-        <td><span class="pill ${p.status === 'SUCCESSFUL' ? 'ok' : p.status === 'FAILED' ? 'bad' : ''}">${p.status}</span></td><td>${p.simulation_status}</td><td>${p.refund_status}</td>
-        <td>${mayVerify && (p.status === 'PENDING' || p.status === 'INITIATED') ? html`<form method="post" action="/admin/payments/${p.id}/verify" class="inline">${csrf(session)}<button class="secondary">Verify now</button></form>` : html``}</td></tr>`)}
+        <td><span class="pill ${p.status === 'SUCCESSFUL' ? 'ok' : p.status === 'FAILED' ? 'bad' : ''}">${p.status}</span></td>
+        <td class="muted">${paymentNote(p)}</td><td>${p.simulation_status}</td><td>${p.refund_status}</td>
+        <td>${mayVerify && p.status === 'PENDING' && p.provider_reference ? html`<form method="post" action="/admin/payments/${p.id}/verify" class="inline">${csrf(session)}<button class="secondary">Check status</button></form>` : html``}</td></tr>`)}
       </table></div>
       <div class="panel"><h2>Refundable credits</h2><table><tr><th>When</th><th>Account</th><th class="num">KSh</th><th>Status</th><th>Payment</th></tr>
       ${credits.map((c) => html`<tr><td>${fmtDate(c.created_at)}</td><td>${c.account_name}</td><td class="num">${c.amount}</td><td>${c.status}</td><td class="muted">${c.payment_id}</td></tr>`)}

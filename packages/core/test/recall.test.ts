@@ -7,7 +7,7 @@ async function ledger() {
   const { deps, store } = ctx;
   await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 10, counterparty: { phone: '0111000222', name: 'Amina Wanjiru' } });
   await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 10, counterparty: { phone: '0111000222', name: 'Amina W.' } });
-  await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 10, counterparty: { tillNumber: '6484844', name: 'Innocent Wafula Achoka' } });
+  await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 10, counterparty: { tillNumber: '5123456', name: 'Daniel Kiprop Mutai' } });
   await processSimulation(deps, {
     operationId: newOp(), type: 'PAYBILL', amount: 10,
     counterparty: { paybillNumber: '400200', businessName: 'Co-operative Bank Money Transfer', accountReference: 'acc1', accountName: 'Ruth Njeri Magu' },
@@ -29,7 +29,7 @@ describe('recallNames (names come only from the local ledger/favourites)', () =>
 
   it('Buy Goods by till; Paybill business by number and account name by number + account (case-insensitive)', async () => {
     const { txs, favs } = await ledger();
-    expect(recallNames('BUY_GOODS', { tillNumber: '6484844' }, txs, favs)).toEqual({ name: 'Innocent Wafula Achoka' });
+    expect(recallNames('BUY_GOODS', { tillNumber: '5123456' }, txs, favs)).toEqual({ name: 'Daniel Kiprop Mutai' });
     expect(recallNames('PAYBILL', { paybillNumber: '400200' }, txs, favs)).toEqual({ businessName: 'Co-operative Bank Money Transfer' });
     expect(recallNames('PAYBILL', { paybillNumber: '400200', accountReference: 'ACC1' }, txs, favs)).toEqual({
       businessName: 'Co-operative Bank Money Transfer', accountName: 'Ruth Njeri Magu',

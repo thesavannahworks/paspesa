@@ -34,8 +34,10 @@ export function messageVariables(tx: TransactionRecord, utcOffsetMinutes: number
     date: formatShortDate(p),
     time: formatTime12(p),
     name: displayName,
-    NAME: displayName.toUpperCase(),
-    PERSON: registeredName(displayName).toUpperCase(),
+    // Names are shown exactly as the user typed them (owner, 2026-11-18): "Amina Wanjiru" stays as is, "AMINA
+    // WANJIRU" stays in capitals. Only M-PESA's spacing of registered names is kept.
+    NAME: displayName,
+    PERSON: registeredName(displayName),
     limit: formatAmount(context.dailyRemaining ?? 0),
     phone: c.phone ? (tx.type === 'AIRTIME' ? c.phone : toLocalPhone(c.phone)) : '',
     maskedPhone: c.phone ? maskPhone(c.phone) : '',

@@ -107,7 +107,7 @@ export class DarajaProvider implements PaymentProvider {
       TransactionDesc: payment.paymentType === 'TOKEN_PURCHASE' ? 'Paspesa tokens' : 'Paspesa simulation',
     });
     if (!res.ok || res.body.ResponseCode !== '0' || !res.body.CheckoutRequestID) {
-      throw new Error(res.body.errorMessage ?? res.body.ResponseDescription ?? `M-PESA request failed (${res.status})`);
+      throw new Error(`M-PESA refused the request: ${res.body.errorMessage ?? res.body.ResponseDescription ?? `HTTP ${res.status}`}`);
     }
     return { providerReference: res.body.CheckoutRequestID };
   }

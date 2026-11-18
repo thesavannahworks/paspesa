@@ -315,3 +315,19 @@ activation, which needs the product-owner inputs listed below (§52).
   status bar, side keys) at the owner's phone size, 540 × 1141, scaled evenly to fit the window; pop-ups
   stay inside the phone; the sidebar is unchanged.
 - **Test data:** tests and placeholders no longer use the owner's or reference-screenshot names and numbers.
+
+## Payments page, desktop view, names as typed (2026-11-18)
+- **A prompt the provider refuses** (e.g. Daraja "Invalid Access Token") is recorded as a PROVIDER_REFUSED
+  payment event; the payment stays INITIATED with nothing charged and a retry re-sends it (to the number
+  given then). The back-office Payments page explains the statuses, shows a note per payment, and offers
+  "Check status" only for PENDING payments (it asks the provider whether the prompt was paid).
+- **Daraja "Invalid Access Token" (404.001.03)** with a token that other Daraja APIs accept means the app on
+  developer.safaricom.co.ke lacks the M-Pesa Express (STK) product. The callback URL only speeds things up:
+  status is always confirmed with the STK Query API, so any HTTPS URL works for local testing.
+- **Desktop view** (web, sidebar switch Phone / Desktop, remembered per browser): home is a dashboard
+  (balances, recent activity table, quick actions, latest messages); other pages are a centred card.
+  The phone view hides the browser's scrollbars like a real phone.
+- **Names are shown exactly as typed** in messages, success screens, the PIN screen and statements (no
+  forced capitals); M-PESA's double space in two-part names is kept. Messages already saved keep their text.
+- **Sign-out buttons are red** (danger style on PrimaryButton / OutlineButton).
+- **Preferences** must be listed in runtime PREF_KEYS to survive a restart (tokenOrder was missing).

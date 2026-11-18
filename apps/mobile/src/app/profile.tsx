@@ -120,7 +120,7 @@ function SignOutSection() {
     <View style={{ marginTop: s(26) }}>
       <T variant="label" color={colors.textSecondary}>Signed in as {session.email}</T>
       <View style={{ marginTop: s(12) }}>
-        <OutlineButton title="Sign out" onPress={() => { setWaiting(0); setError(null); setOpen(true); }} />
+        <OutlineButton danger title="Sign out" onPress={() => { setWaiting(0); setError(null); setOpen(true); }} />
       </View>
       <Sheet visible={open} title="Sign out of Paspesa?" onClose={() => !busy && setOpen(false)}>
         <View style={{ paddingHorizontal: s(20), paddingBottom: s(24) }}>
@@ -132,11 +132,11 @@ function SignOutSection() {
           {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(12) }}>{error}</T> : null}
           {busy && step ? <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(12) }}>{step}</T> : null}
           <View style={{ marginTop: s(20) }}>
-            <PrimaryButton title={waiting ? 'Try again' : 'Sign out'} onPress={() => void run(false)} loading={busy} />
+            <PrimaryButton danger title={waiting ? 'Try again' : 'Sign out'} onPress={() => void run(false)} loading={busy} />
           </View>
           {waiting ? (
             <View style={{ marginTop: s(12) }}>
-              <OutlineButton title="Sign out anyway" onPress={() => void run(true)} />
+              <OutlineButton danger title="Sign out anyway" onPress={() => void run(true)} />
             </View>
           ) : null}
         </View>

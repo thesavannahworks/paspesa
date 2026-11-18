@@ -94,7 +94,7 @@ export default function TransactionDetailScreen() {
           <View style={[styles.typeChip, { borderColor: dark ? '#353740' : '#E6E6E6' }]}>
             <T variant="label" color={colors.textSecondary} style={{ fontSize: s(16.5), lineHeight: s(19) }}>{labels.chip}</T>
           </View>
-          <T variant="title" center style={{ marginTop: s(22), fontSize: s(29.4), lineHeight: s(35), fontWeight: '500', textTransform: 'uppercase' }}>{title}</T>
+          <T variant="title" center style={{ marginTop: s(22), fontSize: s(29.4), lineHeight: s(35), fontWeight: '500' }}>{title}</T>
           <T variant="amount" style={{ marginTop: s(10), fontSize: s(32), lineHeight: s(38), fontWeight: '600' }}>
             {tx.direction === 'CREDIT' ? '+' : '-'} {formatKsh(tx.amount)}
           </T>

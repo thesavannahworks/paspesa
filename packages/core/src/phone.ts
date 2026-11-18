@@ -17,7 +17,7 @@ export function toLocalPhone(normalized: string): string {
   return normalized.startsWith('254') ? `0${normalized.slice(3)}` : normalized;
 }
 
-/** 254726123928 -> 0726***928 (as in incoming-money messages and statements). */
+/** 254745123456 -> 0745***456 (as in incoming-money messages and statements). */
 export function maskPhone(normalized: string): string {
   const local = toLocalPhone(normalized);
   if (local.length < 8) return local;

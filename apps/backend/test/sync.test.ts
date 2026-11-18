@@ -101,7 +101,7 @@ describe('synchronization', () => {
     await pay(deps, { type: 'BUY_GOODS', amount: 90, counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
     await pay(deps, { type: 'PAYBILL', amount: 130, counterparty: { paybillNumber: '400200', businessName: 'Lipakitu', accountReference: '1780' } });
     await pay(deps, { type: 'AIRTIME', variant: 'OWN', amount: 50, counterparty: {} });
-    await pay(deps, { type: 'RECHARGE', amount: 700, counterparty: { name: 'Protas Juma', phone: '0726123928' } });
+    await pay(deps, { type: 'RECHARGE', amount: 700, counterparty: { name: 'Kevin Ouma', phone: '0745123456' } });
     await processSimulation(deps, { operationId: randomUUID(), type: 'BUY_GOODS', amount: 5, counterparty: { tillNumber: '453851' }, pin: '9999' }); // wrong PIN: nothing to sync
     await resetAirtimeBalance(deps);
     await updateAccountDetails(deps, { accountName: 'Brian Otieno', phoneNumber: '0111000222' });

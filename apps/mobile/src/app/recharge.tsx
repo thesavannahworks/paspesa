@@ -91,7 +91,7 @@ export default function RechargeScreen() {
         transaction={result}
         partyLabel="Received from:"
         partyBadge={<Avatar name={result.counterparty.name ?? 'Paspesa'} size={56} />}
-        partyLines={[(result.counterparty.name ?? '').toUpperCase(), `Phone number:${toLocalPhone(result.counterparty.phone ?? '')}`]}
+        partyLines={[result.counterparty.name ?? '', `Phone number:${toLocalPhone(result.counterparty.phone ?? '')}`]}
         onDone={() => router.dismissTo('/')}
       />
     );
