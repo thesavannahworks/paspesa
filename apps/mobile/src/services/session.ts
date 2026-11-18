@@ -15,10 +15,11 @@ import {
   type SignInStatus,
 } from '@paspesa/core';
 import { useSyncExternalStore } from 'react';
-import { ApiError, type PaspesaApi } from './api';
+import { ApiError, setSuspensionListener, type PaspesaApi, type Suspension } from './api';
 import type { KeyValueStore } from './kvTypes';
 
 const EMAIL_KEY = 'auth.email';
+const SUSPENDED_KEY = 'auth.suspended';
 
 export interface SessionState {
   /** A server is configured, so signing in is required. */
@@ -27,6 +28,8 @@ export interface SessionState {
   email: string | null;
   /** Shown on the sign-in screen (e.g. "you signed in on another device"). */
   notice: string | null;
+  /** Suspended from the back office: the app is blocked (remembered offline) until a request goes through. */
+  suspended: Suspension | null;
 }
 
 interface SessionDeps {
@@ -40,7 +43,7 @@ interface SessionDeps {
 }
 
 let ctx: SessionDeps | null = null;
-let state: SessionState = { required: false, email: null, notice: null };
+let state: SessionState = { required: false, email: null, notice: null, suspended: null };
 const listeners = new Set<() => void>();
 const wipeListeners = new Set<() => void>();
 
@@ -51,7 +54,22 @@ const publish = (patch: Partial<SessionState>) => {
 
 export async function initSession(d: SessionDeps) {
   ctx = d;
-  state = { required: d.api.available, email: await d.kv.get(EMAIL_KEY), notice: null };
+  const saved = await d.kv.get(SUSPENDED_KEY);
+  state = { required: d.api.available, email: await d.kv.get(EMAIL_KEY), notice: null, suspended: saved ? (JSON.parse(saved) as Suspension) : null };
+  setSuspensionListener((signal) => {
+    const next = signal.kind === 'OK'
+      // A sign-in request going through clears a device suspension only (the account's is not checked there).
+      ? (signal.authPath && state.suspended?.kind === 'ACCOUNT' ? state.suspended : null)
+      : signal;
+    if (JSON.stringify(next) === JSON.stringify(state.suspended)) return;
+    publish({ suspended: next });
+    void (next ? d.kv.set(SUSPENDED_KEY, JSON.stringify(next)) : d.kv.remove(SUSPENDED_KEY)).catch(() => undefined);
+  });
+}
+
+/** Asks the server again (the "Check again" button on the suspended screen). */
+export async function checkSuspension(): Promise<void> {
+  await need().api.get('/v1/sync/state').catch(() => undefined);
 }
 
 export const sessionState = () => state;
@@ -186,6 +204,9 @@ async function wipe(notice: string | null, alsoTell: () => Promise<unknown> = as
   ]);
   await c.replaceLedger(normalizeState({}));
   await c.kv.remove(EMAIL_KEY);
+  // A suspended account leaves with the wipe; a suspended device stays blocked.
+  const suspended = state.suspended?.kind === 'DEVICE' ? state.suspended : null;
+  if (!suspended) await c.kv.remove(SUSPENDED_KEY);
   for (const l of wipeListeners) l();
-  publish({ email: null, notice });
+  publish({ email: null, notice, suspended });
 }

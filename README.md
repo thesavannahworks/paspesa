@@ -80,4 +80,8 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   authenticator app (recovery codes included), and see or end your other sessions.
 - **Debugging a test session:** `npm run admin -- trace you@example.com` prints that account's recent
   history in order — sign-ins, transactions, uploads, review items and settings changes.
+- **Suspending misuse:** Devices and each account page have **Suspend** (with a reason shown to the user)
+  and **Reinstate**. A suspended phone or account is blocked until reinstated; nothing is deleted.
+- **Uncharged simulations** (stored by the review queue's Apply before the 2026-11-18 fix):
+  `npm run admin -- tokens:unpaid you@example.com` lists them; add `--charge` to take their tokens.
 - **Admin commands** (scripting; same operations as the back office): `npm run admin -w @paspesa/backend -- help`.

@@ -7,10 +7,12 @@ import { adoptAllocation, setTokenAllocation, type ServerAllocation } from '@pas
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { TOKEN_ORDER_KEY, type TokenOrder } from '@/components/PaySheet';
 import { EdgeCard, Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, T } from '@/components/ui';
 import { ChevronRightIcon, ReceiptIcon, SpendIcon, TokenIcon, WalletIcon } from '@/icons';
 import { ApiError, useApi } from '@/services/api';
 import { useAccount, useAppState } from '@/services/AppState';
+import { usePreference } from '@/services/preferences';
 import { kickSync } from '@/services/sync';
 import { CATEGORY_LABEL, shortDate, useRemote, type CurrentAllocation, type WalletView } from '@/services/wallet';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -101,6 +103,8 @@ export default function WalletScreen() {
         {notice ? <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(10) }}>{notice}</T> : null}
       </View>
 
+      <TokenOrderCard />
+
       <T variant="heading" style={{ marginTop: s(30), fontSize: s(20) }}>History</T>
       <Row icon={<ReceiptIcon size={26} />} label="Purchases" sub="Token purchases and simulation payments" href="/wallet/history?tab=purchases" />
       <Row icon={<SpendIcon size={26} />} label="Spending" sub="Tokens used, refunded or expired" href="/wallet/history?tab=spending" />
@@ -118,6 +122,46 @@ export default function WalletScreen() {
         }}
       />
     </Screen>
+  );
+}
+
+/** Online, both the phone's tokens and the balance pay; which go first (offline only the phone's can). */
+function TokenOrderCard() {
+  const { colors } = useTheme();
+  const [order, setOrder] = usePreference<TokenOrder>(TOKEN_ORDER_KEY, 'PHONE_FIRST');
+  const options: { value: TokenOrder; label: string; sub: string }[] = [
+    { value: 'PHONE_FIRST', label: 'This phone first', sub: 'Then your balance covers the rest' },
+    { value: 'BALANCE_FIRST', label: 'Your balance first', sub: 'Keeps this phone’s tokens for offline use' },
+  ];
+  return (
+    <View style={[styles.card, { backgroundColor: colors.surface, marginTop: s(18) }]}>
+      <T variant="bodyStrong" style={{ fontSize: s(17) }}>Paying with tokens online</T>
+      <T variant="label" color={colors.textSecondary} style={{ marginTop: s(3), fontSize: s(15), lineHeight: s(20) }}>
+        Tokens on this phone and in your balance add up. Choose which are used first.
+      </T>
+      {options.map((o) => {
+        const on = order === o.value;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="radio"
+            accessibilityLabel={o.label}
+            accessibilityState={{ checked: on }}
+            aria-checked={on}
+            onPress={() => setOrder(o.value)}
+            style={[styles.choice, { borderColor: on ? colors.green : colors.inputBorder }]}
+          >
+            <View style={[styles.radio, { borderColor: on ? colors.green : colors.textSecondary }]}>
+              {on ? <View style={[styles.radioDot, { backgroundColor: colors.green }]} /> : null}
+            </View>
+            <View style={{ flex: 1, marginLeft: s(12) }}>
+              <T variant="body" style={{ fontSize: s(16) }}>{o.label}</T>
+              <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(2) }}>{o.sub}</T>
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -174,5 +218,8 @@ const styles = StyleSheet.create({
   breakdown: { flexDirection: 'row', marginTop: s(14), gap: s(8) },
   card: { borderRadius: s(14), padding: s(18) },
   icon: { width: s(46), height: s(46), borderRadius: s(23), alignItems: 'center', justifyContent: 'center' },
+  choice: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.2, borderRadius: s(10), padding: s(12), marginTop: s(12) },
+  radio: { width: s(20), height: s(20), borderRadius: s(10), borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: s(10), height: s(10), borderRadius: s(5) },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: s(14), borderBottomWidth: StyleSheet.hairlineWidth },
 });

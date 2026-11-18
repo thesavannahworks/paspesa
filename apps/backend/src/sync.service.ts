@@ -26,7 +26,7 @@ import {
   type SyncTransaction,
   type SimulationType,
 } from '@paspesa/core';
-import { priceSimulation } from '@paspesa/core';
+import { priceSimulation, tokenSplit } from '@paspesa/core';
 import { AllocationService } from './allocation.service.js';
 import type { Database, Queryable } from './database.js';
 import { MonetizationError, MonetizationService } from './monetization.service.js';
@@ -314,11 +314,10 @@ export class SyncService {
     // Checked here rather than left to the UNIQUE constraint, so one bad record cannot block every retry.
     const [clash] = await q.query('SELECT 1 FROM transactions WHERE account_id = $1 AND (reference = $2 OR id = $3)', [account.id, t.reference, t.id]);
     if (clash) return review('VALIDATION', 'transaction ID or reference already used');
-    // A reviewer applying a held simulation stores it without charging (the ledger checks above still apply).
-    if (!options.reviewed) {
-      const paid = await this.verifyPayment(q, installationId, account.id, t);
-      if (paid) return paid;
-    }
+    // A reviewer applying a held simulation still charges its tokens (from wherever they are now); only the
+    // "payment required" rule for unpaid ones and an unverified direct payment can be waived.
+    const paid = await this.verifyPayment(q, installationId, account.id, t, !!options.reviewed);
+    if (paid) return paid;
 
     await q.query(
       `UPDATE accounts SET balance = $2, airtime_balance = $3, version = $4, updated_at = $5 WHERE id = $1`,
@@ -339,26 +338,16 @@ export class SyncService {
    * How the simulation was paid (§26): TOKENS → spent from this device's allocation; DIRECT → a verified
    * payment for this simulation; UNMETERED → only while payments are off or for free simulations.
    */
-  private async verifyPayment(q: Queryable, installationId: string, accountId: string, t: SyncTransaction): Promise<Outcome | null> {
-    if (t.paymentMethod === 'TOKENS') {
-      const spend = await this.allocations.spendSynced(q, {
-        accountId, deviceId: installationId, simulationId: t.operationId, type: t.type as SimulationType, amount: t.amount, completedAt: t.completedAt, claimed: t.pricing,
+  private async verifyPayment(q: Queryable, installationId: string, accountId: string, t: SyncTransaction, reviewed = false): Promise<Outcome | null> {
+    if (t.paymentMethod === 'TOKENS' || t.paymentMethod === 'WALLET') {
+      // Set-aside tokens on this device and/or the central balance, deducted together with storing the record.
+      const spend = await this.allocations.chargeSimulation(q, {
+        accountId, deviceId: installationId, simulationId: t.operationId, type: t.type as SimulationType, amount: t.amount, completedAt: t.completedAt,
+        method: t.paymentMethod, central: tokenSplit(t).central, claimed: t.pricing, reviewed,
       });
       return spend.ok ? null : review(spend.code, spend.message);
     }
-    if (t.paymentMethod === 'WALLET') {
-      // Paid from the central balance: re-priced here, then deducted together with storing the record.
-      const pricing = priceSimulation(await this.money.pricing(q), { accountId, type: t.type as SimulationType, amount: t.amount, at: t.completedAt });
-      if (!t.pricing || t.pricing.tokenCost !== pricing.tokenCost) return review('PRICING_MISMATCH', `This simulation costs ${pricing.tokenCost} tokens, the device priced it at ${t.pricing?.tokenCost ?? '?'}`);
-      if (pricing.tokenCost === 0) return null;
-      try {
-        await this.money.spendWith(q, { accountId, simulationId: t.operationId, pricing, deviceId: installationId });
-      } catch (e) {
-        if (e instanceof MonetizationError && e.code === 'INSUFFICIENT_TOKENS') return review('INSUFFICIENT_TOKENS', e.message);
-        throw e;
-      }
-      return null;
-    }
+    if (reviewed) return null; // the reviewer accepted it as it is
     if (t.paymentMethod === 'DIRECT') {
       const [p] = await q.query<{ id: string; simulation_status: string }>(
         "SELECT id, simulation_status FROM payments WHERE id = $1 AND owner_id = $2 AND related_simulation_id = $3 AND status = 'SUCCESSFUL' FOR UPDATE",

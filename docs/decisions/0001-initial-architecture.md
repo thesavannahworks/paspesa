@@ -67,7 +67,7 @@ were then measured element by element against the screenshots (same 1080 px phon
 ## Messages, transaction codes, M-PESA QR (2026-11-16)
 - **Templates** (`packages/core/src/messages/templates.ts`) copy the supplied messages character for
   character, including their irregular spacing and trailing links. Two-part names print with M-PESA's
-  empty-middle-name double space ("GETRUDE  OHANGA"). Links are display text; tapping one opens the
+  empty-middle-name double space ("PETER  KAMAU"). Links are display text; tapping one opens the
   Paspesa home screen. Not simulated (no Paspesa feature): Ziidi round-ups, Fuliza, Shiriki Pay,
   bundles, mini-statements, Safaricom's own "Safaricom Offers" paybill variant, and the
   "similar transaction is currently underway" notice (duplicate submissions are idempotent instead).
@@ -291,3 +291,27 @@ activation, which needs the product-owner inputs listed below (§52).
 - **Android blank home:** the pull-to-refresh control must pass the ScrollView's children and style
   through (Android and web wrap the scroll content inside the refresh control).
 
+
+## Combined tokens, review charging fix, suspensions, phone frame (2026-11-18)
+- **Bug fixed — tokens came back after Apply:** applying a held simulation in the review queue stored it
+  without taking its tokens, so the server still counted them as set aside on the phone; the phone adopted
+  the server's figure and Return gave them back. Apply now charges every token-paid simulation (this
+  device's set-aside tokens first, then the central balance; refused if neither covers it). Only the
+  "payment required" rule for unpaid simulations and an unverified direct payment can be waived.
+  `npm run admin -- tokens:unpaid <email> [--charge]` finds (and, when told to, charges) records stored by
+  the old behaviour.
+- **Owner rule — all tokens count:** online, a simulation may be paid partly from the phone's set-aside
+  tokens and partly from the central balance (`paymentMethod: TOKENS` + `centralTokens`). Default: the
+  phone's first, the balance fills the gap; the order is a per-device preference on the Paspesa Tokens page
+  ("This phone first" / "Your balance first"). Offline only the phone's count. The server checks both
+  parts before deducting anything, so a refusal leaves no partial charge.
+- **Pay per simulation:** the M-PESA prompt can go to any number the user types (their own by default).
+- **Suspensions (reversible):** back office (Operator, Admin) can suspend a device or an account with a
+  reason and reinstate it later; both are audited. A suspended device gets 403 DEVICE_SUSPENDED on every
+  request; a suspended account's email cannot sign in and its device gets 403 ACCOUNT_SUSPENDED except on
+  /v1/auth/* (so it can sign out and use another email). The app shows a blocking screen, remembered
+  offline, that lifts on the first request that goes through. Nothing is deleted.
+- **Web on a computer:** the app is drawn inside a Samsung Galaxy-style phone (bezel, punch-hole camera,
+  status bar, side keys) at the owner's phone size, 540 × 1141, scaled evenly to fit the window; pop-ups
+  stay inside the phone; the sidebar is unchanged.
+- **Test data:** tests and placeholders no longer use the owner's or reference-screenshot names and numbers.

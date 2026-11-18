@@ -40,6 +40,7 @@ import type {
   TransactionRecord,
   TransactionType,
 } from './types';
+import { tokenSplit } from './types';
 import { PAYLOAD_VERSION, PIN_PATTERN, fail, outboxEntry, stableStringify, type Failure } from './util';
 
 export { PAYLOAD_VERSION, stableStringify };
@@ -68,6 +69,8 @@ export interface SimulationRequest {
   paymentMethod?: PaymentMethod;
   /** DIRECT: the verified Paspesa payment for this simulation (the server checks it on sync, §32). */
   directPaymentId?: string;
+  /** TOKENS: tokens taken from the central balance (online top-up); the rest comes from this phone. */
+  centralTokens?: number;
   /** Simulated Paspesa PIN entered on the PIN screen. Not part of the request fingerprint. */
   pin?: string;
   /**
@@ -212,7 +215,7 @@ export function quoteSimulation(
     pricing = { formula: 'FULL_AMOUNT', freeThreshold: 0, amountPerToken: null, tierConfiguration: null, resolvedRule: 'unpriced', accountOverride: null, configVersion: 0, tokenCost: 0, appliedConfigAt: at };
   }
   if (!options.ignorePayment) {
-    const payment = checkPayment(config, allocation, paymentMethod, pricing.tokenCost, at, request.directPaymentId);
+    const payment = checkPayment(config, allocation, paymentMethod, pricing.tokenCost, at, request.directPaymentId, request.centralTokens);
     if (payment) return payment;
   }
 
@@ -260,15 +263,18 @@ function checkPayment(
   tokenCost: number,
   at: string,
   directPaymentId: string | undefined,
+  centralTokens?: number,
 ): Failure | null {
   const settings = config.monetization ?? DEFAULT_MONETIZATION_SETTINGS;
   const authorized = !!allocation && Date.parse(at) <= Date.parse(allocation.authorizationExpiresAt);
   if (method === 'TOKENS') {
-    if (tokenCost === 0) return null;
+    // Only the phone's part is checked here; a central top-up is checked online and deducted on upload.
+    const fromPhone = tokenSplit({ paymentMethod: 'TOKENS', centralTokens, pricing: { tokenCost } }).device;
+    if (fromPhone === 0) return null;
     if (!allocation) return fail('INSUFFICIENT_TOKENS', 'No tokens are set aside on this phone. Connect to the internet to get some.');
     if (!authorized) return fail('AUTHORIZATION_EXPIRED', 'Your offline tokens need renewing. Connect to the internet to continue.');
-    if (allocation.remaining < tokenCost) {
-      return fail('INSUFFICIENT_TOKENS', `This simulation needs ${tokenCost} tokens; ${allocation.remaining} are set aside on this phone.`);
+    if (allocation.remaining < fromPhone) {
+      return fail('INSUFFICIENT_TOKENS', `This simulation needs ${fromPhone} tokens from this phone; ${allocation.remaining} are set aside on it.`);
     }
     return null;
   }
@@ -332,6 +338,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
       const q = quoted.quote;
 
       const sequence = account.version + 1;
+      const split = tokenSplit({ paymentMethod: q.paymentMethod, centralTokens: request.centralTokens, pricing: q.pricing });
       const record: TransactionRecord = {
         id: deps.ids.uuid(),
         accountId: account.id,
@@ -356,6 +363,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
         configVersion: deps.config.version,
         paymentMethod: q.paymentMethod,
         ...(q.paymentMethod === 'DIRECT' && request.directPaymentId ? { directPaymentId: request.directPaymentId } : {}),
+        ...(q.paymentMethod === 'TOKENS' && split.central > 0 ? { centralTokens: split.central } : {}),
         pricing: q.paymentMethod === 'UNMETERED' ? null : q.pricing,
         requestFingerprint: fingerprint,
         createdAt: now,
@@ -365,7 +373,7 @@ export async function processSimulation(deps: EngineDeps, request: SimulationReq
       };
 
       const allocation = account.tokenAllocation ?? null;
-      const spentTokens = q.paymentMethod === 'TOKENS' ? q.pricing.tokenCost : 0;
+      const spentTokens = split.device;
       const updatedAccount: Account = {
         ...account,
         ...(allocation && spentTokens > 0 ? { tokenAllocation: { ...allocation, remaining: allocation.remaining - spentTokens } } : {}),
@@ -585,6 +593,7 @@ export function requestFingerprint(request: SimulationRequest): string {
     counterparty: request.counterparty ?? {},
     paymentMethod: request.paymentMethod ?? 'UNMETERED',
     ...(request.directPaymentId ? { directPaymentId: request.directPaymentId } : {}),
+    ...(request.paymentMethod === 'TOKENS' && (request.centralTokens ?? 0) > 0 ? { centralTokens: request.centralTokens } : {}),
     ...(request.addWithdrawalCharge ? { addWithdrawalCharge: true } : {}),
   });
 }

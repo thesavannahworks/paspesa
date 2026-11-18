@@ -21,8 +21,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
-import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import { AppModal as Modal, useLayoutFrame } from '@/components/LayoutFrame';
+import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { AppModal as Modal, toAppPoint, useLayoutFrame } from '@/components/LayoutFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Inert, Sheet, T } from '@/components/ui';
 import { ArrowDownToLineIcon, CheckIcon, ChevronLeftIcon, CloseIcon, PersonFilledIcon, StarFilledIcon, TrashIcon } from '@/icons';
@@ -93,7 +93,7 @@ export default function MessagesScreen() {
   const pal = palette(colors.mode === 'dark');
   const { messages, deps, refresh } = useAppState();
   const offset = deps.config.utcOffsetMinutes;
-  const { height } = useWindowDimensions();
+  const { contentHeight: height } = useLayoutFrame();
 
   const [zoom, setZoom] = usePreference('messageZoom', 1);
   const [liveZoom, setLiveZoom] = useState<number | null>(null);
@@ -452,7 +452,8 @@ function MessageMenu({
   state: { message: MessageRecord; x: number; y: number } | null; pal: Palette; screenHeight: number;
   onClose: () => void; onAction: (a: MenuAction, m: MessageRecord) => void;
 }) {
-  const { contentWidth: width } = useLayoutFrame();
+  const frame = useLayoutFrame();
+  const width = frame.contentWidth;
   if (!state) return null;
   const m = state.message;
   const items: { label: string; action?: MenuAction }[] = [
@@ -467,8 +468,10 @@ function MessageMenu({
     { label: 'View details', action: 'details' },
   ];
   const menuHeight = s(MENU_ITEM) * items.length + s(16);
-  const left = Math.min(Math.max(state.x - s(MENU_WIDTH) * 0.35, s(16)), Math.min(width, 540) - s(MENU_WIDTH) - s(16));
-  const top = Math.min(Math.max(state.y - s(24), s(24)), screenHeight - menuHeight - s(24));
+  // Touches are in window coordinates; the menu is placed inside the app's area (offset on a computer).
+  const { x, y } = toAppPoint(frame, state.x, state.y);
+  const left = Math.min(Math.max(x - s(MENU_WIDTH) * 0.35, s(16)), Math.min(width, 540) - s(MENU_WIDTH) - s(16));
+  const top = Math.min(Math.max(y - s(24), s(24)), screenHeight - menuHeight - s(24));
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close menu" />

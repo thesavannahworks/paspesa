@@ -35,7 +35,7 @@ function fakeDaraja(queryAnswers: Array<{ status: number; body: unknown }>) {
 
 const payment = (patch: Partial<PaymentRecord> = {}): PaymentRecord => ({
   id: 'p1', ownerId: 'a1', paymentType: 'TOKEN_PURCHASE', provider: 'mpesa-daraja', providerReference: null, idempotencyKey: 'k', amount: 150, currency: 'KES',
-  status: 'INITIATED', tokens: 150, payerPhone: '254759981287', relatedSimulationId: null, simulationStatus: 'NOT_APPLICABLE', refundStatus: 'NONE',
+  status: 'INITIATED', tokens: 150, payerPhone: '254798765432', relatedSimulationId: null, simulationStatus: 'NOT_APPLICABLE', refundStatus: 'NONE',
   createdAt: '2026-11-17T09:00:00Z', verifiedAt: null, ...patch,
 });
 
@@ -56,7 +56,7 @@ describe('Daraja STK Push adapter', () => {
     const stk = calls.filter((c) => c.url.endsWith('processrequest'));
     expect(stk[0]!.body).toMatchObject({
       BusinessShortCode: '174379', Timestamp: '20261117090509', TransactionType: 'CustomerPayBillOnline', Amount: 150,
-      PartyA: '254759981287', PartyB: '174379', PhoneNumber: '254759981287', CallBackURL: 'https://example.com/cb', AccountReference: 'Paspesa',
+      PartyA: '254798765432', PartyB: '174379', PhoneNumber: '254798765432', CallBackURL: 'https://example.com/cb', AccountReference: 'Paspesa',
     });
     expect(stk[0]!.auth).toBe('Bearer tok-1');
     expect(calls.filter((c) => c.url.includes('oauth')).length).toBe(1); // token cached
@@ -94,7 +94,7 @@ describe('payment endpoints', () => {
     await fetch(`${base}/v1/installations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ installationId, token }) });
     await db.query(
       `INSERT INTO accounts (id, installation_id, account_name, phone_number, opening_balance, balance, version, currency, created_at, updated_at)
-       VALUES ($1, $2, 'Paskal Twoli', '254759981287', 1000, 1000, 1, 'KES', now(), now())`,
+       VALUES ($1, $2, 'Amina Wanjiru', '254798765432', 1000, 1000, 1, 'KES', now(), now())`,
       [randomUUID(), installationId],
     );
     return { base, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' } };
@@ -105,7 +105,7 @@ describe('payment endpoints', () => {
     await app.listen(0, '127.0.0.1');
     try {
       const { base, headers } = await registered(app);
-      const res = await fetch(`${base}/v1/payments/tokens`, { method: 'POST', headers, body: JSON.stringify({ shillings: 50, phone: '0759981287', idempotencyKey: 'key-00001' }) });
+      const res = await fetch(`${base}/v1/payments/tokens`, { method: 'POST', headers, body: JSON.stringify({ shillings: 50, phone: '0798765432', idempotencyKey: 'key-00001' }) });
       expect(res.status).toBe(503);
       expect(((await res.json()) as { error: { code: string } }).error.code).toBe('PAYMENTS_NOT_CONFIGURED');
     } finally {
@@ -124,7 +124,7 @@ describe('payment endpoints', () => {
     await app.listen(0, '127.0.0.1');
     try {
       const { base, headers } = await registered(app);
-      const body = JSON.stringify({ shillings: 50, phone: '0759981287', idempotencyKey: 'key-00002' });
+      const body = JSON.stringify({ shillings: 50, phone: '0798765432', idempotencyKey: 'key-00002' });
       const p = (await (await fetch(`${base}/v1/payments/tokens`, { method: 'POST', headers, body })).json()) as PaymentRecord;
       expect(p).toMatchObject({ status: 'PENDING', amount: 50, tokens: 50 });
       const same = (await (await fetch(`${base}/v1/payments/tokens`, { method: 'POST', headers, body })).json()) as PaymentRecord;

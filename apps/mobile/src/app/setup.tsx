@@ -61,7 +61,7 @@ export default function SetupScreen() {
           Set up your simulated account. Balances, transactions and messages in Paspesa are simulations — not real money.
         </T>
       </View>
-      <Field label="Your name" value={name} onChangeText={edit(setName)} placeholder="e.g. Paskal Twoli" autoCapitalize="words" error={errors.accountName} />
+      <Field label="Your name" value={name} onChangeText={edit(setName)} placeholder="Full name" autoCapitalize="words" error={errors.accountName} />
       <Field label="Phone number" value={phone} onChangeText={edit(setPhone)} placeholder="07XX XXX XXX" keyboardType="phone-pad" error={errors.phoneNumber} />
       <Field
         label="Opening balance"

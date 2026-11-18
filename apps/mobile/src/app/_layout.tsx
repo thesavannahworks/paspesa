@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '@/components/AppLock';
-import { COLUMN_WIDTH, computeFrame, LayoutFrameProvider } from '@/components/LayoutFrame';
+import { Suspended } from '@/components/Suspended';
+import { computeFrame, LayoutFrameProvider } from '@/components/LayoutFrame';
+import { PhoneKeys, PhoneStatusBar, phoneBodyStyle, phoneScreenStyle } from '@/components/PhoneFrame';
 import { WebSidebar } from '@/components/WebSidebar';
 import { AppStateProvider, useAppState } from '@/services/AppState';
 import { PreferencesProvider, usePreference } from '@/services/preferences';
@@ -29,31 +31,34 @@ function ThemedStack() {
 }
 
 /**
- * Phones: the screens fill the window. Web on a wide screen: a sidebar and the screens in a centred
- * column (see LayoutFrame). The same tree in both cases, so resizing the window keeps your place.
+ * Phones: the screens fill the window. Web on a wide screen: a sidebar and the app inside a drawn phone
+ * (see LayoutFrame). The same tree in both cases, so resizing the window keeps your place.
  */
 function AppShell() {
   const { colors } = useTheme();
   const { account } = useAppState();
   const session = useSession();
-  const { width } = useWindowDimensions();
-  const sidebar = !!account && (!session.required || !!session.email);
-  const frame = computeFrame(width, sidebar);
+  const { width, height } = useWindowDimensions();
+  const sidebar = !!account && (!session.required || !!session.email) && !session.suspended;
+  const frame = computeFrame(width, height, sidebar);
   return (
     <LayoutFrameProvider sidebar={sidebar}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: frame.wide ? colors.page : colors.screen }}>
         {frame.sidebar ? <WebSidebar /> : null}
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <View
-            style={frame.wide
-              ? { flex: 1, width: COLUMN_WIDTH, backgroundColor: colors.screen, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: colors.divider }
-              : { flex: 1, width: '100%' }}
-          >
-            <ThemedStack />
+        <View style={frame.wide ? styles.stage : styles.fill}>
+          <View style={frame.wide ? phoneBodyStyle(frame.scale) : styles.fill}>
+            {frame.wide ? <PhoneKeys /> : null}
+            <View style={frame.wide ? [phoneScreenStyle, { backgroundColor: colors.screen }] : styles.fill}>
+              {frame.wide ? <PhoneStatusBar /> : null}
+              <View style={styles.fill}>
+                <ThemedStack />
+              </View>
+            </View>
           </View>
         </View>
       </View>
       <AppLock />
+      <Suspended />
     </LayoutFrameProvider>
   );
 }
@@ -137,3 +142,8 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1, width: '100%' },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+});

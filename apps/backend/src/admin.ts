@@ -18,11 +18,14 @@
  *   npm run admin -w @paspesa/backend -- admin:list
  *   npm run admin -- trace <email | phone | accountId> [hours]   (an account's recent story, for debugging)
  *   npm run admin -- review:list
+ *   npm run admin -- tokens:unpaid <email | phone | accountId> [--charge]
+ *       token-paid simulations stored without their tokens being taken (the review "Apply" bug fixed on
+ *       2026-11-18). Lists them; with --charge takes each one's tokens from the central balance (audited).
  *
  * Uses DATABASE_URL, or the embedded database in PGLITE_DIR (default ./.data/pglite). Stop the running
  * backend first when using the embedded database (it allows one process at a time).
  */
-import type { PricingRule, TokenCategory } from '@paspesa/core';
+import type { PricingRule, PricingSnapshot, TokenCategory } from '@paspesa/core';
 
 // Settings and secrets (DATABASE_URL, MPESA_*) from apps/backend/.env when present (git-ignored).
 try {
@@ -124,6 +127,35 @@ try {
       for (const e of events) console.log(`${new Date(e.at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}  ${e.line}`);
       break;
     }
+    case 'tokens:unpaid': {
+      const key = (args[0] ?? '').trim().toLowerCase();
+      const [a] = await db.query<{ id: string }>(
+        `SELECT a.id FROM accounts a LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.id = $1 OR lower(u.email) = $1 OR a.phone_number = $1 OR a.phone_number = '254' || ltrim($1, '0') LIMIT 1`, [key],
+      );
+      if (!a) throw new Error('No account for that email, phone or ID');
+      const unpaid = await db.query<{ sequence: number; operation_id: string; type: string; amount: string; method: string; cost: string; pricing: PricingSnapshot }>(
+        `SELECT t.sequence, t.operation_id, t.type, t.amount, t.record->>'paymentMethod' AS method, (t.record->'pricing'->>'tokenCost') AS cost, t.record->'pricing' AS pricing
+         FROM transactions t JOIN token_wallets w ON w.owner_id = t.account_id
+         WHERE t.account_id = $1 AND t.record->>'paymentMethod' IN ('TOKENS', 'WALLET') AND (t.record->'pricing'->>'tokenCost')::int > 0
+           AND NOT EXISTS (SELECT 1 FROM token_spends s WHERE s.wallet_id = w.id AND s.simulation_id = t.operation_id)
+         ORDER BY t.sequence`,
+        [a.id],
+      );
+      print(unpaid.map((u) => ({ transaction: u.sequence, type: u.type, amount: Number(u.amount), paidWith: u.method, tokens: Number(u.cost) })));
+      if (!args.includes('--charge')) {
+        console.log(unpaid.length ? `Not charged yet. Run again with --charge to take ${unpaid.reduce((n, u) => n + Number(u.cost), 0)} tokens from the central balance.` : 'Nothing unpaid.');
+        break;
+      }
+      for (const u of unpaid) {
+        await money.spendForSimulation({ accountId: a.id, simulationId: u.operation_id, pricing: u.pricing });
+        await db.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, after_value, reason) VALUES ($1, $2, $3, $4, $5, $6)', [
+          actor, 'CHARGE_UNPAID_SIMULATION', 'ACCOUNT', a.id, JSON.stringify({ sequence: u.sequence, tokens: Number(u.cost) }), 'Stored by review Apply without charging (fixed 2026-11-18)',
+        ]);
+      }
+      print({ charged: unpaid.length, wallet: (await money.wallet(a.id)).balances });
+      break;
+    }
     case 'review:list':
       print(await db.query("SELECT id, received_at, code, operation_type, message, coalesce(action, 'OPEN') AS state FROM sync_review ORDER BY received_at DESC LIMIT 30"));
       break;
@@ -131,7 +163,7 @@ try {
       print(await db.query('SELECT id, installation_id, account_name, phone_number, balance FROM accounts ORDER BY created_at'));
       break;
     default:
-      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts | admin:create <email> <name> <role> <password> | admin:list | trace <email|phone|accountId> [hours] | review:list');
+      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts | admin:create <email> <name> <role> <password> | admin:list | trace <email|phone|accountId> [hours] | review:list | tokens:unpaid <email|phone|accountId> [--charge]');
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);

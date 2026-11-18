@@ -1,69 +1,117 @@
 /**
- * Web on a wide screen (a computer): instead of stretching phone screens across the window, the app shows
- * a sidebar for navigation and the screens in a centred column at the width they are designed for.
- * Phones, and narrow browser windows, are unchanged.
+ * Web on a wide screen (a computer): instead of stretching phone screens across the window, the app is shown
+ * inside a drawn phone — a Samsung Galaxy-style body with bezel, punch-hole camera, status bar and side keys.
+ * The app inside is laid out at the owner's phone size (540 × 1141 dp, the size the screens are calibrated
+ * for), and the whole phone is scaled evenly to fit the window's height. A sidebar for navigation sits
+ * beside it. Phones, and narrow browser windows, are unchanged.
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { Modal, Platform, useWindowDimensions, View, type ModalProps } from 'react-native';
 import { REFERENCE_WIDTH } from '@/theme/scale';
 import { useTheme } from '@/theme/ThemeProvider';
 
-/** Web windows at least this wide show the screens in a centred column… */
+/** Web windows at least this wide show the app inside a phone… */
 export const WIDE_MIN_WIDTH = 640;
 /** …and from this width, with the sidebar. */
 export const SIDEBAR_MIN_WIDTH = 1000;
 export const SIDEBAR_WIDTH = 264;
-/** The screens are calibrated for this width (theme/scale). */
-export const COLUMN_WIDTH = REFERENCE_WIDTH;
+
+/** The phone, in the app's own units (before the fit-to-window scale). */
+export const PHONE = {
+  screenWidth: REFERENCE_WIDTH,
+  screenHeight: 1141,
+  bezel: 15,
+  statusBar: 38,
+  bodyRadius: 72,
+  /** Space kept around the phone in the window (window pixels). */
+  margin: 28,
+  /** Never drawn smaller than this. */
+  minScale: 0.45,
+} as const;
+export const SCREEN_RADIUS = PHONE.bodyRadius - PHONE.bezel;
+export const PHONE_OUTER = { width: PHONE.screenWidth + 2 * PHONE.bezel, height: PHONE.screenHeight + 2 * PHONE.bezel };
 
 export interface LayoutFrame {
-  /** Sidebar + centred column. */
+  /** Shown inside a phone (web, wide window). */
   wide: boolean;
   /** The sidebar is shown (wide, and signed in with an account). */
   sidebar: boolean;
-  /** Width available to a screen. */
+  /** Size of the area the app's screens get, in app units (below the phone's status bar). */
   contentWidth: number;
-  /** Left edge of the column in the window (for pop-ups placed over it). */
+  contentHeight: number;
+  /** Where that area starts in the window (window pixels), and how much it is scaled. */
   columnLeft: number;
+  contentTop: number;
+  scale: number;
 }
 
 const FrameContext = createContext<LayoutFrame | null>(null);
 
-export function computeFrame(width: number, sidebar: boolean): LayoutFrame {
+export function computeFrame(width: number, height: number, sidebar: boolean): LayoutFrame {
   const wide = Platform.OS === 'web' && width >= WIDE_MIN_WIDTH;
-  if (!wide) return { wide: false, sidebar: false, contentWidth: width, columnLeft: 0 };
+  if (!wide) return { wide: false, sidebar: false, contentWidth: width, contentHeight: height, columnLeft: 0, contentTop: 0, scale: 1 };
   const withSidebar = sidebar && width >= SIDEBAR_MIN_WIDTH;
   const side = withSidebar ? SIDEBAR_WIDTH : 0;
-  return { wide: true, sidebar: withSidebar, contentWidth: COLUMN_WIDTH, columnLeft: side + Math.max(0, (width - side - COLUMN_WIDTH) / 2) };
+  const scale = Math.max(PHONE.minScale, Math.min(1, (height - 2 * PHONE.margin) / PHONE_OUTER.height, (width - side - 2 * PHONE.margin) / PHONE_OUTER.width));
+  // The phone is centred in the area beside the sidebar and scaled about its centre.
+  const centreX = side + (width - side) / 2;
+  const centreY = height / 2;
+  return {
+    wide: true,
+    sidebar: withSidebar,
+    contentWidth: PHONE.screenWidth,
+    contentHeight: PHONE.screenHeight - PHONE.statusBar,
+    columnLeft: centreX - (scale * PHONE_OUTER.width) / 2 + scale * PHONE.bezel,
+    contentTop: centreY - (scale * PHONE_OUTER.height) / 2 + scale * (PHONE.bezel + PHONE.statusBar),
+    scale,
+  };
 }
 
 export function LayoutFrameProvider({ sidebar, children }: { sidebar: boolean; children: ReactNode }) {
-  const { width } = useWindowDimensions();
-  const frame = useMemo(() => computeFrame(width, sidebar), [width, sidebar]);
+  const { width, height } = useWindowDimensions();
+  const frame = useMemo(() => computeFrame(width, height, sidebar), [width, height, sidebar]);
   return <FrameContext.Provider value={frame}>{children}</FrameContext.Provider>;
 }
 
 export function useLayoutFrame(): LayoutFrame {
   const ctx = useContext(FrameContext);
-  const { width } = useWindowDimensions();
-  return ctx ?? { wide: false, sidebar: false, contentWidth: width, columnLeft: 0 };
+  const { width, height } = useWindowDimensions();
+  return ctx ?? { wide: false, sidebar: false, contentWidth: width, contentHeight: height, columnLeft: 0, contentTop: 0, scale: 1 };
+}
+
+/** A touch's window position → the app's own coordinates (they differ inside the drawn phone). */
+export function toAppPoint(frame: LayoutFrame, pageX: number, pageY: number): { x: number; y: number } {
+  return { x: (pageX - frame.columnLeft) / frame.scale, y: (pageY - frame.contentTop) / frame.scale };
 }
 
 /**
- * Drop-in Modal: on a wide screen its content is placed over the centred column (bottom sheets and
- * dialogs keep the phone width) and the rest of the window is dimmed or filled with the page colour.
+ * Drop-in Modal: on a wide screen its content is placed over the phone's screen, at the same scale (bottom
+ * sheets and dialogs stay inside the phone, under its status bar); the rest of the window stays as it is.
  */
 export function AppModal({ children, transparent, ...props }: ModalProps) {
   const frame = useLayoutFrame();
   const { colors } = useTheme();
   if (!frame.wide) return <Modal transparent={transparent} {...props}>{children}</Modal>;
-  const side = transparent ? colors.overlay : colors.page;
+  const w = frame.contentWidth;
+  const h = frame.contentHeight;
+  // Scaling happens about the box's centre: shift it so the scaled box lands on the phone's screen.
   return (
     <Modal transparent {...props}>
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <View style={{ width: frame.columnLeft, backgroundColor: side }} />
-        <View style={{ width: frame.contentWidth, backgroundColor: transparent ? 'transparent' : colors.screen }}>{children}</View>
-        <View style={{ flex: 1, backgroundColor: side }} />
+      <View
+        style={{
+          position: 'absolute',
+          left: frame.columnLeft - (w * (1 - frame.scale)) / 2,
+          top: frame.contentTop - (h * (1 - frame.scale)) / 2,
+          width: w,
+          height: h,
+          transform: [{ scale: frame.scale }],
+          overflow: 'hidden',
+          borderBottomLeftRadius: SCREEN_RADIUS,
+          borderBottomRightRadius: SCREEN_RADIUS,
+          backgroundColor: transparent ? 'transparent' : colors.screen,
+        }}
+      >
+        {children}
       </View>
     </Modal>
   );

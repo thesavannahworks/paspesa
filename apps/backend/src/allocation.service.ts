@@ -26,6 +26,7 @@ import {
   type ServerAllocation,
   type SimulationType,
   type TokenCategory,
+  tokenSplit,
 } from '@paspesa/core';
 import type { Database, Queryable } from './database.js';
 import { MonetizationError, type MonetizationService } from './monetization.service.js';
@@ -138,47 +139,98 @@ export class AllocationService {
   }
 
   /**
-   * Turns a synced token-funded simulation into a real expenditure from the device's reserved lots. Runs inside
-   * the sync transaction. Idempotent per simulation. The price is recomputed with the allocation's pricing.
+   * Charges a synced token-paid simulation, inside the sync transaction. Idempotent per simulation.
+   *
+   *  - `central` tokens come from the central balance; the rest from this device's set-aside tokens.
+   *  - Normally the price is recomputed (with the allocation's pricing when the device used it) and must
+   *    match what the device charged.
+   *  - `reviewed` (a reviewer applies a held simulation): the device's price is accepted and the tokens are
+   *    taken wherever they still are — this device's set-aside tokens first, then the central balance. A
+   *    reviewed simulation is never stored for free just because it was held.
+   *
+   * Both sources are checked before anything is deducted, so a refusal leaves no partial charge.
    */
-  async spendSynced(
+  async chargeSimulation(
     q: Queryable,
-    input: { accountId: string; deviceId: string; simulationId: string; type: SimulationType; amount: number; completedAt: string; claimed: PricingSnapshot | null },
+    input: {
+      accountId: string; deviceId: string; simulationId: string; type: SimulationType; amount: number; completedAt: string;
+      method: 'TOKENS' | 'WALLET'; central: number; claimed: PricingSnapshot | null; reviewed?: boolean;
+    },
   ): Promise<SpendOutcome> {
     const walletId = await this.money.lockWallet(q, input.accountId);
     const [already] = await q.query('SELECT 1 FROM token_spends WHERE wallet_id = $1 AND simulation_id = $2', [walletId, input.simulationId]);
     if (already) return { ok: true };
     const alloc = await this.active(q, input.deviceId, true);
-    if (!alloc) return { ok: false, code: 'INSUFFICIENT_TOKENS', message: 'This device has no active token allocation' };
-    if (Date.parse(input.completedAt) > Date.parse(iso(alloc.authorization_expires_at))) {
-      return { ok: false, code: 'AUTHORIZATION_EXPIRED', message: 'Spent after the offline authorization ended' };
+    const unusedNow = alloc ? unused(alloc) : 0;
+
+    let cost: number;
+    let pricing: PricingSnapshot;
+    let split: { device: number; central: number };
+    if (input.reviewed) {
+      if (!input.claimed) return { ok: false, code: 'PRICING_MISMATCH', message: 'The record has no price' };
+      pricing = input.claimed;
+      cost = pricing.tokenCost;
+      const device = Math.min(cost, unusedNow);
+      split = { device, central: cost - device };
+    } else {
+      const config = input.method === 'TOKENS' && alloc ? alloc.pricing : await this.money.pricing(q);
+      pricing = priceSimulation(config, { accountId: input.accountId, type: input.type, amount: input.amount, at: input.completedAt });
+      if (!input.claimed || input.claimed.tokenCost !== pricing.tokenCost) {
+        return { ok: false, code: 'PRICING_MISMATCH', message: `This simulation costs ${pricing.tokenCost} tokens, the device priced it at ${input.claimed?.tokenCost ?? '?'}` };
+      }
+      cost = pricing.tokenCost;
+      split = tokenSplit({ paymentMethod: input.method, centralTokens: input.central, pricing });
+      if (split.device > 0) {
+        if (!alloc) return { ok: false, code: 'INSUFFICIENT_TOKENS', message: 'This device has no tokens set aside' };
+        if (Date.parse(input.completedAt) > Date.parse(iso(alloc.authorization_expires_at))) {
+          return { ok: false, code: 'AUTHORIZATION_EXPIRED', message: 'Spent after the offline authorization ended' };
+        }
+        if (unusedNow < split.device) return { ok: false, code: 'INSUFFICIENT_TOKENS', message: `Needs ${split.device} tokens from this device; ${unusedNow} left set aside` };
+      }
     }
-    const expected = priceSimulation(alloc.pricing, { accountId: input.accountId, type: input.type, amount: input.amount, at: input.completedAt });
-    if (!input.claimed || input.claimed.tokenCost !== expected.tokenCost) {
-      return { ok: false, code: 'PRICING_MISMATCH', message: `Expected ${expected.tokenCost} tokens` };
+    if (cost === 0) return { ok: true };
+
+    // Plan both parts first.
+    const centralPlan = split.central > 0 ? planDeduction(await this.money.lots(q, walletId), split.central, this.now()) : null;
+    if (centralPlan && !centralPlan.ok) {
+      return { ok: false, code: 'INSUFFICIENT_TOKENS', message: `Needs ${split.central} tokens from the central balance; ${centralPlan.available} available` };
     }
-    if (expected.tokenCost === 0) return { ok: true };
-    const lots = await q.query<{ lot_id: string; category: TokenCategory; quantity: number; spent: number; created_at: Date; expires_at: Date | null }>(
-      `SELECT al.lot_id, al.category, al.quantity, al.spent, l.created_at, l.expires_at
-       FROM allocation_lots al JOIN token_lots l ON l.id = al.lot_id WHERE al.allocation_id = $1`,
-      [alloc.id],
-    );
-    const plan = planAllocationSpend(
-      lots.map((l) => ({ lotId: l.lot_id, category: l.category, quantity: Number(l.quantity), spent: Number(l.spent), createdAt: iso(l.created_at), expiresAt: l.expires_at ? iso(l.expires_at) : null })),
-      expected.tokenCost,
-    );
-    if (!plan.ok) return { ok: false, code: 'INSUFFICIENT_TOKENS', message: `Needs ${expected.tokenCost} tokens; ${plan.available} left on the allocation` };
-    for (const d of plan.deductions) {
-      await q.query('UPDATE token_lots SET remaining_quantity = remaining_quantity - $2, reserved_quantity = reserved_quantity - $2 WHERE id = $1', [d.lotId, d.quantity]);
-      await q.query('UPDATE allocation_lots SET spent = spent + $3 WHERE allocation_id = $1 AND lot_id = $2', [alloc.id, d.lotId, d.quantity]);
-      await this.money.ledgerLine(q, {
-        walletId, entryType: 'SIMULATION_EXPENDITURE', category: d.category, quantity: d.quantity, direction: 'DEBIT', referenceType: 'SIMULATION',
-        referenceId: input.simulationId, lotId: d.lotId, deviceId: input.deviceId, expiresAt: null, metadata: { allocationId: alloc.id },
-      });
+    let phonePlan: ReturnType<typeof planAllocationSpend> | null = null;
+    if (split.device > 0) {
+      const lots = await q.query<{ lot_id: string; category: TokenCategory; quantity: number; spent: number; created_at: Date; expires_at: Date | null }>(
+        `SELECT al.lot_id, al.category, al.quantity, al.spent, l.created_at, l.expires_at
+         FROM allocation_lots al JOIN token_lots l ON l.id = al.lot_id WHERE al.allocation_id = $1`,
+        [alloc!.id],
+      );
+      phonePlan = planAllocationSpend(
+        lots.map((l) => ({ lotId: l.lot_id, category: l.category, quantity: Number(l.quantity), spent: Number(l.spent), createdAt: iso(l.created_at), expiresAt: l.expires_at ? iso(l.expires_at) : null })),
+        split.device,
+      );
+      if (!phonePlan.ok) return { ok: false, code: 'INSUFFICIENT_TOKENS', message: `Needs ${split.device} tokens from this device; ${phonePlan.available} left set aside` };
     }
-    await q.query('UPDATE device_allocations SET spent_quantity = spent_quantity + $2 WHERE id = $1', [alloc.id, expected.tokenCost]);
+
+    if (phonePlan?.ok) {
+      for (const d of phonePlan.deductions) {
+        await q.query('UPDATE token_lots SET remaining_quantity = remaining_quantity - $2, reserved_quantity = reserved_quantity - $2 WHERE id = $1', [d.lotId, d.quantity]);
+        await q.query('UPDATE allocation_lots SET spent = spent + $3 WHERE allocation_id = $1 AND lot_id = $2', [alloc!.id, d.lotId, d.quantity]);
+        await this.money.ledgerLine(q, {
+          walletId, entryType: 'SIMULATION_EXPENDITURE', category: d.category, quantity: d.quantity, direction: 'DEBIT', referenceType: 'SIMULATION',
+          referenceId: input.simulationId, lotId: d.lotId, deviceId: input.deviceId, expiresAt: null, metadata: { allocationId: alloc!.id },
+        });
+      }
+      await q.query('UPDATE device_allocations SET spent_quantity = spent_quantity + $2 WHERE id = $1', [alloc!.id, split.device]);
+    }
+    if (centralPlan?.ok) {
+      for (const d of centralPlan.deductions) {
+        await q.query('UPDATE token_lots SET remaining_quantity = remaining_quantity - $2 WHERE id = $1', [d.lotId, d.quantity]);
+        await this.money.ledgerLine(q, {
+          walletId, entryType: 'SIMULATION_EXPENDITURE', category: d.category, quantity: d.quantity, direction: 'DEBIT', referenceType: 'SIMULATION',
+          referenceId: input.simulationId, lotId: d.lotId, deviceId: input.deviceId, expiresAt: null, metadata: null,
+        });
+      }
+    }
     await q.query("INSERT INTO token_spends (wallet_id, simulation_id, quantity, pricing, status, created_at, allocation_id) VALUES ($1, $2, $3, $4, 'SPENT', $5, $6)", [
-      walletId, input.simulationId, expected.tokenCost, JSON.stringify(expected), this.now(), alloc.id,
+      walletId, input.simulationId, cost, JSON.stringify(pricing), this.now(), split.device > 0 ? alloc!.id : null,
     ]);
     await this.money.refreshCaches(q, walletId);
     return { ok: true };

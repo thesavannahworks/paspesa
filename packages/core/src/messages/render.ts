@@ -15,7 +15,7 @@ export interface MessageContext {
 
 /**
  * M-PESA prints registered names as first, middle and last name. A two-part name has an empty
- * middle name, so its parts are separated by two spaces ("GETRUDE  OHANGA", reference 08-messages).
+ * middle name, so its parts are separated by two spaces ("PETER  KAMAU", reference 08-messages).
  */
 export function registeredName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

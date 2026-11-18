@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -385,4 +385,14 @@ WHERE action = 'UPDATE_MONETIZATION_SETTINGS' AND after_value IS NOT NULL
 
 -- What a reviewer did: APPLIED (stored after all) or DISMISSED (kept out of the ledger).
 ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS action TEXT;
+
+-- ---------------------------------------------------------------- v7: reversible suspensions
+
+-- A suspended device or account is refused by the server until reinstated (nothing is deleted).
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS suspended_reason TEXT;
+ALTER TABLE installations ADD COLUMN IF NOT EXISTS suspended_by TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_reason TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_by TEXT;
 `;

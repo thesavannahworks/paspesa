@@ -9,6 +9,7 @@
  *  - The simulated PIN is never sent to the server.
  */
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { emailSuspended } from './suspension.js';
 import { isValidEmail, normalizeEmail, type AccountSnapshot, type Favourite, type SignInResult, type SignInStatus, type SyncMessage, type SyncTransaction } from '@paspesa/core';
 import type { Database, Queryable } from './database.js';
 import type { Mailer } from './mailer.js';
@@ -20,7 +21,7 @@ const PER_EMAIL_PER_DAY = 10;
 const PER_DEVICE_PER_DAY = 20;
 
 export class SignInError extends Error {
-  constructor(readonly code: 'VALIDATION' | 'WRONG_CODE' | 'CODE_EXPIRED' | 'TOO_MANY' | 'ACCOUNT_CONFLICT' | 'NOT_SIGNED_IN' | 'NOT_ACTIVE_DEVICE', message: string) {
+  constructor(readonly code: 'VALIDATION' | 'WRONG_CODE' | 'CODE_EXPIRED' | 'TOO_MANY' | 'ACCOUNT_CONFLICT' | 'NOT_SIGNED_IN' | 'NOT_ACTIVE_DEVICE' | 'ACCOUNT_SUSPENDED', message: string) {
     super(message);
   }
 }
@@ -45,6 +46,8 @@ export class SignInService {
   async requestCode(emailRaw: string, installationId: string): Promise<{ sent: true; resendAfterSeconds: number }> {
     const email = normalizeEmail(emailRaw ?? '');
     if (!isValidEmail(email)) throw new SignInError('VALIDATION', 'Enter a valid email address');
+    const suspended = await emailSuspended(this.db, email);
+    if (suspended) throw new SignInError('ACCOUNT_SUSPENDED', suspended);
     const now = this.now();
     const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
     const [recent] = await this.db.query<{ created_at: Date }>('SELECT created_at FROM sign_in_codes WHERE email = $1 ORDER BY created_at DESC LIMIT 1', [email]);
@@ -78,6 +81,8 @@ export class SignInService {
     const email = normalizeEmail(emailRaw ?? '');
     const given = String(code ?? '').replace(/\s/g, '');
     if (!isValidEmail(email) || !/^\d{6}$/.test(given)) throw new SignInError('VALIDATION', 'Enter the 6-digit code from the email');
+    const suspended = await emailSuspended(this.db, email);
+    if (suspended) throw new SignInError('ACCOUNT_SUSPENDED', suspended);
     const now = this.now();
     // A wrong try is counted in its own committed step (an error inside the sign-in transaction would undo it).
     const outcome = await this.db.transaction(async (q): Promise<SignInResult | SignInError> => {

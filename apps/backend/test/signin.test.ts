@@ -25,6 +25,7 @@ import { openDatabase, type Database } from '../src/database.js';
 import { memoryMailer } from '../src/mailer.js';
 import { MonetizationService } from '../src/monetization.service.js';
 import { SyncService } from '../src/sync.service.js';
+import { SuspensionService } from '../src/suspension.js';
 
 let db: Database;
 let app: Awaited<ReturnType<typeof createApp>>;
@@ -92,7 +93,7 @@ async function signIn(d: Awaited<ReturnType<typeof device>>, email: string, repl
 }
 
 const send = (deps: EngineDeps, amount: number) =>
-  processSimulation(deps, { operationId: randomUUID(), type: 'SEND_MONEY', amount, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: PIN });
+  processSimulation(deps, { operationId: randomUUID(), type: 'SEND_MONEY', amount, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: PIN });
 
 describe('sign-in codes', () => {
   it('emails a 6-digit code; wrong codes count down; the code works once', async () => {
@@ -134,7 +135,7 @@ describe('one account, moving between devices', () => {
     const d = await device();
     expect((await signIn(d, 'achieng@example.com')).body.accountId).toBeNull();
     const deps = makeDeps('2025-01-01T06:00:00.000Z', d.installationId);
-    const created = await setupAccount(deps, { operationId: randomUUID(), accountName: 'Achieng Odhiambo', phoneNumber: '0712345678', openingBalance: 5_000, pin: PIN });
+    const created = await setupAccount(deps, { operationId: randomUUID(), accountName: 'Achieng Odhiambo', phoneNumber: '0798765432', openingBalance: 5_000, pin: PIN });
     expect(created.ok).toBe(true);
     expect((await syncOutbox(deps, d.transport)).error).toBeNull();
     const [acct] = await db.query<{ email: string }>('SELECT u.email FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.installation_id = $1', [d.installationId]);
@@ -145,7 +146,7 @@ describe('one account, moving between devices', () => {
     // Phone A: account, signed in, some simulations synced
     const a = await device();
     const depsA = makeDeps('2025-01-01T06:00:00.000Z', a.installationId);
-    await setupAccount(depsA, { operationId: randomUUID(), accountName: 'Paskal Twoli', phoneNumber: '0759981287', openingBalance: 20_000, pin: PIN });
+    await setupAccount(depsA, { operationId: randomUUID(), accountName: 'Amina Wanjiru', phoneNumber: '0798765432', openingBalance: 20_000, pin: PIN });
     await send(depsA, 400);
     await syncOutbox(depsA, a.transport);
     expect((await signIn(a, 'paskal@example.com')).body.accountId).toBe((await depsA.store.getAccount())!.id);
@@ -307,7 +308,7 @@ describe('one account, moving between devices', () => {
     await money.updateSettings({ paymentRequired: true }, 'admin:test');
     deps.config = { ...deps.config, pricing: await money.pricing(), monetization: { ...deps.config.monetization, paymentRequired: true } };
     try {
-      const pay = (amount: number) => processSimulation(deps, { operationId: randomUUID(), type: 'SEND_MONEY', amount, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: PIN, paymentMethod: 'WALLET' });
+      const pay = (amount: number) => processSimulation(deps, { operationId: randomUUID(), type: 'SEND_MONEY', amount, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: PIN, paymentMethod: 'WALLET' });
       const first = await pay(100); // 20 tokens (KSh 5 per token above the free KSh 20 threshold → full amount)
       expect(first.ok).toBe(true);
       const cost = first.ok ? first.transaction.pricing!.tokenCost : 0;
@@ -324,5 +325,60 @@ describe('one account, moving between devices', () => {
     } finally {
       await money.updateSettings({ paymentRequired: false }, 'admin:test');
     }
+  });
+});
+
+describe('suspensions (reversible)', () => {
+  it('a suspended device is refused everything until it is reinstated; its data waits', async () => {
+    const d = await device();
+    await signIn(d, 'suspend-device@example.com');
+    const deps = makeDeps('2025-01-01T06:00:00.000Z', d.installationId);
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'Device Suspended', phoneNumber: '0712000010', openingBalance: 1_000, pin: PIN });
+    await syncOutbox(deps, d.transport);
+    const suspensions = new SuspensionService(db);
+    expect(await suspensions.suspend('DEVICE', d.installationId, 'admin:test', 'Misuse')).toBe(true);
+    expect(await suspensions.suspend('DEVICE', d.installationId, 'admin:test', 'Again')).toBe(false);
+
+    const refused = await d.call('GET', '/v1/sync/state');
+    expect(refused.status).toBe(403);
+    expect(refused.body.error.code).toBe('DEVICE_SUSPENDED');
+    expect(refused.body.error.message).toMatch(/Misuse/);
+    expect((await d.call('POST', '/v1/auth/code', { email: 'other@example.com' })).status).toBe(403);
+    await send(deps, 100);
+    expect((await syncOutbox(deps, d.transport)).error).not.toBeNull(); // nothing uploads…
+
+    expect(await suspensions.reinstate('DEVICE', d.installationId, 'admin:test', 'Talked to them')).toBe(true);
+    const report = await syncOutbox(deps, d.transport); // …until reinstated
+    expect([report.error, report.needsReview]).toEqual([null, 0]);
+    const audit = await db.query<{ action: string }>("SELECT action FROM audit_log WHERE entity_id = $1 ORDER BY id", [d.installationId]);
+    expect(audit.map((a) => a.action)).toEqual(['SUSPEND_DEVICE', 'REINSTATE_DEVICE']);
+  });
+
+  it('a suspended account cannot sign in or sync; its device may still sign out and switch email', async () => {
+    const d = await device();
+    await signIn(d, 'suspend-account@example.com');
+    const deps = makeDeps('2025-01-01T06:00:00.000Z', d.installationId);
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'Account Suspended', phoneNumber: '0712000011', openingBalance: 1_000, pin: PIN });
+    await syncOutbox(deps, d.transport);
+    const accountId = (await deps.store.getAccount())!.id;
+    const suspensions = new SuspensionService(db);
+    await suspensions.suspend('ACCOUNT', accountId, 'admin:test', 'Abuse of promotions');
+
+    const refused = await d.call('GET', '/v1/sync/state');
+    expect([refused.status, refused.body.error.code]).toEqual([403, 'ACCOUNT_SUSPENDED']);
+    // the same email cannot sign in anywhere
+    const other = await device();
+    await db.query('DELETE FROM sign_in_codes WHERE email = $1', ['suspend-account@example.com']);
+    const code = await other.call('POST', '/v1/auth/code', { email: 'suspend-account@example.com' });
+    expect([code.status, code.body.error.code]).toEqual([403, 'ACCOUNT_SUSPENDED']);
+    // the device can sign out and continue with another email
+    expect((await d.call('POST', '/v1/auth/sign-out')).status).toBe(200);
+    expect((await signIn(d, 'fresh-after-suspension@example.com')).status).toBe(200);
+    expect((await d.call('GET', '/v1/sync/state')).status).toBe(200);
+
+    // reinstated: the email signs in again and gets its account back
+    await suspensions.reinstate('ACCOUNT', accountId, 'admin:test', '');
+    const back = await signIn(other, 'suspend-account@example.com');
+    expect(back.body.accountId).toBe(accountId);
   });
 });

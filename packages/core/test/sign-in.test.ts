@@ -71,7 +71,7 @@ describe('email', () => {
 describe('restoring an account onto a new device', () => {
   it('rebuilds the same balance, history and messages; the new device sets its own PIN', async () => {
     const { deps } = await makeAccount(10_000);
-    await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: TEST_PIN });
+    await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: TEST_PIN });
     await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 50, counterparty: {}, pin: TEST_PIN });
     await addFavourite(deps, { type: 'BUY_GOODS', counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
     const original = (deps.store as MemoryStore).snapshot();
@@ -88,9 +88,9 @@ describe('restoring an account onto a new device', () => {
     // the restored device continues the numbering once it has a PIN
     const store = new MemoryStore(state);
     const { deps: restored } = makeDeps({ store, installationId: 'new-device', ids: sequentialIds('restored') });
-    expect((await processSimulation(restored, { operationId: newOp(), type: 'SEND_MONEY', amount: 100, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: TEST_PIN })).ok).toBe(false);
+    expect((await processSimulation(restored, { operationId: newOp(), type: 'SEND_MONEY', amount: 100, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: TEST_PIN })).ok).toBe(false);
     expect((await setPin(restored, { newPin: TEST_PIN })).ok).toBe(true);
-    const next = await processSimulation(restored, { operationId: newOp(), type: 'SEND_MONEY', amount: 100, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: TEST_PIN });
+    const next = await processSimulation(restored, { operationId: newOp(), type: 'SEND_MONEY', amount: 100, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: TEST_PIN });
     if (!next.ok) throw new Error(next.error.code + ': ' + next.error.message);
     expect(next.transaction.sequence).toBe(4);
   });

@@ -14,7 +14,7 @@ describe('Send Money: add withdrawal charges', () => {
     // 100 + 11 = 111 sent; tariff band 101-500 => fee 7; total debit 118
     const res = await processSimulation(deps, {
       operationId: newOp(), type: 'SEND_MONEY', amount: 100, addWithdrawalCharge: true,
-      counterparty: { phone: '0119249141', name: 'Paskal Twoli' },
+      counterparty: { phone: '0111000222', name: 'Amina Wanjiru' },
     });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
@@ -30,7 +30,7 @@ describe('Send Money: add withdrawal charges', () => {
     const { deps } = await makeAccount(1_000);
     const low = await processSimulation(deps, {
       operationId: newOp(), type: 'SEND_MONEY', amount: 30, addWithdrawalCharge: true,
-      counterparty: { phone: '0119249141', name: 'P' },
+      counterparty: { phone: '0111000222', name: 'P' },
     });
     expect(!low.ok && low.error.code).toBe('VALIDATION');
     const till = await processSimulation(deps, {
@@ -42,7 +42,7 @@ describe('Send Money: add withdrawal charges', () => {
 
   it('the option is part of the idempotency fingerprint', async () => {
     const { deps } = await makeAccount(1_000);
-    const req = { operationId: 'op-wc', type: 'SEND_MONEY' as const, amount: 100, counterparty: { phone: '0119249141', name: 'P' } };
+    const req = { operationId: 'op-wc', type: 'SEND_MONEY' as const, amount: 100, counterparty: { phone: '0111000222', name: 'P' } };
     expect((await processSimulation(deps, req)).ok).toBe(true);
     const again = await processSimulation(deps, { ...req, addWithdrawalCharge: true });
     expect(!again.ok && again.error.code).toBe('OPERATION_CONFLICT');

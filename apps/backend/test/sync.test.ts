@@ -84,7 +84,7 @@ const get = async (path: string, token: string): Promise<{ status: number; body:
 
 async function newAccount(opening = 10_000) {
   const deps = makeDeps();
-  const res = await setupAccount(deps, { operationId: randomUUID(), accountName: 'Paskal Twoli', phoneNumber: '0759981287', openingBalance: opening, pin: PIN });
+  const res = await setupAccount(deps, { operationId: randomUUID(), accountName: 'Amina Wanjiru', phoneNumber: '0798765432', openingBalance: opening, pin: PIN });
   if (!res.ok) throw new Error(res.error.message);
   const token = await register(deps.installationId);
   return { deps, token };
@@ -96,16 +96,16 @@ const pay = (deps: EngineDeps, req: Parameters<typeof processSimulation>[1] exte
 describe('synchronization', () => {
   it('uploads everything; the server ledger matches the phone exactly', async () => {
     const { deps, token } = await newAccount(20_000);
-    await pay(deps, { type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' } });
-    await pay(deps, { type: 'SEND_MONEY', amount: 1_000, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, addWithdrawalCharge: true });
+    await pay(deps, { type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0722000111', name: 'Peter Kamau' } });
+    await pay(deps, { type: 'SEND_MONEY', amount: 1_000, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, addWithdrawalCharge: true });
     await pay(deps, { type: 'BUY_GOODS', amount: 90, counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
     await pay(deps, { type: 'PAYBILL', amount: 130, counterparty: { paybillNumber: '400200', businessName: 'Lipakitu', accountReference: '1780' } });
     await pay(deps, { type: 'AIRTIME', variant: 'OWN', amount: 50, counterparty: {} });
     await pay(deps, { type: 'RECHARGE', amount: 700, counterparty: { name: 'Protas Juma', phone: '0726123928' } });
     await processSimulation(deps, { operationId: randomUUID(), type: 'BUY_GOODS', amount: 5, counterparty: { tillNumber: '453851' }, pin: '9999' }); // wrong PIN: nothing to sync
     await resetAirtimeBalance(deps);
-    await updateAccountDetails(deps, { accountName: 'Pascal Twoli', phoneNumber: '0119249141' });
-    await updateRechargeSenderDefaults(deps, { name: 'Felix Twoli', phone: '0746123183' });
+    await updateAccountDetails(deps, { accountName: 'Brian Otieno', phoneNumber: '0111000222' });
+    await updateRechargeSenderDefaults(deps, { name: 'Grace Akinyi', phone: '0700111222' });
     const fav = await addFavourite(deps, { type: 'BUY_GOODS', counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
     await addFavourite(deps, { type: 'SEND_MONEY', counterparty: { phone: '0180354207', name: "Rachael Ndung'u" } });
     if (fav.ok) await removeFavourite(deps, fav.favourite.id);
@@ -122,7 +122,7 @@ describe('synchronization', () => {
 
     const pulled = await get('/v1/sync/pull?afterSequence=0', token);
     expect(pulled.body.transactions.map((t: { id: string }) => t.id).sort()).toEqual(local.map((t) => t.id).sort());
-    expect(pulled.body.account).toMatchObject({ accountName: 'Pascal Twoli', phoneNumber: '254119249141', balance: account.currentBalanceCache });
+    expect(pulled.body.account).toMatchObject({ accountName: 'Brian Otieno', phoneNumber: '254111000222', balance: account.currentBalanceCache });
     const favs = await db.query<{ type: string }>('SELECT f.type FROM favourites f JOIN accounts a ON a.id = f.account_id WHERE a.installation_id = $1', [deps.installationId]);
     expect(favs.map((f) => f.type)).toEqual(['SEND_MONEY']);
     const msgs = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM messages m JOIN accounts a ON a.id = m.account_id WHERE a.installation_id = $1', [deps.installationId]);
@@ -166,7 +166,7 @@ describe('synchronization', () => {
 
   it('never trusts the phone: a tampered fee or balance is kept for review, not applied', async () => {
     const { deps, token } = await newAccount();
-    await pay(deps, { type: 'SEND_MONEY', amount: 1_000, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' } });
+    await pay(deps, { type: 'SEND_MONEY', amount: 1_000, counterparty: { phone: '0722000111', name: 'Peter Kamau' } });
     await pay(deps, { type: 'BUY_GOODS', amount: 50, counterparty: { tillNumber: '453851', name: 'Shop' } });
     // tamper with the first payment's fee and balance before upload (e.g. a modified app)
     const state = (deps.store as MemoryStore).snapshot();

@@ -3,7 +3,7 @@ import { crc16, encodePaymentQr, parsePaymentQr } from '../src';
 
 describe('Paspesa payment QR', () => {
   it('round-trips a Send Money code with a name that needs escaping, with and without amount', () => {
-    const p = { type: 'SEND_MONEY' as const, counterparty: { phone: '254759981287', name: 'Paskal & Co = Twoli' } };
+    const p = { type: 'SEND_MONEY' as const, counterparty: { phone: '254798765432', name: 'Amina & Co = Wanjiru' } };
     expect(parsePaymentQr(encodePaymentQr(p))).toEqual(p);
     expect(parsePaymentQr(encodePaymentQr({ ...p, amount: 250 }))).toEqual({ ...p, amount: 250 });
   });
@@ -52,11 +52,11 @@ describe('Paspesa payment QR', () => {
   it('rejects foreign or malformed codes', () => {
     expect(parsePaymentQr('https://example.com')).toBeNull();
     expect(parsePaymentQr('exp://192.168.1.107:8081')).toBeNull();
-    expect(parsePaymentQr('paspesa://pay?v=2&t=sm&p=254759981287')).toBeNull();
+    expect(parsePaymentQr('paspesa://pay?v=2&t=sm&p=254798765432')).toBeNull();
     expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=123')).toBeNull();
     expect(parsePaymentQr('paspesa://pay?v=1&t=bg&ti=12')).toBeNull();
-    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254759981287&a=-5')).toBeNull();
-    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254759981287&a=1.5')).toBeNull();
-    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254759981287&n=%E0%A4%A')).toBeNull();
+    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254798765432&a=-5')).toBeNull();
+    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254798765432&a=1.5')).toBeNull();
+    expect(parsePaymentQr('paspesa://pay?v=1&t=sm&p=254798765432&n=%E0%A4%A')).toBeNull();
   });
 });

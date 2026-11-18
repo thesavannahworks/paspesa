@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, DEFAULT_PRICING, adoptAllocation, setTokenAllocation, type EngineDeps } from '../src';
 import { makeAccount, newOp, processSimulation } from './helpers';
 
-const send = (amount: number, extra: object = {}) => ({ operationId: newOp(), type: 'SEND_MONEY' as const, amount, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, ...extra });
+const send = (amount: number, extra: object = {}) => ({ operationId: newOp(), type: 'SEND_MONEY' as const, amount, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, ...extra });
 const allocation = (remaining: number, expires = '2026-11-20T00:00:00.000Z') => ({ allocationId: 'alloc-1', remaining, authorizationExpiresAt: expires, pricing: DEFAULT_PRICING });
 const paymentsOn = (deps: EngineDeps, extra: object = {}): EngineDeps => ({ ...deps, config: { ...DEFAULT_CONFIG, monetization: { ...DEFAULT_CONFIG.monetization, paymentRequired: true, ...extra } } });
 

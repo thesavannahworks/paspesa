@@ -63,8 +63,8 @@ export async function makeAccount(openingBalance = 10_000, overrides: Partial<En
   if (startIso) ctx.clock.set(startIso);
   const res = await setupAccount(ctx.deps, {
     operationId: 'op-setup',
-    accountName: 'Paskal Twoli',
-    phoneNumber: '0759981287',
+    accountName: 'Amina Wanjiru',
+    phoneNumber: '0798765432',
     openingBalance,
     pin: TEST_PIN,
   });

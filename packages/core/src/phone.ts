@@ -12,7 +12,7 @@ export function normalizeKenyanPhone(input: string): string | null {
   return null;
 }
 
-/** 254119249141 -> 0119249141 */
+/** 254111000222 -> 0111000222 */
 export function toLocalPhone(normalized: string): string {
   return normalized.startsWith('254') ? `0${normalized.slice(3)}` : normalized;
 }

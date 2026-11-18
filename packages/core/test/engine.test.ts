@@ -12,7 +12,7 @@ const sendMoney = (amount: number, extra: Partial<SimulationRequest> = {}): Simu
   operationId: newOp(),
   type: 'SEND_MONEY',
   amount,
-  counterparty: { name: 'Paskal Twoli', phone: '254119249141' },
+  counterparty: { name: 'Amina Wanjiru', phone: '254111000222' },
   ...extra,
 });
 
@@ -20,7 +20,7 @@ describe('account setup and opening balance (§10.1)', () => {
   it('creates the account with an opening-balance ledger entry and no message', async () => {
     const { deps, store } = await makeAccount(5_000);
     const account = (await store.getAccount())!;
-    expect(account).toMatchObject({ openingBalance: 5_000, currentBalanceCache: 5_000, phoneNumber: '254759981287', version: 1 });
+    expect(account).toMatchObject({ openingBalance: 5_000, currentBalanceCache: 5_000, phoneNumber: '254798765432', version: 1 });
     const [opening] = await store.listTransactions();
     expect(opening).toMatchObject({ type: 'OPENING_BALANCE', direction: 'CREDIT', amount: 5_000, balanceBefore: 0, balanceAfter: 5_000, sequence: 1 });
     expect(await store.listMessages()).toHaveLength(0);
@@ -31,15 +31,15 @@ describe('account setup and opening balance (§10.1)', () => {
 
   it('allows a zero opening balance and rejects more than KSh 250,000', async () => {
     const zero = makeDeps();
-    expect((await setupAccount(zero.deps, { operationId: 'a', accountName: 'X', phoneNumber: '0712345678', openingBalance: 0, pin: TEST_PIN })).ok).toBe(true);
+    expect((await setupAccount(zero.deps, { operationId: 'a', accountName: 'X', phoneNumber: '0798765432', openingBalance: 0, pin: TEST_PIN })).ok).toBe(true);
     const big = makeDeps();
-    const res = await setupAccount(big.deps, { operationId: 'b', accountName: 'X', phoneNumber: '0712345678', openingBalance: 250_001, pin: TEST_PIN });
+    const res = await setupAccount(big.deps, { operationId: 'b', accountName: 'X', phoneNumber: '0798765432', openingBalance: 250_001, pin: TEST_PIN });
     expect(!res.ok && res.error.fieldErrors?.openingBalance).toBeTruthy();
   });
 
   it('is idempotent and refuses a second, different account', async () => {
     const { deps } = makeDeps();
-    const req = { operationId: 'setup-1', accountName: 'Paskal', phoneNumber: '0759981287', openingBalance: 100, pin: TEST_PIN };
+    const req = { operationId: 'setup-1', accountName: 'Amina', phoneNumber: '0798765432', openingBalance: 100, pin: TEST_PIN };
     const a = await setupAccount(deps, req);
     const b = await setupAccount(deps, req);
     expect(a.ok && b.ok && b.duplicate).toBe(true);
@@ -76,8 +76,8 @@ describe('transaction engine (§11, §17, §47.1)', () => {
       if (!r.ok) throw new Error(r.error.message);
       return r.transaction.fee;
     };
-    expect(await run({ type: 'SEND_MONEY', amount: 1_000, counterparty: { name: 'A', phone: '0712345678' } })).toBe(13);
-    expect(await run({ type: 'POCHI', amount: 1_000, counterparty: { name: 'Mama Mboga', phone: '0712345678' } })).toBe(13);
+    expect(await run({ type: 'SEND_MONEY', amount: 1_000, counterparty: { name: 'A', phone: '0798765432' } })).toBe(13);
+    expect(await run({ type: 'POCHI', amount: 1_000, counterparty: { name: 'Mama Mboga', phone: '0798765432' } })).toBe(13);
     expect(await run({ type: 'PAYBILL', amount: 1_000, counterparty: { paybillNumber: '400200', businessName: 'Co-op Bank', accountReference: '4001077' } })).toBe(13);
     expect(await run({ type: 'BUY_GOODS', amount: 1_000, counterparty: { tillNumber: '6484844', name: 'Innocent Achoka' } })).toBe(0);
     expect(await run({ type: 'AIRTIME', amount: 1_000, variant: 'OWN', counterparty: {} })).toBe(0);
@@ -112,7 +112,7 @@ describe('transaction engine (§11, §17, §47.1)', () => {
     const { deps } = await makeAccount(100);
     const r = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', amount: 10, variant: 'OWN', counterparty: { phone: '0700000001' } });
     if (!r.ok) throw new Error(r.error.message);
-    expect(r.transaction.counterparty.phone).toBe('254759981287');
+    expect(r.transaction.counterparty.phone).toBe('254798765432');
     expect(r.transaction.variant).toBe('OWN');
   });
 

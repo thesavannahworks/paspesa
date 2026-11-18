@@ -8,10 +8,10 @@ async function populated() {
   clock.set('2026-11-12T18:50:00.000Z'); // 12 Nov, 9:50 pm EAT
   await processSimulation(deps, { operationId: newOp(), type: 'RECHARGE', amount: 180, counterparty: { name: 'Emmanuel Khaemba', phone: '0759182371' } });
   clock.set('2026-11-13T03:06:00.000Z'); // 13 Nov, 6:06 am
-  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 3, counterparty: { name: 'Paskal Twoli', phone: '254119249141' } });
+  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 3, counterparty: { name: 'Amina Wanjiru', phone: '254111000222' } });
   clock.set('2026-11-14T05:16:00.000Z'); // 14 Nov, 8:16 am
   await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 1_000, counterparty: { name: 'Innocent Achoka', tillNumber: '6484844' } });
-  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 2_000, counterparty: { name: 'Henry Ohanga', phone: '0701033089' } });
+  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 2_000, counterparty: { name: 'James Mwangi', phone: '0733123456' } });
   return ctx;
 }
 
@@ -21,7 +21,7 @@ describe('statements derive from the ledger (§22)', () => {
     const st = buildStatement(await store.listTransactions(), { utcOffsetMinutes: deps.config.utcOffsetMinutes });
     expect(st.groups.map((g) => g.heading)).toEqual(['14 November 2026', '13 November 2026', '12 November 2026', '10 November 2026']);
     const first = st.groups[0]!.rows[0]!;
-    expect(first).toMatchObject({ title: 'Henry Ohanga', subtitle: '254701***089', signedAmount: -2_000, fee: 33, category: 'Customer Send Money' });
+    expect(first).toMatchObject({ title: 'James Mwangi', subtitle: '254733***456', signedAmount: -2_000, fee: 33, category: 'Customer Send Money' });
     expect(st.groups[2]!.rows[0]).toMatchObject({ title: 'Emmanuel Khaemba', subtitle: '0759***371', signedAmount: 180, time: '9:50 pm' });
   });
 

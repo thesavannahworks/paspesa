@@ -41,14 +41,14 @@ describe('simulated Paspesa PIN', () => {
 
   it('setup requires a 4-digit PIN under USER_PIN', async () => {
     const { deps } = makeDeps();
-    const res = await setupAccount(deps, { operationId: 's', accountName: 'A', phoneNumber: '0712345678', openingBalance: 0, pin: '12' });
+    const res = await setupAccount(deps, { operationId: 's', accountName: 'A', phoneNumber: '0798765432', openingBalance: 0, pin: '12' });
     expect(!res.ok && res.error.fieldErrors?.pin).toBeTruthy();
   });
 
   it('ANY_PIN (back-office option): any 4 digits accepted, nothing stored', async () => {
     const config = { ...DEFAULT_CONFIG, pinMode: 'ANY_PIN' as const };
     const { deps, store } = makeDeps({ config });
-    await setupAccount(deps, { operationId: 's', accountName: 'A', phoneNumber: '0712345678', openingBalance: 100 });
+    await setupAccount(deps, { operationId: 's', accountName: 'A', phoneNumber: '0798765432', openingBalance: 100 });
     expect((await store.getAccount())!.pin).toBeNull();
     const ok = await coreProcess(deps, { operationId: newOp(), type: 'RECHARGE', amount: 1, counterparty: {}, pin: '0000' });
     expect(ok.ok).toBe(true);
@@ -59,7 +59,7 @@ describe('simulated Paspesa PIN', () => {
   it('switching ANY_PIN → USER_PIN asks the user to set a PIN; changing a PIN requires the current one', async () => {
     const anyCfg = { ...DEFAULT_CONFIG, pinMode: 'ANY_PIN' as const };
     const ctx = makeDeps({ config: anyCfg });
-    await setupAccount(ctx.deps, { operationId: 's', accountName: 'A', phoneNumber: '0712345678', openingBalance: 100 });
+    await setupAccount(ctx.deps, { operationId: 's', accountName: 'A', phoneNumber: '0798765432', openingBalance: 100 });
     const userDeps = { ...ctx.deps, config: DEFAULT_CONFIG };
     const notSet = await coreProcess(userDeps, { operationId: newOp(), type: 'RECHARGE', amount: 1, counterparty: {}, pin: '1111' });
     expect(!notSet.ok && notSet.error.code).toBe('PIN_NOT_SET');
@@ -74,7 +74,7 @@ describe('simulated airtime balance (cap KSh 1,000)', () => {
   it('own-number airtime raises the airtime balance; other-number does not', async () => {
     const { deps, store } = await makeAccount(5_000);
     const own = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 300, counterparty: {} });
-    const other = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OTHER', amount: 200, counterparty: { phone: '0712345678' } });
+    const other = await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OTHER', amount: 200, counterparty: { phone: '0798765432' } });
     expect(own.ok && own.transaction.airtimeBalanceAfter).toBe(300);
     expect(other.ok && other.transaction.airtimeBalanceAfter).toBeNull();
     const account = (await store.getAccount())!;
@@ -158,7 +158,7 @@ describe('favourites = manual ∪ frequent', () => {
     const { deps, store } = await makeAccount(50_000);
     const send = (name: string, phone: string) =>
       processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 50, counterparty: { name, phone } });
-    for (let i = 0; i < 3; i++) await send('Henry Ohanga', '0701033089');
+    for (let i = 0; i < 3; i++) await send('James Mwangi', '0733123456');
     await send('Once Only', '0711111111');
     const manual = await addFavourite(deps, { type: 'SEND_MONEY', counterparty: { name: 'Aga Cotu', phone: '0799999999' } });
     expect(manual.ok).toBe(true);
@@ -166,7 +166,7 @@ describe('favourites = manual ∪ frequent', () => {
     const list = favouritesFor(['SEND_MONEY'], await store.listFavourites(), await store.listTransactions(), DEFAULT_CONFIG.frequentThreshold);
     expect(list.map((f) => [f.label, f.origin])).toEqual([
       ['Aga Cotu', 'MANUAL'],
-      ['Henry Ohanga', 'FREQUENT'],
+      ['James Mwangi', 'FREQUENT'],
     ]);
     expect(list[1]!.useCount).toBe(3);
 

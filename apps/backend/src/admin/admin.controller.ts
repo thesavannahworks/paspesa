@@ -9,6 +9,7 @@ import { AllocationService } from '../allocation.service.js';
 import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
 import { SyncService } from '../sync.service.js';
+import { SuspensionService } from '../suspension.js';
 import type { PaymentProviders } from '../providers.js';
 import QRCode from 'qrcode';
 import { AdminAuth, can, clearCookie, clearPendingCookie, PENDING_COOKIE, pendingCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
@@ -61,6 +62,7 @@ export class AdminController {
   private readonly auth: AdminAuth;
   private readonly money: MonetizationService;
   private readonly allocations: AllocationService;
+  private readonly suspensions: SuspensionService;
   private readonly sync: SyncService;
 
   constructor(
@@ -71,6 +73,7 @@ export class AdminController {
     this.money = new MonetizationService(db);
     this.allocations = new AllocationService(db, this.money);
     this.sync = new SyncService(db, undefined, this.money, this.allocations);
+    this.suspensions = new SuspensionService(db);
   }
 
   // ------------------------------------------------------------------------------------------ plumbing
@@ -229,7 +232,7 @@ export class AdminController {
     if (!session) return;
     const term = q.trim();
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, coalesce(i.status, 'NO DEVICE') AS device_status, coalesce(w.total_balance_cache, 0) AS tokens, u.email
+      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, a.suspended_at, coalesce(i.status, 'NO DEVICE') AS device_status, coalesce(w.total_balance_cache, 0) AS tokens, u.email
        FROM accounts a LEFT JOIN installations i ON i.id = a.installation_id LEFT JOIN token_wallets w ON w.owner_id = a.id LEFT JOIN users u ON u.id = a.user_id
        WHERE $1 = '' OR a.account_name ILIKE '%' || $1 || '%' OR a.phone_number LIKE '%' || $1 || '%' OR a.id = $1 OR u.email ILIKE '%' || $1 || '%'
        ORDER BY a.created_at DESC LIMIT 200`,
@@ -237,8 +240,9 @@ export class AdminController {
     );
     this.send(res, layout('Accounts', session, html`
       <form method="get" class="panel"><label for="q">Search name, phone, email or account ID</label><input id="q" name="q" value="${term}"><button class="secondary">Search</button></form>
-      <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th class="num">Balance</th><th class="num">Tokens</th><th>Device</th><th>Created</th></tr>
+      <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th class="num">Balance</th><th class="num">Tokens</th><th>Status</th><th>Device</th><th>Created</th></tr>
       ${rows.map((r) => html`<tr><td><a href="/admin/accounts/${r.id}">${r.account_name}</a></td><td>${r.phone_number}</td><td>${r.email ?? html`<span class="muted">not signed in</span>`}</td><td class="num">${ksh(r.balance)}</td><td class="num">${r.tokens}</td>
+        <td>${r.suspended_at ? html`<span class="pill bad">SUSPENDED</span>` : html`<span class="pill ok">ACTIVE</span>`}</td>
         <td><span class="pill ${r.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${r.device_status}</span></td><td>${fmtDate(r.created_at)}</td></tr>`)}
       </table>${rows.length ? html`` : html`<p class="muted">No accounts.</p>`}</div>`, '/admin/accounts'));
   }
@@ -260,7 +264,11 @@ export class AdminController {
           <tr><th>Phone</th><td>${a.phone_number}</td></tr><tr><th>Sign-in email</th><td>${a.email ?? html`<span class="muted">not signed in yet</span>`}</td></tr><tr><th>Simulated balance</th><td>${ksh(a.balance)}</td></tr>
           <tr><th>Opening balance</th><td>${ksh(a.opening_balance)}</td></tr><tr><th>Airtime</th><td>${ksh(a.airtime_balance)}</td></tr>
           <tr><th>Device</th><td>${a.platform ?? '—'} · <span class="pill ${a.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${a.device_status}</span> · last seen ${fmtDate(a.last_seen_at)}</td></tr>
-          <tr><th>Account ID</th><td class="muted">${a.id}</td></tr></table></div>
+          <tr><th>Account ID</th><td class="muted">${a.id}</td></tr>
+          <tr><th>Status</th><td>${a.suspended_at
+            ? html`<span class="pill bad">SUSPENDED</span> since ${fmtDate(a.suspended_at)} by ${a.suspended_by} — ${a.suspended_reason}`
+            : html`<span class="pill ok">ACTIVE</span>`}</td></tr></table>
+          ${this.suspendForm(session, 'accounts', id, !!a.suspended_at, 'account', 'It cannot sign in or sync until reinstated. Nothing is deleted.')}</div>
         <div class="panel"><h2>Token wallet</h2><table>
           <tr><th>Available</th><td>${wallet.balances.total} (purchased ${wallet.balances.PURCHASED} · promotional ${wallet.balances.PROMOTIONAL} · admin ${wallet.balances.ADMIN})</td></tr>
           <tr><th>On the device</th><td>${allocation ? `${allocation.remaining} left · authorized until ${fmtDate(allocation.authorizationExpiresAt)}` : 'none'}</td></tr>
@@ -281,6 +289,44 @@ export class AdminController {
         ${txs.map((t) => html`<tr><td>${fmtDate(t.completed_at)}</td><td>${t.reference}</td><td>${t.type}</td><td class="num">${ksh(t.amount)}</td><td class="num">${ksh(t.fee)}</td><td class="num">${ksh(t.balance_after)}</td>
           <td>${(t.record as { paymentMethod?: string } | null)?.paymentMethod ?? ''}</td></tr>`)}
       </table></div>`, '/admin/accounts'));
+  }
+
+  @Post('accounts/:id/suspend')
+  async suspendAccount(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    return this.setSuspended(req, res, 'ACCOUNT', id, form, true);
+  }
+
+  @Post('accounts/:id/reinstate')
+  async reinstateAccount(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    return this.setSuspended(req, res, 'ACCOUNT', id, form, false);
+  }
+
+  /** Suspend or reinstate form (reversible; a reason is required to suspend). */
+  private suspendForm(session: AdminSession, base: 'accounts' | 'devices', id: string, suspended: boolean, what: string, effect: string) {
+    if (!can(session.admin.role, 'SUSPEND')) return html``;
+    return suspended
+      ? html`<form method="post" action="/admin/${base}/${id}/reinstate">${csrf(session)}<label>Note (optional)</label><input name="reason" maxlength="200"><button>Reinstate ${what}</button></form>`
+      : html`<details><summary>Suspend ${what}</summary><form method="post" action="/admin/${base}/${id}/suspend">${csrf(session)}
+          <p class="muted">${effect} You can reinstate it at any time.</p>
+          <label>Reason (shown to the user)</label><input name="reason" required maxlength="200"><button class="danger">Suspend ${what}</button></form></details>`;
+  }
+
+  private async setSuspended(req: Req, res: Res, target: 'DEVICE' | 'ACCOUNT', id: string, form: Form, suspend: boolean) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form, 'SUSPEND');
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    const back = target === 'ACCOUNT' ? `/admin/accounts/${id}` : '/admin/devices';
+    const reason = (form.reason ?? '').trim();
+    if (suspend && !reason) return this.back(res, back, 'Give a reason for the suspension', true);
+    const changed = suspend
+      ? await this.suspensions.suspend(target, id, this.actor(session), reason)
+      : await this.suspensions.reinstate(target, id, this.actor(session), reason);
+    const what = target === 'ACCOUNT' ? 'Account' : 'Device';
+    this.back(res, back, changed ? `${what} ${suspend ? 'suspended' : 'reinstated'}` : `No change: the ${what.toLowerCase()} was already ${suspend ? 'suspended' : 'active'}`);
   }
 
   @Post('accounts/:id/grant')
@@ -317,7 +363,7 @@ export class AdminController {
     const session = await this.session(req, res);
     if (!session) return;
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT i.id, i.platform, i.status, i.last_seen_at, a.id AS account_id, a.account_name,
+      `SELECT i.id, i.platform, i.status, i.suspended_at, i.suspended_reason, i.last_seen_at, a.id AS account_id, a.account_name,
               d.allocated_quantity, d.spent_quantity, d.released_quantity, d.forfeited_quantity, d.authorization_expires_at
        FROM installations i LEFT JOIN accounts a ON a.installation_id = i.id
        LEFT JOIN device_allocations d ON d.device_id = i.id AND d.status = 'ACTIVE' ORDER BY i.last_seen_at DESC NULLS LAST LIMIT 300`,
@@ -330,15 +376,26 @@ export class AdminController {
         const left = r.allocated_quantity === null ? null : Number(r.allocated_quantity) - Number(r.spent_quantity) - Number(r.released_quantity) - Number(r.forfeited_quantity);
         return html`<tr><td>${r.platform ?? '—'}<div class="muted">${String(r.id).slice(0, 8)}…</div></td>
           <td>${r.account_id ? html`<a href="/admin/accounts/${r.account_id}">${r.account_name}</a>` : html`<span class="muted">not synced</span>`}</td>
-          <td><span class="pill ${r.status === 'ACTIVE' ? 'ok' : 'bad'}">${r.status}</span></td><td>${fmtDate(r.last_seen_at)}</td>
+          <td>${r.suspended_at ? html`<span class="pill bad">SUSPENDED</span><div class="muted">${r.suspended_reason}</div>` : html`<span class="pill ${r.status === 'ACTIVE' ? 'ok' : 'bad'}">${r.status}</span>`}</td><td>${fmtDate(r.last_seen_at)}</td>
           <td class="num">${left ?? '—'}</td><td>${r.authorization_expires_at ? fmtDate(r.authorization_expires_at) : '—'}</td>
-          <td>${mayMark && r.status === 'ACTIVE' ? html`<details><summary>Mark lost</summary><form method="post" action="/admin/devices/${r.id}/lost">${csrf(session)}
+          <td>${r.status === 'ACTIVE' ? this.suspendForm(session, 'devices', String(r.id), !!r.suspended_at, 'device', 'The app on it stops working until reinstated; its data stays.') : html``}
+          ${mayMark && r.status === 'ACTIVE' ? html`<details><summary>Mark lost</summary><form method="post" action="/admin/devices/${r.id}/lost">${csrf(session)}
             <label>Reason</label><input name="reason" required maxlength="200"><label><input type="checkbox" name="confirm" value="yes" required class="check"> The phone is permanently lost; its unreconciled tokens will be forfeited</label>
             <button class="danger">Forfeit and mark lost</button></form></details>` : html``}</td></tr>`;
       })}</table></div>
       <div class="panel"><h2>Allocation history</h2><table><tr><th>Device</th><th>Status</th><th class="num">Allocated</th><th class="num">Spent</th><th class="num">Returned</th><th class="num">Forfeited</th><th>Created</th><th>Closed</th></tr>
       ${history.map((h) => html`<tr><td class="muted">${String(h.device_id).slice(0, 8)}…</td><td>${h.status}</td><td class="num">${h.allocated_quantity}</td><td class="num">${h.spent_quantity}</td><td class="num">${h.released_quantity}</td><td class="num">${h.forfeited_quantity}</td><td>${fmtDate(h.created_at)}</td><td>${fmtDate(h.released_at)}</td></tr>`)}
       </table></div>`, '/admin/devices'));
+  }
+
+  @Post('devices/:id/suspend')
+  async suspendDevice(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    return this.setSuspended(req, res, 'DEVICE', id, form, true);
+  }
+
+  @Post('devices/:id/reinstate')
+  async reinstateDevice(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    return this.setSuspended(req, res, 'DEVICE', id, form, false);
   }
 
   @Post('devices/:id/lost')

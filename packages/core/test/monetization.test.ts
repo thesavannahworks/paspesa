@@ -127,7 +127,7 @@ describe('token wallet (§28, §47.5)', () => {
 describe('payments (§33)', () => {
   const p = (patch: Partial<PaymentRecord>): PaymentRecord => ({
     id: 'pay', ownerId: 'a', paymentType: 'DIRECT_SIMULATION', provider: 'sandbox', providerReference: null, idempotencyKey: 'k', amount: 10, currency: 'KES',
-    status: 'SUCCESSFUL', tokens: null, payerPhone: '254759981287', relatedSimulationId: 'op', simulationStatus: 'FAILED', refundStatus: 'NONE', createdAt: AT, verifiedAt: AT, ...patch,
+    status: 'SUCCESSFUL', tokens: null, payerPhone: '254798765432', relatedSimulationId: 'op', simulationStatus: 'FAILED', refundStatus: 'NONE', createdAt: AT, verifiedAt: AT, ...patch,
   });
   it('a timeout keeps the payment pending; final states never change', () => {
     expect(canMovePayment('PENDING', 'PENDING')).toBe(true);

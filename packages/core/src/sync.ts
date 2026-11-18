@@ -18,6 +18,7 @@ import type {
   SimulationType,
   TransactionRecord,
 } from './types';
+import { tokenSplit } from './types';
 import { PAYLOAD_VERSION, stableStringify } from './util';
 
 export const SYNC_API_VERSION = 1;
@@ -289,8 +290,8 @@ export async function adoptAllocation(deps: EngineDeps, server: ServerAllocation
       return;
     }
     const pending = (await tx.listTransactions())
-      .filter((t) => t.paymentMethod === 'TOKENS' && t.syncStatus !== 'SYNCED' && t.pricing)
-      .reduce((sum, t) => sum + (t.pricing?.tokenCost ?? 0), 0);
+      .filter((t) => t.syncStatus !== 'SYNCED')
+      .reduce((sum, t) => sum + tokenSplit(t).device, 0);
     await tx.putAccount({
       ...account,
       tokenAllocation: { allocationId: server.allocationId, remaining: Math.max(0, server.remaining - pending), authorizationExpiresAt: server.authorizationExpiresAt, pricing: server.pricing },

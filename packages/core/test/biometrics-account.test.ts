@@ -30,11 +30,11 @@ describe('editing the setup details', () => {
     const { deps, store } = await makeAccount(5_000);
     await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 10, counterparty: { tillNumber: '453851', name: 'Shop' } });
     const txBefore = await store.listTransactions();
-    const res = await updateAccountDetails(deps, { accountName: '  Pascal   Twoli ', phoneNumber: '0119 249 141' });
+    const res = await updateAccountDetails(deps, { accountName: '  Brian   Otieno ', phoneNumber: '0111 000 222' });
     if (!res.ok) throw new Error(res.error.message);
     const account = (await store.getAccount())!;
-    expect(account.accountName).toBe('Pascal Twoli');
-    expect(account.phoneNumber).toBe('254119249141');
+    expect(account.accountName).toBe('Brian Otieno');
+    expect(account.phoneNumber).toBe('254111000222');
     expect(account.openingBalance).toBe(5_000);
     expect(account.currentBalanceCache).toBe(4_990);
     expect(await store.listTransactions()).toEqual(txBefore);

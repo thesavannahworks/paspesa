@@ -64,14 +64,14 @@ async function sqlBackedStore(db: SqlExecutor, initial?: MemoryState) {
 
 async function exerciseEverything(store: MemoryStore) {
   const { deps } = makeDeps({ store });
-  const setup = await setupAccount(deps, { operationId: 'op-setup', accountName: 'Paskal Twoli', phoneNumber: '0759981287', openingBalance: 20_000, pin: TEST_PIN });
+  const setup = await setupAccount(deps, { operationId: 'op-setup', accountName: 'Amina Wanjiru', phoneNumber: '0798765432', openingBalance: 20_000, pin: TEST_PIN });
   if (!setup.ok) throw new Error(setup.error.message);
-  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' } });
+  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0722000111', name: 'Peter Kamau' } });
   await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 90, counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
   await processSimulation(deps, { operationId: newOp(), type: 'RECHARGE', amount: 1_000, counterparty: {} });
   await processSimulation(deps, { operationId: newOp(), type: 'AIRTIME', variant: 'OWN', amount: 50, counterparty: {} });
   await processSimulation(deps, { operationId: newOp(), type: 'PAYBILL', amount: 130, counterparty: { paybillNumber: '400200', businessName: 'Lipakitu', accountReference: '1780' } });
-  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 10, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: '9999' }); // wrong PIN notice
+  await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 10, counterparty: { phone: '0722000111', name: 'Peter Kamau' }, pin: '9999' }); // wrong PIN notice
   const fav = await addFavourite(deps, { type: 'BUY_GOODS', counterparty: { tillNumber: '453851', name: 'Berea Shop' } });
   await addFavourite(deps, { type: 'SEND_MONEY', counterparty: { phone: '0180354207', name: "Rachael Ndung'u" } });
   if (fav.ok) await removeFavourite(deps, fav.favourite.id);

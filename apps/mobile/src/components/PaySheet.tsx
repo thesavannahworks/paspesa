@@ -2,23 +2,49 @@
  * "How do you want to pay?" — shown after the confirmation page, before the PIN, when a simulation costs
  * tokens and payments are switched on (owner design, 2026-11-17; White Paper §26: chosen per simulation).
  *
- *  - Paspesa tokens: spent from the tokens set aside on this phone (works offline, §29).
- *  - M-PESA: an STK prompt for the token cost in shillings (1 token = KSh 1); the simulation continues to the
- *    PIN only once the server has verified the payment (§32).
+ *  - Paspesa tokens: every token the user has counts. The tokens set aside on this phone (the only ones usable
+ *    offline, §29) and, online, the central balance combine; by default the phone's go first and the central
+ *    balance fills the gap (owner, 2026-11-18). The order is a preference on the Paspesa Tokens page.
+ *  - M-PESA: an STK prompt for the token cost in shillings (1 token = KSh 1) to any M-PESA number the user
+ *    enters (their own by default); the simulation continues to the PIN only once the server has verified
+ *    the payment (§32).
  */
-import { formatKsh, toLocalPhone, type SimulationType } from '@paspesa/core';
+import { formatKsh, normalizeKenyanPhone, tokenSplit, toLocalPhone, type SimulationType } from '@paspesa/core';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { PrimaryButton, Sheet, T } from '@/components/ui';
+import { Field, PrimaryButton, Sheet, T } from '@/components/ui';
 import { MoneyMethodIcon, TokenIcon } from '@/icons';
 import { ApiError, useApi } from '@/services/api';
 import { useAccount, useAppState } from '@/services/AppState';
+import { usePreference } from '@/services/preferences';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 
-/** TOKENS: set aside on this phone (offline). WALLET: the central balance (online, nothing set aside). */
-export type PaymentChoice = { paymentMethod: 'TOKENS' } | { paymentMethod: 'WALLET' } | { paymentMethod: 'DIRECT'; directPaymentId: string };
+/**
+ * TOKENS: from this phone's set-aside tokens, `centralTokens` of them topped up from the central balance.
+ * WALLET: entirely from the central balance. DIRECT: a verified M-PESA payment.
+ */
+export type PaymentChoice =
+  | { paymentMethod: 'TOKENS'; centralTokens?: number }
+  | { paymentMethod: 'WALLET' }
+  | { paymentMethod: 'DIRECT'; directPaymentId: string };
+
+/** Which tokens go first when both can pay (Paspesa Tokens page). */
+export type TokenOrder = 'PHONE_FIRST' | 'BALANCE_FIRST';
+export const TOKEN_ORDER_KEY = 'tokenOrder';
+
+/** How `cost` tokens are taken from `phone` (set aside here) and `central` (null = unknown/offline). */
+export function planTokens(cost: number, phone: number, central: number | null, order: TokenOrder): { device: number; central: number } | null {
+  const c = central ?? 0;
+  if (phone + c < cost) return null;
+  if (order === 'BALANCE_FIRST') {
+    const fromCentral = Math.min(cost, c);
+    return { device: cost - fromCentral, central: fromCentral };
+  }
+  const fromPhone = Math.min(cost, phone);
+  return { device: fromPhone, central: cost - fromPhone };
+}
 
 interface DirectPayment {
   id: string;
@@ -46,24 +72,25 @@ export function PaySheet({
   const allocation = account.tokenAllocation ?? null;
   const [openedAt] = useState(() => Date.now());
   const expired = !!allocation && Date.parse(allocation.authorizationExpiresAt) < openedAt;
-  const allocationOk = !!allocation && !expired && allocation.remaining >= tokenCost;
-  // Online with nothing usable set aside: pay from the central balance (less what is already chosen
-  // to be paid from it but not uploaded yet).
+  const onPhone = allocation && !expired ? allocation.remaining : 0;
+  const [order] = usePreference<TokenOrder>(TOKEN_ORDER_KEY, 'PHONE_FIRST');
+  // Online, the central balance counts too (less what is already chosen to be paid from it but not uploaded yet).
   const { transactions } = useAppState();
   const [central, setCentral] = useState<number | null>(null);
-  const pendingCentral = transactions.filter((t) => t.paymentMethod === 'WALLET' && t.syncStatus !== 'SYNCED').reduce((n, t) => n + (t.pricing?.tokenCost ?? 0), 0);
+  const pendingCentral = transactions.filter((t) => t.syncStatus !== 'SYNCED').reduce((n, t) => n + tokenSplit(t).central, 0);
   const centralAvailable = central === null ? null : Math.max(0, central - pendingCentral);
   useEffect(() => {
-    if (!visible || allocationOk || !api.available) return;
+    if (!visible || !api.available) return;
     let live = true;
     api.get<{ balances: { total: number } }>('/v1/wallet').then((w) => { if (live) setCentral(w.balances.total); }, () => { if (live) setCentral(null); });
     return () => { live = false; };
-  }, [visible, allocationOk, api]);
-  const centralOk = !allocationOk && centralAvailable !== null && centralAvailable >= tokenCost;
-  const tokensOk = allocationOk || centralOk;
-  // Tokens when they cover it (set aside, or the central balance once known), else M-PESA; the user may switch.
+  }, [visible, api]);
+  const plan = planTokens(tokenCost, onPhone, centralAvailable, order);
+  const tokensOk = !!plan;
+  // Tokens when they cover it, else M-PESA; the user may switch.
   const [picked, setMethod] = useState<'TOKENS' | 'DIRECT' | null>(null);
   const method = picked ?? (tokensOk ? 'TOKENS' : 'DIRECT');
+  const [payPhone, setPayPhone] = useState(() => toLocalPhone(account.phoneNumber));
   const [phase, setPhase] = useState<'choose' | 'waiting' | 'stalled'>('choose');
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<DirectPayment | null>(null);
@@ -75,12 +102,15 @@ export function PaySheet({
   }, []);
 
   const plural = (n: number) => `${n} token${n === 1 ? '' : 's'}`;
-  const tokensSub = allocationOk ? `Available on this phone: ${plural(allocation!.remaining)}`
-    : centralAvailable !== null ? `Your balance: ${plural(centralAvailable)}${centralOk ? '' : ' — not enough'}`
-    : api.available ? 'Checking your balance…'
-    : !allocation ? 'Offline and no tokens set aside on this phone'
-    : expired ? 'Connect to the internet to renew your tokens'
-    : `Available on this phone: ${plural(allocation.remaining)} — not enough`;
+  const have = [onPhone > 0 ? `${onPhone} on this phone` : null, centralAvailable ? `${centralAvailable} in your balance` : null].filter(Boolean).join(' + ');
+  const tokensSub = plan
+    ? (plan.device > 0 && plan.central > 0 ? `${plan.device} from this phone + ${plan.central} from your balance`
+      : plan.central > 0 ? `From your balance: ${plural(centralAvailable ?? 0)} available`
+      : `From this phone: ${plural(onPhone)} set aside`)
+    : centralAvailable === null && api.available ? 'Checking your balance…'
+    : !api.available ? (expired ? 'Offline: connect to the internet to renew your tokens' : `Offline: ${plural(onPhone)} set aside on this phone — not enough`)
+    : `You have ${have || '0 tokens'} — not enough`;
+  const phoneOk = !!normalizeKenyanPhone(payPhone);
 
   const poll = (id: string) => {
     timer.current = setTimeout(async () => {
@@ -113,7 +143,7 @@ export function PaySheet({
         simulationId: simulation.operationId,
         type: simulation.type,
         amount: simulation.amount,
-        phone: account.phoneNumber,
+        phone: payPhone,
         idempotencyKey: `sim-${simulation.operationId}`,
       });
       setPayment(p.payment);
@@ -125,7 +155,15 @@ export function PaySheet({
     }
   };
 
-  const onContinue = () => (method === 'TOKENS' ? onChosen({ paymentMethod: allocationOk ? 'TOKENS' : 'WALLET' }) : void payDirect());
+  const tokensChoice = (): PaymentChoice =>
+    !plan || plan.central === 0 ? { paymentMethod: 'TOKENS' }
+    : plan.device === 0 ? { paymentMethod: 'WALLET' }
+    : { paymentMethod: 'TOKENS', centralTokens: plan.central };
+  const onContinue = () => {
+    if (method === 'TOKENS') return onChosen(tokensChoice());
+    if (!phoneOk) return setError('Enter a valid M-PESA number to receive the prompt');
+    void payDirect();
+  };
 
   const close = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -155,15 +193,25 @@ export function PaySheet({
             onPress={() => setMethod('DIRECT')}
             icon={<MoneyMethodIcon size={30} />}
             title="M-PESA"
-            sub={api.available ? `Pay ${formatKsh(tokenCost)} · prompt to ${toLocalPhone(account.phoneNumber)}` : 'Needs the Paspesa server'}
+            sub={api.available ? `Pay ${formatKsh(tokenCost)} · prompt to ${phoneOk ? toLocalPhone(normalizeKenyanPhone(payPhone)!) : 'the number below'}` : 'Needs the Paspesa server'}
           />
+          {method === 'DIRECT' && api.available ? (
+            <Field
+              label="M-PESA number to receive the prompt"
+              value={payPhone}
+              onChangeText={(v) => { setPayPhone(v); setError(null); }}
+              keyboardType="phone-pad"
+              placeholder="07XX XXX XXX"
+              error={payPhone && !phoneOk ? 'Enter a valid M-PESA number' : undefined}
+            />
+          ) : null}
           {!tokensOk && api.available ? (
             <Pressable accessibilityRole="link" onPress={() => { close(); router.push('/wallet'); }} style={{ marginTop: s(12), alignSelf: 'center' }}>
               <T variant="label" color={colors.green}>Set aside tokens from your balance</T>
             </Pressable>
           ) : null}
           {error ? <T variant="caption" color={colors.red} center style={{ marginTop: s(12) }}>{error}</T> : null}
-          <PrimaryButton title="Continue" onPress={onContinue} disabled={method === 'TOKENS' ? !tokensOk : !api.available} style={{ marginTop: s(22) }} />
+          <PrimaryButton title="Continue" onPress={onContinue} disabled={method === 'TOKENS' ? !tokensOk : !api.available || !phoneOk} style={{ marginTop: s(22) }} />
         </View>
       ) : (
         <View style={{ alignItems: 'center', paddingVertical: s(26) }}>
@@ -173,7 +221,7 @@ export function PaySheet({
           </T>
           <T variant="body" color={colors.textSecondary} center style={{ marginTop: s(8), fontSize: s(16), lineHeight: s(22) }}>
             {phase === 'waiting'
-              ? `Enter your M-PESA PIN in the prompt to pay ${formatKsh(payment?.amount ?? tokenCost)}.`
+              ? `Enter the M-PESA PIN in the prompt on ${toLocalPhone(normalizeKenyanPhone(payPhone) ?? payPhone)} to pay ${formatKsh(payment?.amount ?? tokenCost)}.`
               : 'If you completed the payment, check again. Otherwise you can close this and try later.'}
           </T>
           {phase === 'stalled' && payment ? (

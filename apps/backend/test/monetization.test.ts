@@ -27,7 +27,7 @@ async function newAccount(): Promise<{ accountId: string; installationId: string
   await db.query('INSERT INTO installations (id, token_hash) VALUES ($1, $2)', [installationId, randomUUID()]);
   await db.query(
     `INSERT INTO accounts (id, installation_id, account_name, phone_number, opening_balance, balance, version, currency, created_at, updated_at)
-     VALUES ($1, $2, 'Paskal Twoli', '254759981287', 1000, 1000, 1, 'KES', now(), now())`,
+     VALUES ($1, $2, 'Amina Wanjiru', '254798765432', 1000, 1000, 1, 'KES', now(), now())`,
     [accountId, installationId],
   );
   return { accountId, installationId };
@@ -171,10 +171,10 @@ describe('payments (§31–33, §47.8)', () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const p = await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0759981287', idempotencyKey: 'buy-1' }, provider);
-    expect(p).toMatchObject({ status: 'PENDING', amount: 150, tokens: 150, payerPhone: '254759981287', paymentType: 'TOKEN_PURCHASE' });
+    const p = await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0798765432', idempotencyKey: 'buy-1' }, provider);
+    expect(p).toMatchObject({ status: 'PENDING', amount: 150, tokens: 150, payerPhone: '254798765432', paymentType: 'TOKEN_PURCHASE' });
     // a repeated request (double tap, retry) is the same payment, not a second charge
-    expect((await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0759981287', idempotencyKey: 'buy-1' }, provider)).id).toBe(p.id);
+    expect((await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0798765432', idempotencyKey: 'buy-1' }, provider)).id).toBe(p.id);
     expect(provider.initiated()).toBe(1);
 
     expect((await money.verifyPayment(p.id, provider)).status).toBe('PENDING'); // not confirmed yet
@@ -188,7 +188,7 @@ describe('payments (§31–33, §47.8)', () => {
     expect((await money.wallet(accountId)).balances).toMatchObject({ PURCHASED: 150, total: 150 });
     const events = await db.query<{ event: string }>('SELECT event FROM payment_events WHERE payment_id = $1 ORDER BY id', [p.id]);
     expect(events.map((e) => e.event)).toEqual(['INITIATED', 'PENDING', 'STATUS_CHECK_TIMEOUT', 'VERIFIED_SUCCESSFUL']);
-    await expect(money.initiateTokenPurchase({ accountId, shillings: 0, phone: '0759981287', idempotencyKey: 'buy-0' }, provider)).rejects.toThrow(/smallest purchase/);
+    await expect(money.initiateTokenPurchase({ accountId, shillings: 0, phone: '0798765432', idempotencyKey: 'buy-0' }, provider)).rejects.toThrow(/smallest purchase/);
     await expect(money.initiateTokenPurchase({ accountId, shillings: 10, phone: '12345', idempotencyKey: 'buy-bad' }, provider)).rejects.toThrow(/valid M-PESA number/);
   });
 
@@ -196,7 +196,7 @@ describe('payments (§31–33, §47.8)', () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const { payment: p, pricing } = await money.initiateDirectPayment({ accountId, simulationId: 'op-direct', type: 'SEND_MONEY', simulationAmount: 100, phone: '0759981287', idempotencyKey: 'direct-1' }, provider);
+    const { payment: p, pricing } = await money.initiateDirectPayment({ accountId, simulationId: 'op-direct', type: 'SEND_MONEY', simulationAmount: 100, phone: '0798765432', idempotencyKey: 'direct-1' }, provider);
     expect([pricing.tokenCost, p.amount, p.simulationStatus]).toEqual([20, 20, 'AWAITING_PAYMENT']);
     results[p.providerReference!] = 'SUCCESSFUL';
     expect((await money.verifyPayment(p.id, provider)).simulationStatus).toBe('AUTHORIZED');
@@ -211,11 +211,11 @@ describe('payments (§31–33, §47.8)', () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
-    const { payment: p } = await money.initiateDirectPayment({ accountId, simulationId: 'op-x', type: 'BUY_GOODS', simulationAmount: 50, phone: '0759981287', idempotencyKey: 'direct-x' }, provider);
+    const { payment: p } = await money.initiateDirectPayment({ accountId, simulationId: 'op-x', type: 'BUY_GOODS', simulationAmount: 50, phone: '0798765432', idempotencyKey: 'direct-x' }, provider);
     results[p.providerReference!] = 'FAILED';
     expect(await money.verifyPayment(p.id, provider)).toMatchObject({ status: 'FAILED', simulationStatus: 'FAILED', refundStatus: 'NONE' });
-    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-y', type: 'BUY_GOODS', simulationAmount: 20, phone: '0759981287', idempotencyKey: 'direct-y' }, provider)).rejects.toThrow(/free/);
-    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-z', type: 'RECHARGE', simulationAmount: 5_000, phone: '0759981287', idempotencyKey: 'direct-z' }, provider)).rejects.toThrow(/free/);
+    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-y', type: 'BUY_GOODS', simulationAmount: 20, phone: '0798765432', idempotencyKey: 'direct-y' }, provider)).rejects.toThrow(/free/);
+    await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-z', type: 'RECHARGE', simulationAmount: 5_000, phone: '0798765432', idempotencyKey: 'direct-z' }, provider)).rejects.toThrow(/free/);
   });
 
   it('back-office settings: defaults, audited changes, validation', async () => {
@@ -240,7 +240,7 @@ describe('monetization API (read-only)', () => {
       const accountId = randomUUID();
       await db.query(
         `INSERT INTO accounts (id, installation_id, account_name, phone_number, opening_balance, balance, version, currency, created_at, updated_at)
-         VALUES ($1, $2, 'Paskal Twoli', '254759981287', 1000, 1000, 1, 'KES', now(), now())`,
+         VALUES ($1, $2, 'Amina Wanjiru', '254798765432', 1000, 1000, 1, 'KES', now(), now())`,
         [accountId, installationId],
       );
       await money.grant({ accountId, category: 'PROMOTIONAL', quantity: 25, reference: 'promo:api', actor: 'test' });

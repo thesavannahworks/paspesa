@@ -55,13 +55,13 @@ async function signIn(email: string) {
   return { cookie, csrf, get, post };
 }
 
-async function newAccount(name = 'Paskal Twoli') {
+async function newAccount(name = 'Amina Wanjiru') {
   const installationId = randomUUID();
   const accountId = randomUUID();
   await db.query("INSERT INTO installations (id, token_hash, platform) VALUES ($1, $2, 'android')", [installationId, randomUUID()]);
   await db.query(
     `INSERT INTO accounts (id, installation_id, account_name, phone_number, opening_balance, balance, version, currency, created_at, updated_at)
-     VALUES ($1, $2, $3, '254759981287', 1000, 1000, 1, 'KES', now(), now())`,
+     VALUES ($1, $2, $3, '254798765432', 1000, 1000, 1, 'KES', now(), now())`,
     [accountId, installationId, name],
   );
   return { accountId, installationId };
@@ -133,6 +133,33 @@ describe('back office', () => {
     expect(ok.status).toBe(303);
     const [audit] = await db.query<{ actor_id: string; reason: string }>("SELECT actor_id, reason FROM audit_log WHERE action = 'GRANT_PROMOTIONAL_TOKENS' AND entity_id = $1", [accountId]);
     expect(audit).toMatchObject({ actor_id: 'admin:ops@example.com', reason: 'Launch promo' });
+  });
+
+  it('suspends and reinstates an account and a device; viewers cannot; the pages show it', async () => {
+    const { accountId } = await newAccount();
+    const [acct] = await db.query<{ installation_id: string }>('SELECT installation_id FROM accounts WHERE id = $1', [accountId]);
+    const viewer = await signIn('look@example.com');
+    expect((await viewer.post(`/admin/accounts/${accountId}/suspend`, { reason: 'x' })).status).toBe(403);
+    const ops = await signIn('ops@example.com');
+    expect((await ops.post(`/admin/accounts/${accountId}/suspend`, { reason: '' })).status).toBe(303); // refused: no reason
+    expect((await db.query('SELECT 1 FROM accounts WHERE id = $1 AND suspended_at IS NOT NULL', [accountId])).length).toBe(0);
+    expect((await ops.post(`/admin/accounts/${accountId}/suspend`, { reason: 'Abuse of promotions' })).status).toBe(303);
+    const page = await (await ops.get(`/admin/accounts/${accountId}`)).text();
+    expect(page).toContain('SUSPENDED');
+    expect(page).toContain('Abuse of promotions');
+    expect(page).toContain('Reinstate account');
+    expect(await (await ops.get('/admin/accounts')).text()).toContain('SUSPENDED');
+    expect((await ops.post(`/admin/accounts/${accountId}/reinstate`, { reason: 'Appealed' })).status).toBe(303);
+    expect((await db.query('SELECT 1 FROM accounts WHERE id = $1 AND suspended_at IS NULL', [accountId])).length).toBe(1);
+
+    expect((await ops.post(`/admin/devices/${acct!.installation_id}/suspend`, { reason: 'Shared phone' })).status).toBe(303);
+    const devices = await (await ops.get('/admin/devices')).text();
+    expect(devices).toContain('Shared phone');
+    expect(devices).toContain('Reinstate device');
+    expect((await ops.post(`/admin/devices/${acct!.installation_id}/reinstate`, {})).status).toBe(303);
+    const audit = await db.query<{ action: string; actor_id: string }>("SELECT action, actor_id FROM audit_log WHERE entity_id IN ($1, $2) AND action LIKE '%STATE%' OR (entity_id IN ($1, $2) AND action LIKE 'SUSPEND%') ORDER BY id", [accountId, acct!.installation_id]);
+    expect(audit.map((a) => a.action)).toEqual(['SUSPEND_ACCOUNT', 'REINSTATE_ACCOUNT', 'SUSPEND_DEVICE', 'REINSTATE_DEVICE']);
+    expect(audit.every((a) => a.actor_id === 'admin:ops@example.com')).toBe(true);
   });
 
   it('grants are idempotent per form submission', async () => {

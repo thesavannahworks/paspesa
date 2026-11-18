@@ -7,7 +7,7 @@ describe('persisted store (offline local persistence)', () => {
     let disk: string | null = null;
     const persist = async (s: MemoryState) => { disk = JSON.stringify(s); };
     const { deps } = makeDeps({ store: new MemoryStore(undefined, { persist }) });
-    await setupAccount(deps, { operationId: 's', accountName: 'Paskal', phoneNumber: '0759981287', openingBalance: 1_000, pin: TEST_PIN });
+    await setupAccount(deps, { operationId: 's', accountName: 'Amina', phoneNumber: '0798765432', openingBalance: 1_000, pin: TEST_PIN });
     await processSimulation(deps, { operationId: newOp(), type: 'RECHARGE', amount: 500, counterparty: {} });
 
     const restarted = new MemoryStore(JSON.parse(disk!), { persist });
@@ -24,7 +24,7 @@ describe('persisted store (offline local persistence)', () => {
     };
     const store = new MemoryStore(undefined, { persist });
     const { deps } = makeDeps({ store });
-    await setupAccount(deps, { operationId: 's', accountName: 'Paskal', phoneNumber: '0759981287', openingBalance: 1_000, pin: TEST_PIN });
+    await setupAccount(deps, { operationId: 's', accountName: 'Amina', phoneNumber: '0798765432', openingBalance: 1_000, pin: TEST_PIN });
     const savedBefore = disk;
 
     const req = { operationId: newOp(), type: 'RECHARGE' as const, amount: 500, counterparty: {} };

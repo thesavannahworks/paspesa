@@ -33,8 +33,9 @@ export type SyncStatus = 'LOCAL_ONLY' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'NEED
  * TOKENS / DIRECT exist so the monetization phase slots in without changing records.
  */
 /**
- * TOKENS: from the tokens set aside on this device (works offline). WALLET: from the central token balance,
- * chosen while online with nothing set aside; deducted when the simulation uploads.
+ * TOKENS: Paspesa tokens — from the tokens set aside on this device (works offline), optionally topped up
+ * from the central balance while online (`centralTokens`). WALLET: entirely from the central token balance
+ * (online, nothing set aside); central parts are deducted when the simulation uploads.
  */
 export type PaymentMethod = 'UNMETERED' | 'TOKENS' | 'DIRECT' | 'WALLET';
 
@@ -43,6 +44,18 @@ export type OperationSource = 'ACCOUNT_SETUP' | 'GENERAL_OPERATIONS' | 'TRANSACT
 
 /** Airtime purchase target. */
 export type AirtimeTarget = 'OWN' | 'OTHER';
+
+/**
+ * Where a token-paid simulation's tokens come from: `device` from this phone's set-aside tokens, `central`
+ * from the central balance. Zero for UNMETERED and DIRECT.
+ */
+export function tokenSplit(t: { paymentMethod: PaymentMethod; centralTokens?: number; pricing: { tokenCost: number } | null }): { device: number; central: number } {
+  const cost = t.pricing?.tokenCost ?? 0;
+  if (t.paymentMethod === 'WALLET') return { device: 0, central: cost };
+  if (t.paymentMethod !== 'TOKENS') return { device: 0, central: 0 };
+  const central = Math.min(cost, Math.max(0, Math.floor(t.centralTokens ?? 0)));
+  return { device: cost - central, central };
+}
 
 export interface Account {
   id: string;
@@ -133,6 +146,11 @@ export interface TransactionRecord {
   paymentMethod: PaymentMethod;
   /** DIRECT: the verified Paspesa payment that paid for this simulation (§32). */
   directPaymentId?: string;
+  /**
+   * TOKENS only: how many of the token cost come from the central balance (chosen online when the phone's
+   * set-aside tokens do not cover it, or by the user's preference). The rest comes from this phone.
+   */
+  centralTokens?: number;
   /** Pricing snapshot for token-funded or directly-paid simulations (§27.5). Null while UNMETERED. */
   pricing: PricingSnapshot | null;
   /** Stable hash of the request, used to detect an operation ID reused for a different request. */

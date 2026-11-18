@@ -30,6 +30,8 @@
  *
  * Authentication: each installation creates a random secret on the device and registers it; the server
  * stores only its SHA-256 hash. Requests send `Authorization: Bearer <secret>`.
+ * A device or account suspended in the back office is refused with 403 DEVICE_SUSPENDED / ACCOUNT_SUSPENDED
+ * (an account's device may still use /v1/auth/* to sign out or sign in with another email).
  * Errors are structured: { error: { code, message } } (§39.3).
  */
 import 'reflect-metadata';
@@ -62,6 +64,7 @@ import { MonetizationError, MonetizationService, type PaymentProvider } from './
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
 import { SignInError, SignInService } from './signin.service.js';
+import { blockFor } from './suspension.js';
 import { mailerFromEnv, type Mailer } from './mailer.js';
 import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.controller.js';
 
@@ -74,6 +77,7 @@ const hash = (secret: string) => createHash('sha256').update(secret).digest('hex
 
 interface AuthedRequest {
   headers: Record<string, string | string[] | undefined>;
+  url?: string;
   installationId?: string;
 }
 
@@ -90,6 +94,10 @@ class InstallationAuthGuard implements CanActivate {
     if (!row) throw fail(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Unknown installation token');
     req.installationId = row.id;
     await this.db.query('UPDATE installations SET last_seen_at = now() WHERE id = $1', [row.id]);
+    const block = await blockFor(this.db, row.id);
+    if (block && !(block.code === 'ACCOUNT_SUSPENDED' && (req.url ?? '').startsWith('/v1/auth/'))) {
+      throw fail(HttpStatus.FORBIDDEN, block.code, block.message);
+    }
     return true;
   }
 }
@@ -135,6 +143,7 @@ const SIGN_IN_STATUS: Record<SignInError['code'], HttpStatus> = {
   ACCOUNT_CONFLICT: HttpStatus.CONFLICT,
   NOT_SIGNED_IN: HttpStatus.UNAUTHORIZED,
   NOT_ACTIVE_DEVICE: HttpStatus.FORBIDDEN,
+  ACCOUNT_SUSPENDED: HttpStatus.FORBIDDEN,
 };
 const signInFail = (e: unknown) => {
   if (e instanceof SignInError) return fail(SIGN_IN_STATUS[e.code], e.code, e.message);

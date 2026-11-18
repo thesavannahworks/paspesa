@@ -41,7 +41,7 @@ export default function AccountDetailsScreen() {
           Update the details you entered when you set up your account.
         </T>
       </View>
-      <Field label="Your name" value={name} onChangeText={(v) => { setName(v); setErrors({}); }} placeholder="e.g. Paskal Twoli" autoCapitalize="words" error={errors.accountName} />
+      <Field label="Your name" value={name} onChangeText={(v) => { setName(v); setErrors({}); }} placeholder="Full name" autoCapitalize="words" error={errors.accountName} />
       <Field label="Phone number" value={phone} onChangeText={(v) => { setPhone(v); setErrors({}); }} placeholder="07XX XXX XXX" keyboardType="phone-pad" error={errors.phoneNumber} />
       <Field
         label="Opening balance"

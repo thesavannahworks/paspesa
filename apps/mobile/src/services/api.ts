@@ -25,15 +25,39 @@ export class ApiError extends Error {
   }
 }
 
+/** A back-office suspension of this device or of its account (see the server's suspension.ts). */
+export type Suspension = { kind: 'DEVICE' | 'ACCOUNT'; message: string };
+/** What the server's answers say about suspension: blocked, or a request went through. */
+export type SuspensionSignal = Suspension | { kind: 'OK'; authPath: boolean };
+let suspensionListener: (signal: SuspensionSignal) => void = () => undefined;
+export const setSuspensionListener = (listener: (signal: SuspensionSignal) => void) => { suspensionListener = listener; };
+
+const pathOf = (url: string) => {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+};
+
 export async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const path = pathOf(url);
+  const authPath = path.startsWith('/v1/auth/');
+  const authed = !!(init.headers as Record<string, string> | undefined)?.authorization;
   try {
     const res = await fetch(url, { ...init, signal: controller.signal, headers: { 'content-type': 'application/json', ...(init.headers ?? {}) } });
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
-      throw new ApiError(body?.error?.message ?? `Server error ${res.status}`, body?.error?.code ?? null, res.status);
+      const code = body?.error?.code ?? null;
+      const message = body?.error?.message ?? `Server error ${res.status}`;
+      // An account suspension on /v1/auth/* is about the email typed in, not this device.
+      if (code === 'DEVICE_SUSPENDED') suspensionListener({ kind: 'DEVICE', message });
+      else if (code === 'ACCOUNT_SUSPENDED' && !authPath) suspensionListener({ kind: 'ACCOUNT', message });
+      throw new ApiError(message, code, res.status);
     }
+    if (authed) suspensionListener({ kind: 'OK', authPath });
     return (await res.json()) as T;
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw new ApiError('The server did not respond in time', 'TIMEOUT', 0);

@@ -47,7 +47,7 @@ describe('Messages thread', () => {
   it('logs a wrong PIN, then the longer notice on a further wrong PIN for the same payment', async () => {
     const { deps, store } = await makeAccount(1_000);
     const op = newOp();
-    const request = { operationId: op, type: 'SEND_MONEY' as const, amount: 10, counterparty: { phone: '0119249141', name: 'Paskal Twoli' } };
+    const request = { operationId: op, type: 'SEND_MONEY' as const, amount: 10, counterparty: { phone: '0111000222', name: 'Amina Wanjiru' } };
     await processSimulation(deps, { ...request, pin: '9999' });
     await processSimulation(deps, { ...request, pin: '8888' });
     const ok = await processSimulation(deps, request);
@@ -55,7 +55,7 @@ describe('Messages thread', () => {
     const bodies = visibleMessages(await store.listMessages()).map((m) => m.body);
     expect(bodies[0]).toBe('You have entered the wrong PIN. Please try again.');
     expect(bodies[1]).toMatch(/^Failed, you have entered the wrong PIN\. If forgotten please dial \*334#/);
-    expect(bodies[2]).toContain('Confirmed. Ksh10.00 sent to PASKAL  TWOLI 0119249141');
+    expect(bodies[2]).toContain('Confirmed. Ksh10.00 sent to AMINA  WANJIRU 0111000222');
     expect((await store.listTransactions()).filter((t) => t.type === 'SEND_MONEY')).toHaveLength(1);
   });
 
@@ -67,7 +67,7 @@ describe('Messages thread', () => {
 
   it('"Amount you can transact within the day" is 500,000 less the day\'s payments, fees excluded', async () => {
     const { deps } = await makeAccount(20_000);
-    const a = await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' } });
+    const a = await processSimulation(deps, { operationId: newOp(), type: 'SEND_MONEY', amount: 400, counterparty: { phone: '0722000111', name: 'Peter Kamau' } });
     const b = await processSimulation(deps, { operationId: newOp(), type: 'BUY_GOODS', amount: 467, counterparty: { tillNumber: '453851', name: 'Best Choice Enterprises' } });
     const c = await processSimulation(deps, { operationId: newOp(), type: 'RECHARGE', amount: 1_000, counterparty: {} });
     if (!a.ok || !b.ok || !c.ok) throw new Error('failed');
