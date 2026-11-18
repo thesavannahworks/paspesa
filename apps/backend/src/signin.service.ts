@@ -105,8 +105,14 @@ export class SignInService {
     const [user] = await q.query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
     const userId = user!.id;
     await q.query('UPDATE users SET last_sign_in_at = $2 WHERE id = $1', [userId, now.toISOString()]);
-    const [device] = await q.query<{ account_id: string | null }>('SELECT account_id FROM installations WHERE id = $1 FOR UPDATE', [installationId]);
-    const [owned] = await q.query<{ id: string; installation_id: string }>('SELECT id, installation_id FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+    // The account this device actually holds: only one it is still the active device of (an account that
+    // moved to another device was wiped from this one).
+    const [device] = await q.query<{ account_id: string | null }>(
+      'SELECT a.id AS account_id FROM installations i JOIN accounts a ON a.id = i.account_id AND a.installation_id = i.id WHERE i.id = $1',
+      [installationId],
+    );
+    await q.query('SELECT 1 FROM installations WHERE id = $1 FOR UPDATE', [installationId]);
+    const [owned] = await q.query<{ id: string; installation_id: string | null }>('SELECT id, installation_id FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
     const deviceAccount = device?.account_id ?? null;
     let moved = false;
 
@@ -118,10 +124,10 @@ export class SignInService {
       }
       if (owned.installation_id !== installationId) {
         // Move the account here; the other device is signed out from now on.
-        await q.query('UPDATE installations SET signed_out_at = $2 WHERE id = $1', [owned.installation_id, now.toISOString()]);
+        if (owned.installation_id) await q.query('UPDATE installations SET signed_out_at = $2 WHERE id = $1', [owned.installation_id, now.toISOString()]);
         await this.freeDeviceSlot(q, installationId);
         await q.query('UPDATE accounts SET installation_id = $2 WHERE id = $1', [owned.id, installationId]);
-        moved = true;
+        moved = !!owned.installation_id;
       }
       await q.query('UPDATE installations SET account_id = $2, user_id = $3, signed_in_at = $4, signed_out_at = NULL WHERE id = $1', [installationId, owned.id, userId, now.toISOString()]);
       return { email, accountId: owned.id, movedFromAnotherDevice: moved };
@@ -129,13 +135,20 @@ export class SignInService {
 
     // The email has no account yet: this device's account (if any) becomes theirs; otherwise the next
     // account created on this device will be.
+    let keep = deviceAccount;
     if (deviceAccount) {
       const [taken] = await q.query<{ user_id: string | null }>('SELECT user_id FROM accounts WHERE id = $1', [deviceAccount]);
-      if (taken?.user_id && taken.user_id !== userId) throw new SignInError('ACCOUNT_CONFLICT', 'This device\'s account belongs to another email. Sign in with that email.');
-      await q.query('UPDATE accounts SET user_id = $2 WHERE id = $1', [deviceAccount, userId]);
+      if (taken?.user_id && taken.user_id !== userId) {
+        if (!replaceLocal) throw new SignInError('ACCOUNT_CONFLICT', 'This device holds the account of another email. Continue to clear it from this device and start fresh with this email (that account stays saved).');
+        // Dropped from this device (it stays on the server with its own email); this email starts fresh.
+        await this.freeDeviceSlot(q, installationId);
+        keep = null;
+      } else {
+        await q.query('UPDATE accounts SET user_id = $2 WHERE id = $1', [deviceAccount, userId]);
+      }
     }
-    await q.query('UPDATE installations SET user_id = $2, signed_in_at = $3, signed_out_at = NULL WHERE id = $1', [installationId, userId, now.toISOString()]);
-    return { email, accountId: deviceAccount, movedFromAnotherDevice: false };
+    await q.query('UPDATE installations SET account_id = $4, user_id = $2, signed_in_at = $3, signed_out_at = NULL WHERE id = $1', [installationId, userId, now.toISOString(), keep]);
+    return { email, accountId: keep, movedFromAnotherDevice: false };
   }
 
   /** accounts.installation_id is unique: an account this device dropped stops having an active device. */
@@ -154,8 +167,15 @@ export class SignInService {
   }
 
   /** The device signs out (it has uploaded what it could and wipes itself). */
+  /**
+   * The device signs out (it has uploaded what it could and wipes itself): it lets go of its account, so
+   * any email can sign in on it next. The account keeps everything and waits for its next sign-in.
+   */
   async signOut(installationId: string): Promise<void> {
-    await this.db.query('UPDATE installations SET signed_out_at = coalesce(signed_out_at, now()) WHERE id = $1', [installationId]);
+    await this.db.transaction(async (q) => {
+      await q.query('UPDATE accounts SET installation_id = NULL WHERE installation_id = $1', [installationId]);
+      await q.query('UPDATE installations SET account_id = NULL, user_id = NULL, signed_out_at = coalesce(signed_out_at, now()) WHERE id = $1', [installationId]);
+    });
   }
 
   /** Everything the active device needs to continue the account. */

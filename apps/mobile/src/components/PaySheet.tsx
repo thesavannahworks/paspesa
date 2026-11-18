@@ -13,11 +13,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { PrimaryButton, Sheet, T } from '@/components/ui';
 import { MoneyMethodIcon, TokenIcon } from '@/icons';
 import { ApiError, useApi } from '@/services/api';
-import { useAccount } from '@/services/AppState';
+import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 
-export type PaymentChoice = { paymentMethod: 'TOKENS' } | { paymentMethod: 'DIRECT'; directPaymentId: string };
+/** TOKENS: set aside on this phone (offline). WALLET: the central balance (online, nothing set aside). */
+export type PaymentChoice = { paymentMethod: 'TOKENS' } | { paymentMethod: 'WALLET' } | { paymentMethod: 'DIRECT'; directPaymentId: string };
 
 interface DirectPayment {
   id: string;
@@ -45,8 +46,24 @@ export function PaySheet({
   const allocation = account.tokenAllocation ?? null;
   const [openedAt] = useState(() => Date.now());
   const expired = !!allocation && Date.parse(allocation.authorizationExpiresAt) < openedAt;
-  const tokensOk = !!allocation && !expired && allocation.remaining >= tokenCost;
-  const [method, setMethod] = useState<'TOKENS' | 'DIRECT'>(tokensOk ? 'TOKENS' : 'DIRECT');
+  const allocationOk = !!allocation && !expired && allocation.remaining >= tokenCost;
+  // Online with nothing usable set aside: pay from the central balance (less what is already chosen
+  // to be paid from it but not uploaded yet).
+  const { transactions } = useAppState();
+  const [central, setCentral] = useState<number | null>(null);
+  const pendingCentral = transactions.filter((t) => t.paymentMethod === 'WALLET' && t.syncStatus !== 'SYNCED').reduce((n, t) => n + (t.pricing?.tokenCost ?? 0), 0);
+  const centralAvailable = central === null ? null : Math.max(0, central - pendingCentral);
+  useEffect(() => {
+    if (!visible || allocationOk || !api.available) return;
+    let live = true;
+    api.get<{ balances: { total: number } }>('/v1/wallet').then((w) => { if (live) setCentral(w.balances.total); }, () => { if (live) setCentral(null); });
+    return () => { live = false; };
+  }, [visible, allocationOk, api]);
+  const centralOk = !allocationOk && centralAvailable !== null && centralAvailable >= tokenCost;
+  const tokensOk = allocationOk || centralOk;
+  // Tokens when they cover it (set aside, or the central balance once known), else M-PESA; the user may switch.
+  const [picked, setMethod] = useState<'TOKENS' | 'DIRECT' | null>(null);
+  const method = picked ?? (tokensOk ? 'TOKENS' : 'DIRECT');
   const [phase, setPhase] = useState<'choose' | 'waiting' | 'stalled'>('choose');
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<DirectPayment | null>(null);
@@ -57,9 +74,13 @@ export function PaySheet({
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  const tokensSub = !allocation ? 'No tokens set aside on this phone'
+  const plural = (n: number) => `${n} token${n === 1 ? '' : 's'}`;
+  const tokensSub = allocationOk ? `Available on this phone: ${plural(allocation!.remaining)}`
+    : centralAvailable !== null ? `Your balance: ${plural(centralAvailable)}${centralOk ? '' : ' — not enough'}`
+    : api.available ? 'Checking your balance…'
+    : !allocation ? 'Offline and no tokens set aside on this phone'
     : expired ? 'Connect to the internet to renew your tokens'
-    : `Available on this phone: ${allocation.remaining} token${allocation.remaining === 1 ? '' : 's'}`;
+    : `Available on this phone: ${plural(allocation.remaining)} — not enough`;
 
   const poll = (id: string) => {
     timer.current = setTimeout(async () => {
@@ -104,7 +125,7 @@ export function PaySheet({
     }
   };
 
-  const onContinue = () => (method === 'TOKENS' ? onChosen({ paymentMethod: 'TOKENS' }) : void payDirect());
+  const onContinue = () => (method === 'TOKENS' ? onChosen({ paymentMethod: allocationOk ? 'TOKENS' : 'WALLET' }) : void payDirect());
 
   const close = () => {
     if (timer.current) clearTimeout(timer.current);

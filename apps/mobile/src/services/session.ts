@@ -105,6 +105,9 @@ export async function verifyCode(email: string, code: string, replaceLocal = fal
   if (result.accountId && (!local || local.id !== result.accountId)) {
     const snapshot = await c.api.get<AccountSnapshot>('/v1/account/restore');
     await c.replaceLedger(stateFromSnapshot(snapshot, c.deps.installationId));
+  } else if (!result.accountId && local && replaceLocal) {
+    // The user chose to start fresh with this email: the other email's account leaves this device.
+    await c.replaceLedger(normalizeState({}));
   }
   await c.kv.set(EMAIL_KEY, result.email);
   publish({ email: result.email, notice: null });

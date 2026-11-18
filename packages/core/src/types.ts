@@ -32,7 +32,11 @@ export type SyncStatus = 'LOCAL_ONLY' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'NEED
  * UNMETERED: simulations are free until the monetization phase (product-owner decision).
  * TOKENS / DIRECT exist so the monetization phase slots in without changing records.
  */
-export type PaymentMethod = 'UNMETERED' | 'TOKENS' | 'DIRECT';
+/**
+ * TOKENS: from the tokens set aside on this device (works offline). WALLET: from the central token balance,
+ * chosen while online with nothing set aside; deducted when the simulation uploads.
+ */
+export type PaymentMethod = 'UNMETERED' | 'TOKENS' | 'DIRECT' | 'WALLET';
 
 /** Where the operation originated. */
 export type OperationSource = 'ACCOUNT_SETUP' | 'GENERAL_OPERATIONS' | 'TRANSACTION';

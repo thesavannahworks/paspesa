@@ -25,6 +25,7 @@ export default function SignInScreen() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [conflict, setConflict] = useState<string | null>(null);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -60,6 +61,7 @@ export default function SignInScreen() {
     try {
       const out = await verifyCode(email, code, replaceLocal);
       if (out.kind === 'CONFLICT') {
+        setConflict(out.message);
         setStep('conflict');
         return;
       }
@@ -74,13 +76,13 @@ export default function SignInScreen() {
 
   if (step === 'conflict') {
     return (
-      <Screen refreshable={false} footer={<PrimaryButton title={`Use the account for ${email}`} onPress={() => void verify(true)} loading={busy} />}>
+      <Screen refreshable={false} footer={<PrimaryButton title={`Continue with ${email}`} onPress={() => void verify(true)} loading={busy} />}>
         <View style={{ paddingTop: s(32) }}>
           <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
-          <T variant="heading" style={{ marginTop: s(18) }}>This email already has an account</T>
+          <T variant="heading" style={{ marginTop: s(18) }}>Switch this device to {email}?</T>
           <T variant="body" color={colors.textSecondary} style={{ marginTop: s(10), lineHeight: s(22) }}>
-            {email} has its own Paspesa account, and this device has a different one{account ? ` (${account.accountName})` : ''}.
-            {'\n\n'}If you continue, this device switches to the account for {email}. This device&apos;s current account stays saved on the server but is no longer used here.
+            This device holds another account{account ? ` (${account.accountName})` : ''}. {conflict ?? ''}
+            {'\n\n'}If you continue, that account is cleared from this device — it stays saved and comes back whenever its own email signs in — and this device continues with {email}.
           </T>
         </View>
         {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(14) }}>{error}</T> : null}

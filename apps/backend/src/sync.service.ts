@@ -29,7 +29,7 @@ import {
 import { priceSimulation } from '@paspesa/core';
 import { AllocationService } from './allocation.service.js';
 import type { Database, Queryable } from './database.js';
-import { MonetizationService } from './monetization.service.js';
+import { MonetizationError, MonetizationService } from './monetization.service.js';
 
 type Outcome = { status: 'SYNCED' | 'NEEDS_REVIEW'; code: SyncResultCode; message?: string };
 const applied: Outcome = { status: 'SYNCED', code: 'APPLIED' };
@@ -345,6 +345,19 @@ export class SyncService {
         accountId, deviceId: installationId, simulationId: t.operationId, type: t.type as SimulationType, amount: t.amount, completedAt: t.completedAt, claimed: t.pricing,
       });
       return spend.ok ? null : review(spend.code, spend.message);
+    }
+    if (t.paymentMethod === 'WALLET') {
+      // Paid from the central balance: re-priced here, then deducted together with storing the record.
+      const pricing = priceSimulation(await this.money.pricing(q), { accountId, type: t.type as SimulationType, amount: t.amount, at: t.completedAt });
+      if (!t.pricing || t.pricing.tokenCost !== pricing.tokenCost) return review('PRICING_MISMATCH', `This simulation costs ${pricing.tokenCost} tokens, the device priced it at ${t.pricing?.tokenCost ?? '?'}`);
+      if (pricing.tokenCost === 0) return null;
+      try {
+        await this.money.spendWith(q, { accountId, simulationId: t.operationId, pricing, deviceId: installationId });
+      } catch (e) {
+        if (e instanceof MonetizationError && e.code === 'INSUFFICIENT_TOKENS') return review('INSUFFICIENT_TOKENS', e.message);
+        throw e;
+      }
+      return null;
     }
     if (t.paymentMethod === 'DIRECT') {
       const [p] = await q.query<{ id: string; simulation_status: string }>(

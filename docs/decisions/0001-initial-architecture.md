@@ -280,3 +280,14 @@ activation, which needs the product-owner inputs listed below (§52).
 - **Debugging:** `npm run admin -- trace <email|phone|accountId> [hours]` prints an account's recent
   history (sign-ins, transactions, uploads, review items, settings changes); `review:list`.
 
+## Tokens online, sign-in switching, Android refresh fix (2026-11-18)
+- **Owner rule:** tokens set aside on a device are only for offline use. Online with nothing (enough) set
+  aside, a paid simulation is paid from the central balance: payment method WALLET. The pay sheet shows
+  the central balance (less WALLET simulations not uploaded yet); the server re-prices and deducts it when
+  the record uploads, in the same transaction; not enough left → review (INSUFFICIENT_TOKENS).
+- **Sign-out** detaches the device from its account on the server; an account that moved to another
+  device no longer counts as held by the old one. Switching a device to another email (that has no
+  account) clears the old account from the device; it stays on the server for its own email.
+- **Android blank home:** the pull-to-refresh control must pass the ScrollView's children and style
+  through (Android and web wrap the scroll content inside the refresh control).
+

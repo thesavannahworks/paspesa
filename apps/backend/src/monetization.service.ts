@@ -197,7 +197,12 @@ export class MonetizationService {
    * simulation: a retry returns the original spend (§47.6). The ledger records exactly which lots paid.
    */
   async spendForSimulation(input: { accountId: string; simulationId: string; pricing: PricingSnapshot; deviceId?: string | null }) {
-    return this.db.transaction(async (q) => {
+    return this.db.transaction((q) => this.spendWith(q, input));
+  }
+
+  /** The same, inside a caller's transaction (sync stores the simulation and spends in one unit). */
+  async spendWith(q: Queryable, input: { accountId: string; simulationId: string; pricing: PricingSnapshot; deviceId?: string | null }) {
+    {
       const walletId = await this.lockWallet(q, input.accountId);
       const [existing] = await q.query<{ quantity: number; status: string }>('SELECT quantity, status FROM token_spends WHERE wallet_id = $1 AND simulation_id = $2', [walletId, input.simulationId]);
       if (existing) return { duplicate: true as const, quantity: Number(existing.quantity), status: existing.status };
@@ -213,7 +218,7 @@ export class MonetizationService {
       }
       await q.query('INSERT INTO token_spends (wallet_id, simulation_id, quantity, pricing, status, created_at) VALUES ($1, $2, $3, $4, \'SPENT\', $5)', [walletId, input.simulationId, quantity, JSON.stringify(input.pricing), this.now()]);
       return { duplicate: false as const, quantity, deductions: plan.deductions, balances: await this.refreshCaches(q, walletId) };
-    });
+    }
   }
 
   /**

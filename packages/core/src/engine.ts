@@ -272,6 +272,8 @@ function checkPayment(
     }
     return null;
   }
+  // Central balance: checked online by the pay sheet, deducted by the server when the record uploads.
+  if (method === 'WALLET') return null;
   if (method === 'DIRECT') {
     if (tokenCost === 0) return null;
     return directPaymentId ? null : fail('PAYMENT_REQUIRED', 'Complete the payment for this simulation first.');

@@ -261,4 +261,68 @@ describe('one account, moving between devices', () => {
     expect((await signIn(d, 'kamau@example.com')).status).toBe(200);
     expect((await d.call('GET', '/v1/auth/me')).body.signedIn).toBe(true);
   });
+
+  it('after signing out, any other email can sign in on the device', async () => {
+    const d = await device();
+    await signIn(d, 'first@example.com');
+    const deps = makeDeps('2025-01-01T06:00:00.000Z', d.installationId);
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'First Person', phoneNumber: '0712000001', openingBalance: 1_000, pin: PIN });
+    await syncOutbox(deps, d.transport);
+    await d.call('POST', '/v1/auth/sign-out');
+    const second = await signIn(d, 'second@example.com'); // no account yet: sets one up
+    expect(second.status).toBe(200);
+    expect(second.body.accountId).toBeNull();
+    const back = await signIn(d, 'first@example.com'); // and the first email gets its account back
+    expect(back.body.accountId).toBe((await deps.store.getAccount())!.id);
+  });
+
+  it('a device whose account moved elsewhere, or that holds another email\'s account, can switch to a new email', async () => {
+    const a = await device();
+    await signIn(a, 'mover@example.com');
+    const depsA = makeDeps('2025-01-01T06:00:00.000Z', a.installationId);
+    await setupAccount(depsA, { operationId: randomUUID(), accountName: 'Mover', phoneNumber: '0712000002', openingBalance: 1_000, pin: PIN });
+    await syncOutbox(depsA, a.transport);
+    const b = await device();
+    await signIn(b, 'mover@example.com'); // the account moves to b; a was wiped
+    expect((await signIn(a, 'newcomer@example.com')).body).toMatchObject({ accountId: null }); // no conflict
+
+    // b holds mover's account; a brand-new email asks to switch
+    const conflict = await signIn(b, 'fresh@example.com');
+    expect(conflict.status).toBe(409);
+    const switched = await signIn(b, 'fresh@example.com', true);
+    expect(switched.status).toBe(200);
+    expect(switched.body.accountId).toBeNull();
+    const [mover] = await db.query<{ installation_id: string | null }>("SELECT a.installation_id FROM accounts a JOIN users u ON u.id = a.user_id WHERE u.email = 'mover@example.com'");
+    expect(mover!.installation_id).toBeNull(); // kept on the server, waiting for its email
+  });
+
+  it('online with nothing set aside, a paid simulation is paid from the central token balance', async () => {
+    const money = new MonetizationService(db);
+    const d = await device();
+    const deps = makeDeps(new Date(Date.now() - 600_000).toISOString(), d.installationId);
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'Tokens Online', phoneNumber: '0712000003', openingBalance: 10_000, pin: PIN });
+    await syncOutbox(deps, d.transport);
+    const accountId = (await deps.store.getAccount())!.id;
+    await money.grant({ accountId, category: 'PROMOTIONAL', quantity: 30, reference: `promo:${randomUUID()}`, actor: 'test' });
+    await money.updateSettings({ paymentRequired: true }, 'admin:test');
+    deps.config = { ...deps.config, pricing: await money.pricing(), monetization: { ...deps.config.monetization, paymentRequired: true } };
+    try {
+      const pay = (amount: number) => processSimulation(deps, { operationId: randomUUID(), type: 'SEND_MONEY', amount, counterparty: { phone: '0706573273', name: 'Getrude Ohanga' }, pin: PIN, paymentMethod: 'WALLET' });
+      const first = await pay(100); // 20 tokens (KSh 5 per token above the free KSh 20 threshold → full amount)
+      expect(first.ok).toBe(true);
+      const cost = first.ok ? first.transaction.pricing!.tokenCost : 0;
+      expect(cost).toBeGreaterThan(0);
+      const r = await syncOutbox(deps, d.transport);
+      expect(r.needsReview).toBe(0);
+      expect((await money.wallet(accountId)).balances.total).toBe(30 - cost);
+      // not enough left: kept for review instead of going negative
+      await pay(500);
+      const r2 = await syncOutbox(deps, d.transport);
+      expect(r2.needsReview).toBe(1);
+      const [item] = await db.query<{ code: string }>('SELECT code FROM sync_review WHERE installation_id = $1', [d.installationId]);
+      expect(item!.code).toBe('INSUFFICIENT_TOKENS');
+    } finally {
+      await money.updateSettings({ paymentRequired: false }, 'admin:test');
+    }
+  });
 });
