@@ -74,7 +74,7 @@ export default function SignInScreen() {
 
   if (step === 'conflict') {
     return (
-      <Screen footer={<PrimaryButton title={`Use the account for ${email}`} onPress={() => void verify(true)} loading={busy} />}>
+      <Screen refreshable={false} footer={<PrimaryButton title={`Use the account for ${email}`} onPress={() => void verify(true)} loading={busy} />}>
         <View style={{ paddingTop: s(32) }}>
           <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
           <T variant="heading" style={{ marginTop: s(18) }}>This email already has an account</T>
@@ -93,7 +93,7 @@ export default function SignInScreen() {
 
   if (step === 'code') {
     return (
-      <Screen footer={<PrimaryButton title="Sign in" onPress={() => void verify()} loading={busy} disabled={code.length !== 6} />}>
+      <Screen refreshable={false} footer={<PrimaryButton title="Sign in" onPress={() => void verify()} loading={busy} disabled={code.length !== 6} />}>
         <View style={{ paddingTop: s(32) }}>
           <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
           <T variant="heading" style={{ marginTop: s(18) }}>Enter the code</T>
@@ -127,7 +127,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <Screen footer={<PrimaryButton title="Send code" onPress={() => void send()} loading={busy} />}>
+    <Screen refreshable={false} footer={<PrimaryButton title="Send code" onPress={() => void send()} loading={busy} />}>
       <View style={{ paddingTop: s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="heading" style={{ marginTop: s(18) }}>Sign in</T>

@@ -258,3 +258,25 @@ activation, which needs the product-owner inputs listed below (§52).
   else". Administrators can reset another admin's 2-step sign-in (lost phone). All audited.
 - **Still open:** requiring 2-step sign-in for every admin once hosted; changing an account's email.
 
+## Review queue, settings history, web layout (2026-11-18)
+- **Bug fixed:** an offline simulation recorded while payments were off was refused (PAYMENT_REQUIRED) if
+  payments were switched on before it uploaded. The server now keeps every version of the monetization
+  settings (`monetization_settings_history`, seeded from the audit log) and judges an upload by the
+  settings in force when the simulation happened (a future device time counts as now).
+- **Moved accounts:** once an account moves to another device, the old device's uploads are all kept for
+  review (SIGNED_OUT) — the new device continued from the server's ledger, so accepting them would put it
+  out of step. Tokens set aside on the old device are all returned when it releases them.
+- **No cascades:** simulations are numbered, so while one is held for review the later ones cannot fit.
+  The device holds them back, and the server hands back (HELD) later simulations of the same upload.
+- **Review actions:** Apply (stores a held simulation without charging, only when it is still the next
+  transaction from the server's balance) or Dismiss (with a note). Each code has a plain explanation.
+  The device learns outcomes from `GET /v1/sync/state` (`reviewed`); after a dismissal it is "out of step"
+  and Profile offers Reload from backup (keeps the PIN and tokens set aside).
+- **App:** pull down to back up and refresh (phones); "Back up now" in Profile and the web sidebar.
+  Sign-out uploads only if something is waiting (≤ 10 s), then tells the server and returns tokens in
+  parallel (≤ 5 s each).
+- **Web on a computer:** screens keep their phone design in a centred 540 px column from 640 px wide; a
+  sidebar (main places, name, backup status) from 1,000 px. Pop-ups stay over the column. Phones unchanged.
+- **Debugging:** `npm run admin -- trace <email|phone|accountId> [hours]` prints an account's recent
+  history (sign-ins, transactions, uploads, review items, settings changes); `review:list`.
+

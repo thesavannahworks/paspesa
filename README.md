@@ -78,4 +78,6 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   moves the account there; the other device uploads what it had, then signs itself out.
 - **Back office → My account:** change your name and password, turn on 2-step sign-in with an
   authenticator app (recovery codes included), and see or end your other sessions.
+- **Debugging a test session:** `npm run admin -- trace you@example.com` prints that account's recent
+  history in order — sign-ins, transactions, uploads, review items and settings changes.
 - **Admin commands** (scripting; same operations as the back office): `npm run admin -w @paspesa/backend -- help`.

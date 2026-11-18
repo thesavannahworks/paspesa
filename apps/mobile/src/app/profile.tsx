@@ -2,14 +2,15 @@ import { toLocalPhone } from '@paspesa/core';
 import Constants from 'expo-constants';
 import { router, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppModal as Modal } from '@/components/LayoutFrame';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Inert, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
 import { CameraIcon, ChevronLeftIcon, ChevronRightIcon, TokenIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
 import { useProfilePhoto } from '@/services/profilePhoto';
-import { useSyncStatus } from '@/services/sync';
-import { messageOf, signOut, useSession } from '@/services/session';
-import { useAccount } from '@/services/AppState';
+import { syncNow, useSyncStatus } from '@/services/sync';
+import { messageOf, reloadFromBackup, signOut, useSession } from '@/services/session';
+import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme, type ThemeChoice } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
 
@@ -97,6 +98,7 @@ function SignOutSection() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(0);
+  const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!session.email) return null;
 
@@ -104,12 +106,13 @@ function SignOutSection() {
     setBusy(true);
     setError(null);
     try {
-      const r = await signOut(force);
+      const r = await signOut(force, (st) => setStep(st === 'BACKING_UP' ? 'Backing up what is left…' : 'Signing out…'));
       if (!r.ok) setWaiting(r.waiting);
     } catch (e) {
       setError(messageOf(e));
     } finally {
       setBusy(false);
+      setStep(null);
     }
   };
 
@@ -127,6 +130,7 @@ function SignOutSection() {
               : `This device will be cleared. Your account, balance and history stay backed up — sign in with ${session.email} to continue here or on another device.`}
           </T>
           {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(12) }}>{error}</T> : null}
+          {busy && step ? <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(12) }}>{step}</T> : null}
           <View style={{ marginTop: s(20) }}>
             <PrimaryButton title={waiting ? 'Try again' : 'Sign out'} onPress={() => void run(false)} loading={busy} />
           </View>
@@ -141,16 +145,72 @@ function SignOutSection() {
   );
 }
 
-/** Backup / sync state (White Paper §24.1), shown only when a backend is configured. */
+/**
+ * Backup / sync state (White Paper §24.1), shown only when a backend is configured: back up now, and
+ * reload from backup when this device no longer matches it.
+ */
 function SyncLine() {
   const { colors } = useTheme();
+  const { refresh } = useAppState();
   const st = useSyncStatus();
+  const [busy, setBusy] = useState(false);
+  const [reloadOpen, setReloadOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!st?.enabled) return null;
-  const text = st.running ? 'Backing up…'
-    : st.needsReview ? `Backup: ${st.needsReview} item${st.needsReview === 1 ? '' : 's'} need review`
+  const text = st.running || busy ? 'Backing up…'
+    : st.outOfStep ? 'This device no longer matches your backup'
+    : st.needsReview ? `${st.needsReview} item${st.needsReview === 1 ? '' : 's'} waiting for review${st.held ? ` · ${st.held} more waiting behind` : ''}`
     : st.waiting ? `Backup: ${st.waiting} waiting${st.lastError ? ' (offline)' : ''}`
-    : st.lastSyncedAt ? 'Backup: up to date' : 'Backup: waiting to connect';
-  return <T variant="label" color={st.needsReview ? colors.red : colors.textSecondary} style={{ marginTop: s(6) }}>{text}</T>;
+    : st.lastSyncedAt ? `Backup: up to date · ${new Date(st.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Backup: waiting to connect';
+  const backUp = async () => {
+    setBusy(true);
+    try {
+      await syncNow();
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reload = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await reloadFromBackup();
+      await syncNow();
+      await refresh();
+      setReloadOpen(false);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ marginTop: s(6) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <T variant="label" color={st.outOfStep || st.needsReview ? colors.red : colors.textSecondary} style={{ flex: 1 }}>{text}</T>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back up now" disabled={busy || st.running} onPress={() => void backUp()} hitSlop={10}>
+          <T variant="label" color={busy || st.running ? colors.textSecondary : colors.green}>Back up now</T>
+        </Pressable>
+      </View>
+      {st.outOfStep ? (
+        <Pressable accessibilityRole="button" onPress={() => setReloadOpen(true)} hitSlop={8} style={{ marginTop: s(8) }}>
+          <T variant="label" color={colors.green}>Reload from backup</T>
+        </Pressable>
+      ) : null}
+      <Sheet visible={reloadOpen} title="Reload from backup?" onClose={() => !busy && setReloadOpen(false)}>
+        <View style={{ paddingHorizontal: s(20), paddingBottom: s(24) }}>
+          <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>
+            Something recorded on this device was not accepted into your backup, so the balance here differs from it. Reloading replaces this device&apos;s balance and history with the backup. Your PIN and settings stay.
+          </T>
+          {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(12) }}>{error}</T> : null}
+          <View style={{ marginTop: s(20) }}>
+            <PrimaryButton title="Reload from backup" onPress={() => void reload()} loading={busy} />
+          </View>
+        </View>
+      </Sheet>
+    </View>
+  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

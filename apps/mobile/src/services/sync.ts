@@ -7,7 +7,7 @@
  * foreground, and every minute. Failures leave everything queued; the next attempt simply retries
  * (the server de-duplicates by operation ID).
  */
-import { outboxSummary, syncOutbox, type EngineDeps, type SyncPushRequest, type SyncPushResponse, type SyncReport, type SyncTransport } from '@paspesa/core';
+import { applyReviewOutcomes, outboxSummary, syncOutbox, type EngineDeps, type ReviewOutcome, type SyncPushRequest, type SyncPushResponse, type SyncReport, type SyncServerState, type SyncTransport } from '@paspesa/core';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { apiUrl, refreshServerConfig, request, ensureToken, type PaspesaApi } from './api';
@@ -26,14 +26,21 @@ export interface SyncStatus {
   running: boolean;
   waiting: number;
   needsReview: number;
+  /** Simulations waiting behind one that is held for review. */
+  held: number;
+  /** This device and the backup disagree for good (an item was dismissed): offer "Reload from backup". */
+  outOfStep: boolean;
   lastError: string | null;
   lastSyncedAt: string | null;
 }
 
 export interface SyncRunner {
   kick(): void;
-  /** Uploads what is waiting now (after any run in progress); resolves when done. */
-  syncNow(): Promise<void>;
+  /**
+   * Uploads what is waiting now (after any run in progress); resolves when done. `uploadOnly` skips the
+   * settings / review / account checks (sign-out only needs the upload).
+   */
+  syncNow(options?: { uploadOnly?: boolean }): Promise<void>;
   status(): SyncStatus;
   subscribe(listener: (s: SyncStatus) => void): () => void;
   start(): void;
@@ -43,6 +50,9 @@ let current: SyncRunner | null = null;
 
 /** Ask for a sync soon (e.g. before returning tokens, which needs all spending uploaded). */
 export const kickSync = () => current?.kick();
+
+/** Back up now (pull-to-refresh, the "Back up now" button). Resolves when done. */
+export const syncNow = (): Promise<void> => current?.syncNow() ?? Promise.resolve();
 
 let configCheck: ((timeoutMs: number) => Promise<void>) | null = null;
 /**
@@ -63,7 +73,7 @@ export function useSyncStatus(): SyncStatus | null {
 export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: PaspesaApi, platform: string, onConfigChange: () => void = () => undefined): SyncRunner {
   const base = apiUrl();
   const listeners = new Set<(s: SyncStatus) => void>();
-  let state: SyncStatus = { enabled: !!base, running: false, waiting: 0, needsReview: 0, lastError: null, lastSyncedAt: null };
+  let state: SyncStatus = { enabled: !!base, running: false, waiting: 0, needsReview: 0, held: 0, outOfStep: false, lastError: null, lastSyncedAt: null };
   let timer: ReturnType<typeof setTimeout> | null = null;
   let again = false;
   let started = false;
@@ -86,7 +96,7 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
     publish({ waiting: s.waiting, needsReview: s.needsReview });
   };
 
-  const run = async () => {
+  const run = async (uploadOnly = false) => {
     if (!base) return;
     if (state.running) {
       again = true;
@@ -96,7 +106,7 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
     try {
       const token = await ensureToken(kv, base, deps.installationId, platform);
       // Back-office pricing and settings (payment switch, offline rules) follow every sync.
-      if (await refreshServerConfig(api, deps, kv).catch(() => false)) onConfigChange();
+      if (!uploadOnly && (await refreshServerConfig(api, deps, kv).catch(() => false))) onConfigChange();
       let signedOut = false;
       const transport: SyncTransport = {
         push: async (body: SyncPushRequest) => {
@@ -106,9 +116,23 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
         },
       };
       const report: SyncReport = await syncOutbox(deps, transport);
-      publish({ lastError: report.error, ...(report.error ? {} : { lastSyncedAt: new Date().toISOString() }) });
+      publish({ held: report.held, lastError: report.error, ...(report.error ? {} : { lastSyncedAt: new Date().toISOString() }) });
+      // Items a reviewer settled in the back office, and whether this device still matches the backup.
+      if (!report.error && !uploadOnly) {
+        const st = await request<{ server: SyncServerState | null; reviewed?: ReviewOutcome[] }>(`${base}/v1/sync/state`, { headers: { authorization: `Bearer ${token}` } }).catch(() => null);
+        if (st) {
+          if (st.reviewed?.length && (await applyReviewOutcomes(deps, st.reviewed))) {
+            again = true; // an applied item frees the simulations waiting behind it
+            onConfigChange();
+          }
+          const summary = await outboxSummary(deps.store);
+          const account = await deps.store.getAccount();
+          const settled = !summary.waiting && !summary.needsReview;
+          publish({ outOfStep: !!(st.server && account && settled && (summary.dismissed > 0 || st.server.balance !== account.currentBalanceCache)) });
+        }
+      }
       // Signed in on another device? This one wipes itself once everything above is uploaded.
-      if (!report.error) {
+      if (!report.error && !uploadOnly) {
         await refreshCounts().catch(() => undefined);
         await checkSignedInElsewhere(signedOut).catch(() => undefined);
       }
@@ -137,13 +161,13 @@ export function createSyncRunner(deps: EngineDeps, kv: KeyValueStore, api: Paspe
 
   const runner: SyncRunner = {
     kick,
-    async syncNow() {
+    async syncNow(options) {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
       while (state.running) await new Promise((r) => setTimeout(r, 200));
-      await run();
+      await run(!!options?.uploadOnly);
     },
     status: () => state,
     subscribe(listener) {

@@ -54,7 +54,7 @@ export default function SetupScreen() {
   };
 
   return (
-    <Screen footer={<PrimaryButton title="Create account" onPress={submit} loading={submission.busy} />}>
+    <Screen refreshable={false} footer={<PrimaryButton title="Create account" onPress={submit} loading={submission.busy} />}>
       <View style={{ paddingTop: s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="body" color={colors.textSecondary} style={{ marginTop: s(8), lineHeight: s(22) }}>

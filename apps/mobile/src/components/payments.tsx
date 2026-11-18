@@ -29,7 +29,8 @@ import {
 } from '@paspesa/core';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppModal as Modal } from './LayoutFrame';
 import {
   BillManagerIcon, ContactIcon, InvestIcon, MoneyMethodIcon, PlusIcon, PointsIcon, SharedPayIcon, ReceiptIcon, RequestMoneyIcon, ReverseIcon, ScanIcon,
   ScheduleIcon, SearchIcon, SendToManyIcon, StarFilledIcon, StarIcon,

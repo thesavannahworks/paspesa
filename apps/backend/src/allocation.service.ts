@@ -194,7 +194,13 @@ export class AllocationService {
       const walletId = await this.money.lockWallet(q, accountId);
       const alloc = await this.active(q, deviceId, true);
       if (!alloc) return { released: 0 };
-      if (deviceRemaining !== unused(alloc)) {
+      // A device whose account moved elsewhere had its later uploads refused (never charged): everything
+      // the server still holds for it goes back.
+      const [moved] = await q.query<{ x: number }>(
+        'SELECT 1 AS x FROM installations i JOIN accounts a ON a.id = i.account_id WHERE i.id = $1 AND i.signed_out_at IS NOT NULL AND a.installation_id IS DISTINCT FROM i.id',
+        [deviceId],
+      );
+      if (!moved && deviceRemaining !== unused(alloc)) {
         throw new MonetizationError('INVALID_STATE', 'This phone still has token spending to upload. Sync first, then release.');
       }
       const released = await this.settleUnused(q, alloc, walletId, 'DEVICE_RELEASE', null);

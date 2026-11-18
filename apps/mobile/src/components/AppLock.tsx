@@ -5,7 +5,8 @@
  */
 import { verifyPin } from '@paspesa/core';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Modal } from 'react-native';
+import { AppState } from 'react-native';
+import { AppModal as Modal } from './LayoutFrame';
 import { PinView, type PinAuth } from '@/components/journey';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAppState } from '@/services/AppState';

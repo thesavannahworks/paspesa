@@ -1,22 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Image,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type StyleProp,
-  type TextInputProps,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { AppModal as Modal } from './LayoutFrame';
+import { backupRefreshControl } from './BackupRefresh';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeftIcon } from '@/icons';
 import { AVATAR_COLORS } from '@/theme/colors';
@@ -54,14 +41,22 @@ export function T({
 // ---------------------------------------------------------------- layout
 
 export function Screen({
-  children, scroll = true, background, contentStyle, footer,
-}: { children: ReactNode; scroll?: boolean; background?: 'page' | 'screen'; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode }) {
+  children, scroll = true, background, contentStyle, footer, refreshable = true,
+}: {
+  children: ReactNode; scroll?: boolean; background?: 'page' | 'screen'; contentStyle?: StyleProp<ViewStyle>; footer?: ReactNode;
+  /** Pull down to back up and refresh (scrolling screens). */
+  refreshable?: boolean;
+}) {
   const { colors } = useTheme();
   const bg = background === 'page' ? colors.page : colors.screen;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'bottom']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[{ paddingHorizontal: s(21), paddingBottom: s(24) }, contentStyle]} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[{ paddingHorizontal: s(21), paddingBottom: s(24) }, contentStyle]}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={refreshable ? backupRefreshControl() : undefined}
+        >
           {children}
         </ScrollView>
       ) : (

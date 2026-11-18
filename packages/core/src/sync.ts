@@ -69,13 +69,18 @@ export type SyncResultCode =
   | 'AUTHORIZATION_EXPIRED'
   | 'PAYMENT_NOT_VERIFIED'
   /** Recorded after this device was signed out by a sign-in on another device. */
-  | 'SIGNED_OUT';
+  | 'SIGNED_OUT'
+  /** Not processed: an earlier simulation in the same upload was held for review (retried later). */
+  | 'HELD';
 
 export interface SyncOperationResult {
   operationId: string;
   entityType: SyncOperation['entityType'];
-  /** SYNCED: stored (or already stored). NEEDS_REVIEW: kept aside for review; never silently dropped. */
-  status: 'SYNCED' | 'NEEDS_REVIEW';
+  /**
+   * SYNCED: stored (or already stored). NEEDS_REVIEW: kept aside for review; never silently dropped.
+   * HELD: not looked at, because an earlier simulation was held; the device keeps it and retries.
+   */
+  status: 'SYNCED' | 'NEEDS_REVIEW' | 'HELD';
   code: SyncResultCode;
   message?: string;
 }
@@ -179,6 +184,8 @@ function orderEntries(entries: OutboxEntry[], sequenceOf: Map<string, number>): 
 
 export interface SyncReport {
   uploaded: number;
+  /** Simulations waiting because an earlier one is held for review (they would not fit until it is settled). */
+  held: number;
   synced: number;
   needsReview: number;
   /** Set when the upload could not be completed (offline, server down); entries stay queued. */
@@ -188,12 +195,19 @@ export interface SyncReport {
 
 /** Uploads everything waiting in the outbox, in batches. Safe to call at any time and repeatedly. */
 export async function syncOutbox(deps: EngineDeps, transport: SyncTransport, batchSize = 50): Promise<SyncReport> {
-  const report: SyncReport = { uploaded: 0, synced: 0, needsReview: 0, error: null, server: null };
+  const report: SyncReport = { uploaded: 0, held: 0, synced: 0, needsReview: 0, error: null, server: null };
   for (let round = 0; round < 100; round++) {
     const picked = await deps.store.runAtomic(async (tx) => {
-      const waiting = (await tx.listOutbox()).filter((e) => UPLOADABLE.includes(e.status));
-      if (!waiting.length) return null;
+      const outbox = await tx.listOutbox();
       const sequenceOf = new Map((await tx.listTransactions()).map((t) => [t.id, t.sequence] as const));
+      // Transactions are numbered in order: while one is held for review, later ones cannot fit the
+      // server's ledger, so they wait (applied → they upload; dismissed → the device reloads from backup).
+      const heldFrom = Math.min(...outbox.filter((e) => e.entityType === 'TRANSACTION' && e.status === 'NEEDS_REVIEW').map((e) => sequenceOf.get(e.entityId) ?? Infinity));
+      const isHeld = (e: OutboxEntry) => e.entityType === 'TRANSACTION' && (sequenceOf.get(e.entityId) ?? 0) > heldFrom;
+      const uploadable = outbox.filter((e) => UPLOADABLE.includes(e.status));
+      report.held = uploadable.filter(isHeld).length;
+      const waiting = uploadable.filter((e) => !isHeld(e));
+      if (!waiting.length) return null;
       const batch = orderEntries(waiting, sequenceOf).slice(0, batchSize);
       const now = deps.clock.now();
       const operations: SyncOperation[] = [];
@@ -238,6 +252,11 @@ export async function syncOutbox(deps: EngineDeps, transport: SyncTransport, bat
           await tx.updateOutbox({ ...entry, status: 'FAILED', lastError: 'No result from server' });
           continue;
         }
+        if (r.status === 'HELD') {
+          report.held++;
+          await tx.updateOutbox({ ...entry, status: 'PENDING', lastError: 'Waiting for an earlier simulation to be reviewed' });
+          continue;
+        }
         const ok = r.status === 'SYNCED';
         if (ok) report.synced++;
         else report.needsReview++;
@@ -280,13 +299,42 @@ export async function adoptAllocation(deps: EngineDeps, server: ServerAllocation
 }
 
 /** Counts for a sync indicator. */
-export async function outboxSummary(store: StoreReader): Promise<{ waiting: number; needsReview: number; failed: number }> {
+export async function outboxSummary(store: StoreReader): Promise<{ waiting: number; needsReview: number; failed: number; dismissed: number }> {
   const all = await store.listOutbox();
   return {
     waiting: all.filter((e) => UPLOADABLE.includes(e.status)).length,
     needsReview: all.filter((e) => e.status === 'NEEDS_REVIEW').length,
     failed: all.filter((e) => e.status === 'FAILED').length,
+    dismissed: all.filter((e) => e.status === 'DISMISSED').length,
   };
+}
+
+/** A review item the server's reviewer has settled (GET /v1/sync/state → reviewed). */
+export interface ReviewOutcome {
+  operationId: string;
+  entityType: SyncOperation['entityType'];
+  /** SYNCED: stored after all. DISMISSED: kept out of the server's ledger. */
+  status: 'SYNCED' | 'DISMISSED';
+}
+
+/** Updates this device's copies of items a reviewer settled. Returns how many changed. */
+export async function applyReviewOutcomes(deps: EngineDeps, outcomes: readonly ReviewOutcome[]): Promise<number> {
+  if (!outcomes.length) return 0;
+  return deps.store.runAtomic(async (tx) => {
+    let changed = 0;
+    const byKey = new Map(outcomes.map((o) => [`${o.entityType}:${o.operationId}`, o] as const));
+    for (const entry of await tx.listOutbox()) {
+      const o = byKey.get(`${entry.entityType}:${entry.operationId}`);
+      if (!o || entry.status !== 'NEEDS_REVIEW') continue;
+      const synced = o.status === 'SYNCED';
+      await tx.updateOutbox({ ...entry, status: synced ? 'DONE' : 'DISMISSED', lastError: synced ? null : 'Dismissed after review' });
+      if (entry.entityType === 'TRANSACTION' && (await tx.getTransaction(entry.entityId))) {
+        await tx.setTransactionSyncStatus(entry.entityId, synced ? 'SYNCED' : 'NEEDS_REVIEW');
+      }
+      changed++;
+    }
+    return changed;
+  });
 }
 
 // ---------------------------------------------------------------------------------------------

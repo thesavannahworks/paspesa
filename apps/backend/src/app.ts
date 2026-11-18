@@ -212,9 +212,10 @@ class SyncController {
     return this.sync.push(req.installationId!, ops);
   }
 
+  /** Server position, plus review items a reviewer has settled since (the device updates its copies). */
   @Get('state')
   async state(@Req() req: AuthedRequest) {
-    return { server: await this.sync.state(req.installationId!) };
+    return { server: await this.sync.state(req.installationId!), reviewed: await this.sync.reviewOutcomes(req.installationId!) };
   }
 
   @Get('pull')

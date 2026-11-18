@@ -167,6 +167,23 @@ describe('back office', () => {
     expect(actions).toEqual(expect.arrayContaining(['UPDATE_MONETIZATION_SETTINGS']));
   });
 
+  it('the review queue explains each item and offers Apply only when it still fits the ledger', async () => {
+    const { accountId, installationId } = await newAccount();
+    const t = { id: randomUUID(), accountId, operationId: randomUUID(), sequence: 2, type: 'SEND_MONEY', amount: 50, balanceBefore: 1000, balanceAfter: 950, completedAt: new Date().toISOString(), paymentMethod: 'UNMETERED' };
+    await db.query('UPDATE installations SET account_id = $2 WHERE id = $1', [installationId, accountId]);
+    await db.query(
+      `INSERT INTO sync_review (installation_id, operation_id, entity_type, operation_type, code, message, payload) VALUES ($1, $2, 'TRANSACTION', 'CREATE_SIMULATION', 'PAYMENT_REQUIRED', 'This simulation costs 10 tokens', $3)`,
+      [installationId, t.operationId, JSON.stringify({ transaction: t, message: null })],
+    );
+    const ops = await signIn('ops@example.com');
+    const page = await (await ops.get('/admin/review')).text();
+    expect(page).toContain('Needed payment');
+    expect(page).toContain('It still fits the ledger');
+    expect(page).toMatch(/action="\/admin\/review\/\d+\/apply"/);
+    const viewer = await signIn('look@example.com');
+    expect(await (await viewer.get('/admin/review')).text()).not.toMatch(/\/apply"/); // viewers can't act
+  });
+
   it('every page renders for a signed-in viewer', async () => {
     const c = await signIn('look@example.com');
     for (const p of ['/admin', '/admin/accounts', '/admin/devices', '/admin/payments', '/admin/review', '/admin/pricing', '/admin/fees', '/admin/settings', '/admin/audit']) {

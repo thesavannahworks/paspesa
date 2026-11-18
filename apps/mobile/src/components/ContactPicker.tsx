@@ -9,7 +9,8 @@
 import { normalizeKenyanPhone, toLocalPhone } from '@paspesa/core';
 import * as Contacts from 'expo-contacts/legacy';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, Modal, Platform, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import { FlatList, Linking, Platform, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import { AppModal as Modal } from './LayoutFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, CircleButton, PrimaryButton, T, WEB_NO_OUTLINE } from '@/components/ui';
 import { ChevronLeftIcon, SearchIcon } from '@/icons';

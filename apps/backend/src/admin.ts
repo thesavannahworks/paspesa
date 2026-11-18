@@ -16,6 +16,8 @@
  *   npm run admin -w @paspesa/backend -- settings:set freeSimulationsOffline false
  *   npm run admin -w @paspesa/backend -- admin:create you@example.com "Your Name" ADMIN '<password>'   (first back-office user)
  *   npm run admin -w @paspesa/backend -- admin:list
+ *   npm run admin -- trace <email | phone | accountId> [hours]   (an account's recent story, for debugging)
+ *   npm run admin -- review:list
  *
  * Uses DATABASE_URL, or the embedded database in PGLITE_DIR (default ./.data/pglite). Stop the running
  * backend first when using the embedded database (it allows one process at a time).
@@ -95,11 +97,41 @@ try {
     case 'admin:list':
       print(await db.query('SELECT email, name, role, status, last_login_at FROM admin_users ORDER BY created_at'));
       break;
+    case 'trace': {
+      // Everything that happened to an account recently, in time order: for debugging a test session.
+      const key = (args[0] ?? '').trim().toLowerCase();
+      const hours = Number(args[1] ?? 24);
+      const [a] = await db.query<{ id: string; account_name: string; balance: string; version: number; installation_id: string | null; email: string | null }>(
+        `SELECT a.id, a.account_name, a.balance, a.version, a.installation_id, u.email FROM accounts a LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.id = $1 OR lower(u.email) = $1 OR a.phone_number = $1 OR a.phone_number = '254' || ltrim($1, '0') LIMIT 1`, [key],
+      );
+      if (!a) throw new Error('No account for that email, phone or ID');
+      console.log(`${a.account_name} <${a.email ?? 'not signed in'}>  balance ${a.balance}, transaction #${a.version}, active device ${a.installation_id?.slice(0, 8) ?? 'none'}`);
+      const since = `now() - interval '${Math.max(1, Math.min(hours, 24 * 30))} hours'`;
+      const events = await db.query<{ at: Date; line: string }>(
+        `SELECT signed_in_at AS at, 'device ' || left(id, 8) || ' (' || coalesce(platform, '?') || ') signed in' AS line FROM installations WHERE account_id = $1 AND signed_in_at > ${since}
+         UNION ALL SELECT signed_out_at, 'device ' || left(id, 8) || ' signed out' FROM installations WHERE account_id = $1 AND signed_out_at > ${since}
+         UNION ALL SELECT completed_at, 'tx #' || sequence || ' ' || type || ' ' || amount || ' → balance ' || balance_after || ' (uploaded ' || to_char(received_at, 'HH24:MI:SS') || ')' FROM transactions WHERE account_id = $1 AND completed_at > ${since}
+         UNION ALL SELECT o.processed_at, 'upload from ' || left(o.installation_id, 8) || ': ' || o.operation_type || ' → ' || o.code || coalesce(' — ' || o.message, '')
+           FROM sync_operations o JOIN installations i ON i.id = o.installation_id WHERE i.account_id = $1 AND o.processed_at > ${since} AND o.code <> 'APPLIED'
+         UNION ALL SELECT r.received_at, 'REVIEW #' || r.id || ' ' || r.code || ': ' || coalesce(r.message, '') || coalesce(' [' || r.action || ': ' || r.resolution || ']', ' [open]')
+           FROM sync_review r JOIN installations i ON i.id = r.installation_id WHERE i.account_id = $1 AND r.received_at > ${since}
+         UNION ALL SELECT created_at, 'settings: payments ' || CASE WHEN (settings->>'paymentRequired')::boolean THEN 'ON' ELSE 'off' END || ', free offline ' || CASE WHEN (settings->>'freeSimulationsOffline')::boolean THEN 'allowed' ELSE 'not allowed' END
+           FROM (SELECT effective_from AS created_at, settings FROM monetization_settings_history) h WHERE created_at > ${since}
+         ORDER BY at`,
+        [a.id],
+      );
+      for (const e of events) console.log(`${new Date(e.at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}  ${e.line}`);
+      break;
+    }
+    case 'review:list':
+      print(await db.query("SELECT id, received_at, code, operation_type, message, coalesce(action, 'OPEN') AS state FROM sync_review ORDER BY received_at DESC LIMIT 30"));
+      break;
     case 'accounts':
       print(await db.query('SELECT id, installation_id, account_name, phone_number, balance FROM accounts ORDER BY created_at'));
       break;
     default:
-      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts | admin:create <email> <name> <role> <password> | admin:list');
+      console.log('Commands: pricing:show | pricing:set <json> | tokens:grant <accountId> <PROMOTIONAL|ADMIN> <qty> <reference> [expiresAt] | tokens:expire | wallet:show <accountId> | wallet:reconcile <accountId> | devices | device:lost <installationId> <reason> | settings:show | settings:set <key> <value> | accounts | admin:create <email> <name> <role> <password> | admin:list | trace <email|phone|accountId> [hours] | review:list');
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);

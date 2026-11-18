@@ -322,6 +322,21 @@ export class MonetizationService {
     return { ...DEFAULT_MONETIZATION_SETTINGS, ...(row?.settings ?? {}) };
   }
 
+  /**
+   * The settings in force at a moment (an offline simulation is judged by the settings when it happened).
+   * Before any recorded change: the defaults (payments off). A time in the future counts as now.
+   */
+  async settingsAt(q: Queryable, at: string): Promise<MonetizationSettings> {
+    const when = Math.min(Date.parse(at) || Date.now(), Date.now());
+    const [row] = await q.query<{ settings: Partial<MonetizationSettings> }>(
+      'SELECT settings FROM monetization_settings_history WHERE effective_from <= $1 ORDER BY effective_from DESC, id DESC LIMIT 1',
+      [new Date(when).toISOString()],
+    );
+    if (row) return { ...DEFAULT_MONETIZATION_SETTINGS, ...row.settings };
+    const [any] = await q.query<{ n: string }>('SELECT count(*) AS n FROM monetization_settings_history');
+    return Number(any?.n ?? 0) ? DEFAULT_MONETIZATION_SETTINGS : this.settings(q);
+  }
+
   /** Back-office change of settings (audited). */
   async updateSettings(patch: Partial<MonetizationSettings>, actor: string): Promise<MonetizationSettings> {
     const current = await this.settings();
@@ -332,6 +347,7 @@ export class MonetizationService {
     if (!Number.isSafeInteger(next.offlineAuthorizationDays) || next.offlineAuthorizationDays < 1 || next.offlineAuthorizationDays > 90) throw new MonetizationError('VALIDATION', 'Offline authorization must be 1 to 90 days');
     await this.db.transaction(async (q) => {
       await q.query('INSERT INTO monetization_settings (id, settings) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET settings = excluded.settings, updated_at = now()', [JSON.stringify(next)]);
+      await q.query('INSERT INTO monetization_settings_history (effective_from, settings) VALUES (now(), $1)', [JSON.stringify(next)]);
       await q.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, before_value, after_value) VALUES ($1, $2, $3, $4, $5, $6)', [
         actor, 'UPDATE_MONETIZATION_SETTINGS', 'SETTINGS', 'monetization', JSON.stringify(current), JSON.stringify(next),
       ]);

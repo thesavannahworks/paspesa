@@ -194,7 +194,8 @@ export interface MessageRecord {
   deletedAt?: string | null;
 }
 
-export type OutboxStatus = 'PENDING' | 'SYNCING' | 'DONE' | 'FAILED' | 'NEEDS_REVIEW';
+/** DISMISSED: a reviewer kept it out of the server's ledger for good (the device is then out of step). */
+export type OutboxStatus = 'PENDING' | 'SYNCING' | 'DONE' | 'FAILED' | 'NEEDS_REVIEW' | 'DISMISSED';
 
 export interface OutboxEntry {
   id: string;

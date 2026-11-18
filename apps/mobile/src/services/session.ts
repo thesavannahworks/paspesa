@@ -36,7 +36,7 @@ interface SessionDeps {
   /** Replaces the whole local ledger durably (empty = wipe). */
   replaceLedger(state: MemoryState): Promise<void>;
   /** Uploads what is waiting, now. */
-  syncNow(): Promise<void>;
+  syncNow(options?: { uploadOnly?: boolean }): Promise<void>;
 }
 
 let ctx: SessionDeps | null = null;
@@ -121,14 +121,34 @@ export async function pendingUploads(): Promise<number> {
  * Signs out on this device: uploads what is waiting, returns tokens set aside here, tells the server,
  * then wipes the device. `force` signs out even if some simulations could not be uploaded (they are lost).
  */
-export async function signOut(force = false): Promise<{ ok: true } | { ok: false; waiting: number }> {
+export type SignOutStep = 'BACKING_UP' | 'SIGNING_OUT';
+
+/** Waits for `work`, but at most `ms` (sign-out never hangs on a slow connection). */
+const atMost = (work: Promise<unknown>, ms: number) => Promise.race([work.catch(() => undefined), new Promise((r) => setTimeout(r, ms))]);
+
+export async function signOut(force = false, onStep: (step: SignOutStep) => void = () => undefined): Promise<{ ok: true } | { ok: false; waiting: number }> {
   const c = need();
-  await c.syncNow().catch(() => undefined);
-  const waiting = await pendingUploads();
-  if (waiting && !force) return { ok: false, waiting };
-  await c.api.post('/v1/auth/sign-out').catch(() => undefined);
-  await wipe(null);
+  if (!force && (await pendingUploads())) {
+    onStep('BACKING_UP');
+    // Only the upload (no settings or review checks), and not for ever.
+    await atMost(c.syncNow({ uploadOnly: true }), 10_000);
+    const waiting = await pendingUploads();
+    if (waiting) return { ok: false, waiting };
+  }
+  onStep('SIGNING_OUT');
+  await wipe(null, () => atMost(c.api.post('/v1/auth/sign-out'), 5_000));
   return { ok: true };
+}
+
+/**
+ * This device and the backup disagree (something it recorded was dismissed in review): replace the
+ * device's ledger with the backup, keeping its PIN and tokens set aside. Things not uploaded are lost.
+ */
+export async function reloadFromBackup(): Promise<void> {
+  const c = need();
+  const account = await c.deps.store.getAccount();
+  const snapshot = await c.api.get<AccountSnapshot>('/v1/account/restore');
+  await c.replaceLedger(stateFromSnapshot(snapshot, c.deps.installationId, account ? { pin: account.pin, tokenAllocation: account.tokenAllocation ?? null } : null));
 }
 
 let handlingElsewhere = false;
@@ -152,13 +172,15 @@ export async function checkSignedInElsewhere(pushSaidSignedOut = false): Promise
   }
 }
 
-async function wipe(notice: string | null) {
+async function wipe(notice: string | null, alsoTell: () => Promise<unknown> = async () => undefined) {
   const c = need();
   const account = await c.deps.store.getAccount();
-  if (account?.tokenAllocation) {
-    // Tokens set aside here go back to the balance (everything spent here is uploaded by now).
-    await c.api.post('/v1/allocations/release', { deviceRemaining: account.tokenAllocation.remaining }).catch(() => undefined);
-  }
+  // Tokens set aside here go back to the balance (everything spent here is uploaded by now), and the
+  // server hears about the sign-out — both at once, each with a short limit.
+  await Promise.all([
+    account?.tokenAllocation ? atMost(c.api.post('/v1/allocations/release', { deviceRemaining: account.tokenAllocation.remaining }), 5_000) : null,
+    alsoTell(),
+  ]);
   await c.replaceLedger(normalizeState({}));
   await c.kv.remove(EMAIL_KEY);
   for (const l of wipeListeners) l();

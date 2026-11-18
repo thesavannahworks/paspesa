@@ -1,13 +1,15 @@
 import { favouritesFor, formatKsh, toLocalPhone, type FavouriteSuggestion, type SimulationType } from '@paspesa/core';
 import { Redirect, router, type Href } from 'expo-router';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, CircleButton, EdgeCard, Inert, OutlineButton, SegmentedTabs, T } from '@/components/ui';
 import {
   AirtimeIcon, BellIcon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EmptyActivityArt, EyeIcon, EyeOffIcon, GiftIcon,
   HomeInternetIcon, LipaIcon, BundlesIcon, InvestIcon, PochiWalletIcon, SharedPayIcon, ScanIcon, SearchIcon, SendMoneyIcon, WithdrawIcon,
 } from '@/icons';
+import { backupRefreshControl } from '@/components/BackupRefresh';
+import { useLayoutFrame } from '@/components/LayoutFrame';
 import { ExploreCarousel, MyFinances } from '@/components/explore';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAppState } from '@/services/AppState';
@@ -40,7 +42,7 @@ export default function HomeScreen() {
   const [page, setPage] = useState(0);
   const [scanCollapsed, setScanCollapsed] = useState(false);
   const lastScrollY = useRef(0);
-  const { width } = useWindowDimensions();
+  const { contentWidth: width } = useLayoutFrame();
   const cardWidth = Math.min(width, 520) - s(136);
 
   const frequents = useMemo(() => {
@@ -112,7 +114,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: s(24) }} onScroll={onPageScroll} scrollEventThrottle={16}>
+      <ScrollView contentContainerStyle={{ paddingBottom: s(24) }} onScroll={onPageScroll} scrollEventThrottle={16} refreshControl={backupRefreshControl()}>
         {/* Balance cards */}
         <ScrollView
           horizontal

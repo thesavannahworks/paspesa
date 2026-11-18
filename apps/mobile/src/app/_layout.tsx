@@ -2,9 +2,11 @@ import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '@/components/AppLock';
+import { COLUMN_WIDTH, computeFrame, LayoutFrameProvider } from '@/components/LayoutFrame';
+import { WebSidebar } from '@/components/WebSidebar';
 import { AppStateProvider, useAppState } from '@/services/AppState';
 import { PreferencesProvider, usePreference } from '@/services/preferences';
 import { onWiped, useSession } from '@/services/session';
@@ -23,6 +25,36 @@ function ThemedStack() {
       <StatusBar style={colors.mode === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.screen }, animation: 'slide_from_right' }} />
     </>
+  );
+}
+
+/**
+ * Phones: the screens fill the window. Web on a wide screen: a sidebar and the screens in a centred
+ * column (see LayoutFrame). The same tree in both cases, so resizing the window keeps your place.
+ */
+function AppShell() {
+  const { colors } = useTheme();
+  const { account } = useAppState();
+  const session = useSession();
+  const { width } = useWindowDimensions();
+  const sidebar = !!account && (!session.required || !!session.email);
+  const frame = computeFrame(width, sidebar);
+  return (
+    <LayoutFrameProvider sidebar={sidebar}>
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: frame.wide ? colors.page : colors.screen }}>
+        {frame.sidebar ? <WebSidebar /> : null}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <View
+            style={frame.wide
+              ? { flex: 1, width: COLUMN_WIDTH, backgroundColor: colors.screen, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: colors.divider }
+              : { flex: 1, width: '100%' }}
+          >
+            <ThemedStack />
+          </View>
+        </View>
+      </View>
+      <AppLock />
+    </LayoutFrameProvider>
   );
 }
 
@@ -96,8 +128,7 @@ export default function RootLayout() {
       <PreferencesProvider kv={runtime.kv} initial={runtime.initialPrefs}>
         <ThemeProvider>
           <AppStateProvider deps={runtime.deps}>
-            <ThemedStack />
-            <AppLock />
+            <AppShell />
             <SyncBridge runtime={runtime} />
             <SessionBridge />
           </AppStateProvider>

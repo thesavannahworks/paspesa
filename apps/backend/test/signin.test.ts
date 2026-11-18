@@ -12,6 +12,8 @@ import {
   setupAccount,
   stateFromSnapshot,
   syncOutbox,
+  applyReviewOutcomes,
+  outboxSummary,
   type AccountSnapshot,
   type EngineDeps,
   type SyncPushRequest,
@@ -21,6 +23,8 @@ import {
 import { createApp } from '../src/app.js';
 import { openDatabase, type Database } from '../src/database.js';
 import { memoryMailer } from '../src/mailer.js';
+import { MonetizationService } from '../src/monetization.service.js';
+import { SyncService } from '../src/sync.service.js';
 
 let db: Database;
 let app: Awaited<ReturnType<typeof createApp>>;
@@ -155,20 +159,21 @@ describe('one account, moving between devices', () => {
     expect((await a.call('GET', '/v1/auth/me')).body).toMatchObject({ signedIn: false, signedOutElsewhere: true });
     expect((await a.call('GET', '/v1/account/restore')).status).toBe(403); // only the active device restores
 
-    // A uploads what it recorded before the move, and is told it was signed out
+    // A's upload after the move is held for review (B continues from the server's ledger), and A is told
     const leftover = await syncOutbox(depsA, a.transport);
-    expect(leftover.needsReview).toBe(0);
+    expect(leftover.needsReview).toBe(1);
+    const [held] = await db.query<{ code: string }>('SELECT code FROM sync_review WHERE installation_id = $1', [a.installationId]);
+    expect(held!.code).toBe('SIGNED_OUT');
     const pushed = await a.call('POST', '/v1/sync/push', { apiVersion: 1, installationId: a.installationId, operations: [] });
     expect(pushed.body.signedOut).toBe(true);
 
-    // B restores: same balance, same transactions, then creates its own PIN and continues
+    // B restores the server's ledger (without A's held 300), creates its own PIN and continues
     const snap = (await b.call('GET', '/v1/account/restore')).body as AccountSnapshot;
     const state = stateFromSnapshot(snap, b.installationId);
-    const accountA = (await depsA.store.getAccount())!;
-    expect(state.account!.currentBalanceCache).toBe(accountA.currentBalanceCache);
-    expect(state.transactions.map((t) => t.id).sort()).toEqual((await depsA.store.listTransactions()).map((t) => t.id).sort());
+    expect(state.account!.currentBalanceCache).toBe((await depsA.store.listTransactions()).find((t) => t.amount === 400)!.balanceAfter);
+    expect(state.transactions).toHaveLength(2);
     expect(state.account!.pin).toBeNull(); // the PIN never leaves a device
-    expect(state.messages.length).toBe(2);
+    expect(state.messages.length).toBe(1);
     const depsB = makeDeps('2025-06-01T06:00:00.000Z', b.installationId, new MemoryStore(state));
     expect((await send(depsB, 100)).ok).toBe(false); // no PIN yet
     expect((await setPin(depsB, { newPin: PIN })).ok).toBe(true);
@@ -177,13 +182,57 @@ describe('one account, moving between devices', () => {
     expect(fromB.needsReview).toBe(0);
     expect(fromB.server!.balance).toBe((await depsB.store.getAccount())!.currentBalanceCache);
 
-    // Anything A records after the move is kept for review, never applied
+    // A's later simulations wait behind the held one instead of piling up in review
     depsA.setTime('2031-01-01T00:00:00.000Z');
     await send(depsA, 50);
     const late = await syncOutbox(depsA, a.transport);
-    expect(late.needsReview).toBe(1);
-    const [review] = await db.query<{ code: string }>('SELECT code FROM sync_review WHERE installation_id = $1', [a.installationId]);
-    expect(review!.code).toBe('SIGNED_OUT');
+    expect(late.held).toBe(1);
+    expect(late.uploaded).toBe(0);
+
+    // the held one no longer fits (B continued): applying is refused; dismissing tells device A
+    const [item] = await db.query<{ id: string }>('SELECT id FROM sync_review WHERE installation_id = $1', [a.installationId]);
+    const sync = new SyncService(db);
+    expect(await sync.applyReview(item!.id, 'admin:test', '')).toMatchObject({ ok: false });
+    expect(await sync.dismissReview(item!.id, 'admin:test', 'Account moved to the desktop')).toBe(true);
+    const state2 = (await a.call('GET', '/v1/sync/state')).body;
+    expect(state2.reviewed).toEqual([expect.objectContaining({ status: 'DISMISSED' })]);
+    expect(await applyReviewOutcomes(depsA, state2.reviewed)).toBe(1);
+    expect((await outboxSummary(depsA.store)).dismissed).toBe(1);
+  });
+
+  it('judges an offline simulation by the settings when it happened; a reviewer can apply a held one', async () => {
+    const money = new MonetizationService(db);
+    await money.updateSettings({ paymentRequired: false }, 'admin:test');
+    const d = await device();
+    const deps = makeDeps(new Date(Date.now() - 3_600_000).toISOString(), d.installationId);
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'Wanjiru', phoneNumber: '0711222333', openingBalance: 5_000, pin: PIN });
+    await syncOutbox(deps, d.transport);
+    await send(deps, 500); // free: payments were off (an hour ago, on the device clock)
+    await money.updateSettings({ paymentRequired: true }, 'admin:test'); // switched on before the upload
+    const r = await syncOutbox(deps, d.transport);
+    expect(r.needsReview).toBe(0); // judged by the settings at the time
+    expect(r.server!.balance).toBe((await deps.store.getAccount())!.currentBalanceCache);
+
+    // now payments are on: a free (unpaid) simulation is held; the next one waits behind it
+    deps.setTime(new Date(Date.now() + 60_000).toISOString());
+    await send(deps, 400);
+    await send(deps, 300);
+    const held = await syncOutbox(deps, d.transport);
+    expect(held.needsReview).toBe(1);
+    expect(held.held).toBe(1);
+    const [item] = await db.query<{ id: string; code: string }>('SELECT id, code FROM sync_review WHERE installation_id = $1', [d.installationId]);
+    expect(item!.code).toBe('PAYMENT_REQUIRED');
+
+    // a reviewer applies it (it still fits); the device learns, and the waiting one uploads
+    expect(await new SyncService(db).applyReview(item!.id, 'admin:test', 'Payments were off for this phone')).toEqual({ ok: true });
+    const st = (await d.call('GET', '/v1/sync/state')).body;
+    expect(st.reviewed).toEqual([expect.objectContaining({ status: 'SYNCED' })]);
+    await applyReviewOutcomes(deps, st.reviewed);
+    await money.updateSettings({ paymentRequired: false }, 'admin:test');
+    const after = await syncOutbox(deps, d.transport);
+    expect(after).toMatchObject({ held: 0, needsReview: 0, synced: 1 });
+    expect(after.server!.balance).toBe((await deps.store.getAccount())!.currentBalanceCache);
+    expect((await db.query("SELECT 1 FROM audit_log WHERE action = 'APPLY_REVIEW'")).length).toBe(1);
   });
 
   it('a device with its own account must choose before using an email that has another account', async () => {

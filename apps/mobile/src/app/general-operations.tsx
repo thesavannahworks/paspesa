@@ -1,7 +1,8 @@
 import { formatKsh, resetAirtimeBalance, toLocalPhone } from '@paspesa/core';
 import { router, type Href } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppModal as Modal } from '@/components/LayoutFrame';
 import { PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { AirtimeResetIcon, ChevronRightIcon, ContactIcon, RechargeIcon } from '@/icons';
 import { useAccount, useAppState } from '@/services/AppState';

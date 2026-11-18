@@ -35,7 +35,7 @@ export default function CreatePinScreen() {
   };
 
   return (
-    <Screen footer={<PrimaryButton title="Save PIN" onPress={() => void save()} loading={busy} disabled={pin.length !== 4 || confirm.length !== 4} />}>
+    <Screen refreshable={false} footer={<PrimaryButton title="Save PIN" onPress={() => void save()} loading={busy} disabled={pin.length !== 4 || confirm.length !== 4} />}>
       <View style={{ paddingTop: s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="heading" style={{ marginTop: s(18) }}>Welcome back, {account.accountName.split(' ')[0]}</T>

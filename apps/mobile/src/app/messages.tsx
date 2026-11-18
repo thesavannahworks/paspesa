@@ -21,21 +21,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
-import {
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  type GestureResponderEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { AppModal as Modal, useLayoutFrame } from '@/components/LayoutFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Inert, Sheet, T } from '@/components/ui';
 import { ArrowDownToLineIcon, CheckIcon, ChevronLeftIcon, CloseIcon, PersonFilledIcon, StarFilledIcon, TrashIcon } from '@/icons';
@@ -465,7 +452,7 @@ function MessageMenu({
   state: { message: MessageRecord; x: number; y: number } | null; pal: Palette; screenHeight: number;
   onClose: () => void; onAction: (a: MenuAction, m: MessageRecord) => void;
 }) {
-  const { width } = useWindowDimensions();
+  const { contentWidth: width } = useLayoutFrame();
   if (!state) return null;
   const m = state.message;
   const items: { label: string; action?: MenuAction }[] = [

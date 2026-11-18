@@ -88,6 +88,7 @@ export const ADMIN_JS = `document.querySelectorAll('.pw-toggle').forEach(functio
 `;
 
 export const ADMIN_CSS = `
+.review{border-bottom:1px solid var(--line);padding:12px 0}.review:last-child{border-bottom:0}.review p{margin:6px 0}.review .explain{background:var(--bg);border-radius:8px;padding:8px 10px}.ok-text{color:var(--accent)}.review-actions form{flex:1;min-width:240px}
 .qr{width:200px;margin:12px 0;padding:8px;background:#fff;border-radius:8px}.qr svg{display:block;width:100%;height:auto}
 code.key{font-size:15px;letter-spacing:1px}ol.steps li{margin:0 0 14px}ol.steps form{display:flex;gap:8px;align-items:center;max-width:420px;margin-top:8px}ol.steps form button{margin-top:0}ul.codes{columns:2;max-width:360px;font-size:16px;line-height:2}
 .pw{display:flex;gap:8px;align-items:center;max-width:420px}.pw input{flex:1}.pw .pw-toggle{margin-top:0;white-space:nowrap}

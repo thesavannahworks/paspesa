@@ -56,7 +56,12 @@ export interface AccountSnapshot {
  * Builds the device's local state from a server snapshot. Everything restored is already synchronized;
  * messages arrive as read. Throws if the transactions don't add up to the server's balance.
  */
-export function stateFromSnapshot(snapshot: AccountSnapshot, installationId: string): MemoryState {
+export function stateFromSnapshot(
+  snapshot: AccountSnapshot,
+  installationId: string,
+  /** Reloading on the same device keeps its PIN and its tokens set aside. */
+  keep: Pick<Account, 'pin' | 'tokenAllocation'> | null = null,
+): MemoryState {
   const a = snapshot.account;
   const transactions: TransactionRecord[] = [...snapshot.transactions]
     .sort((x, y) => x.sequence - y.sequence)
@@ -85,8 +90,8 @@ export function stateFromSnapshot(snapshot: AccountSnapshot, installationId: str
     airtimeBalance: a.airtimeBalance,
     airtimeResetTotal: a.airtimeResetTotal,
     rechargeSenderDefaults: a.rechargeSenderDefaults,
-    tokenAllocation: null,
-    pin: null,
+    tokenAllocation: keep?.tokenAllocation ?? null,
+    pin: keep?.pin ?? null,
     currency: 'KES',
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,

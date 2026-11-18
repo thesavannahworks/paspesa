@@ -178,15 +178,17 @@ describe('synchronization', () => {
 
     const report = await syncOutbox(tampered, http(token));
     expect(report.synced).toBe(1); // the account itself
-    expect(report.needsReview).toBe(2); // the tampered payment, and the one built on its balance
+    expect(report.needsReview).toBe(1); // the tampered payment
+    expect(report.held).toBe(1); // the one built on its balance waits instead of piling up in review
     expect(report.server!.balance).toBe(10_000); // nothing applied
     const reviewed = await db.query<{ code: string }>('SELECT code FROM sync_review WHERE installation_id = $1 ORDER BY id', [deps.installationId]);
-    expect(reviewed.map((r) => r.code)).toEqual(['FEE_MISMATCH', 'BALANCE_MISMATCH']);
+    expect(reviewed.map((r) => r.code)).toEqual(['FEE_MISMATCH']);
     const local = await tampered.store.listTransactions();
-    expect(local.filter((t) => t.syncStatus === 'NEEDS_REVIEW')).toHaveLength(2);
-    // retrying returns the same verdict without new review rows
-    await syncOutbox(tampered, http(token));
-    expect((await db.query('SELECT 1 FROM sync_review WHERE installation_id = $1', [deps.installationId])).length).toBe(2);
+    expect(local.filter((t) => t.syncStatus === 'NEEDS_REVIEW')).toHaveLength(1);
+    // retrying returns the same verdict without new review rows; the later one keeps waiting
+    const again = await syncOutbox(tampered, http(token));
+    expect(again.held).toBe(1);
+    expect((await db.query('SELECT 1 FROM sync_review WHERE installation_id = $1', [deps.installationId])).length).toBe(1);
   });
 
   it('an operation ID reused for different content is a conflict', async () => {

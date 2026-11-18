@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG, validatePricingRule, type MonetizationSettings, type Pr
 import { AllocationService } from '../allocation.service.js';
 import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
+import { SyncService } from '../sync.service.js';
 import type { PaymentProviders } from '../providers.js';
 import QRCode from 'qrcode';
 import { AdminAuth, can, clearCookie, clearPendingCookie, PENDING_COOKIE, pendingCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
@@ -39,11 +40,28 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 class Denied extends Error {}
 
+/** Plain explanations for the review queue: what happened, and what to do. */
+const REVIEW_HELP: Record<string, { title: string; help: string }> = {
+  PAYMENT_REQUIRED: { title: 'Needed payment', help: 'The device recorded it without paying, but the server thought payment was required. If payments were really off for that device at the time, apply it.' },
+  SIGNED_OUT: { title: 'Account had moved to another device', help: 'This device recorded it before learning that the account was signed in elsewhere, and uploaded it after. The other device has continued since, so it usually no longer fits: dismiss it. Apply only if it still fits and the person wants it kept.' },
+  BALANCE_MISMATCH: { title: "Didn't match the server's balance", help: "The device's balance differed from the server's (often: two devices used the account at once, or an earlier item is still held). Apply only if it still fits; otherwise dismiss it and have the device reload from backup." },
+  FEE_MISMATCH: { title: 'Fee differed from the tariff', help: 'The device used a different fee than the server. Usually an old app version; dismiss and have the device reload from backup.' },
+  PRICING_MISMATCH: { title: 'Token price differed', help: 'The device priced it differently from the pricing it was given. Apply to store it without charging, or dismiss.' },
+  INSUFFICIENT_TOKENS: { title: 'Not enough tokens set aside', help: 'The tokens set aside on the device did not cover it. Apply to store it without charging, or dismiss.' },
+  AUTHORIZATION_EXPIRED: { title: 'Offline authorization had expired', help: 'The device was offline longer than allowed for paid simulations. Apply to store it without charging, or dismiss.' },
+  PAYMENT_NOT_VERIFIED: { title: 'Payment not confirmed', help: 'No confirmed M-PESA payment was found for it. Check Payments first; apply if the person paid.' },
+  VALIDATION: { title: 'Invalid record', help: 'The record failed basic checks (often an old app version). Dismiss it.' },
+  OPERATION_CONFLICT: { title: 'Duplicate operation ID with different content', help: 'Two different records used the same operation ID. Dismiss it.' },
+  NO_ACCOUNT: { title: 'Account not on the server', help: "The device's account was never uploaded. Dismiss it." },
+  UNSUPPORTED_VERSION: { title: 'Unsupported app version', help: 'Dismiss it; the person should update the app.' },
+};
+
 @Controller('admin')
 export class AdminController {
   private readonly auth: AdminAuth;
   private readonly money: MonetizationService;
   private readonly allocations: AllocationService;
+  private readonly sync: SyncService;
 
   constructor(
     @Inject(ADMIN_DATABASE) private readonly db: Database,
@@ -52,6 +70,7 @@ export class AdminController {
     this.auth = new AdminAuth(db);
     this.money = new MonetizationService(db);
     this.allocations = new AllocationService(db, this.money);
+    this.sync = new SyncService(db, undefined, this.money, this.allocations);
   }
 
   // ------------------------------------------------------------------------------------------ plumbing
@@ -386,17 +405,50 @@ export class AdminController {
   async review(@Req() req: Req, @Res() res: Res, @Query() q: { ok?: string; err?: string }) {
     const session = await this.session(req, res);
     if (!session) return;
-    const open = await this.db.query<Record<string, unknown>>('SELECT * FROM sync_review WHERE resolved_at IS NULL ORDER BY received_at DESC LIMIT 200');
-    const closed = await this.db.query<Record<string, unknown>>('SELECT * FROM sync_review WHERE resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT 50');
+    const cols = `r.*, a.id AS account_id, a.account_name, a.balance AS account_balance, a.version AS account_version, i.platform`;
+    const from = `FROM sync_review r LEFT JOIN installations i ON i.id = r.installation_id LEFT JOIN accounts a ON a.id = i.account_id`;
+    const open = await this.db.query<Record<string, unknown>>(`SELECT ${cols} ${from} WHERE r.resolved_at IS NULL ORDER BY r.received_at DESC LIMIT 200`);
+    const closed = await this.db.query<Record<string, unknown>>(`SELECT ${cols} ${from} WHERE r.resolved_at IS NOT NULL ORDER BY r.resolved_at DESC LIMIT 50`);
     const mayResolve = can(session.admin.role, 'RESOLVE_REVIEW');
-    const item = (r: Record<string, unknown>, resolvable: boolean) => html`<tr><td>${fmtDate(r.received_at)}</td><td><span class="pill bad">${r.code}</span></td><td>${r.operation_type}</td><td>${r.message}</td>
-      <td><details><summary>Payload</summary><pre>${JSON.stringify(r.payload, null, 2)}</pre></details></td>
-      <td>${resolvable && mayResolve ? html`<form method="post" action="/admin/review/${r.id}/resolve">${csrf(session)}<input name="resolution" placeholder="What was done" required maxlength="300"><button class="secondary">Mark resolved</button></form>`
-        : html`<span class="muted">${r.resolution ?? ''} ${r.resolved_by ? `(${r.resolved_by})` : ''}</span>`}</td></tr>`;
+    const item = (r: Record<string, unknown>, resolvable: boolean) => {
+      const t = (r.payload as { transaction?: Record<string, unknown> } | null)?.transaction;
+      const fits = !!t && r.account_balance !== null && Number(t.sequence) === Number(r.account_version) + 1 && Number(t.balanceBefore) === Number(r.account_balance);
+      const canApply = resolvable && mayResolve && r.operation_type === 'CREATE_SIMULATION' && fits;
+      return html`<div class="review">
+        <div class="review-head"><span class="pill bad">${r.code}</span> <b>${REVIEW_HELP[String(r.code)]?.title ?? r.code}</b>
+          <span class="muted">· received ${fmtDate(r.received_at)} from ${r.platform ?? 'a device'}${r.account_id ? html` · <a href="/admin/accounts/${r.account_id}">${r.account_name}</a>` : html``}</span></div>
+        ${t ? html`<p>${String(t.type).replace('_', ' ').toLowerCase()} of <b>${ksh(t.amount)}</b> on ${fmtDate(t.completedAt)} · transaction #${t.sequence}, balance ${ksh(t.balanceBefore)} → ${ksh(t.balanceAfter)} on the device · paid: ${t.paymentMethod ?? '—'}</p>`
+          : html`<p>${String(r.operation_type).replace(/_/g, ' ').toLowerCase()}</p>`}
+        <p class="muted">${r.message}</p>
+        ${resolvable ? html`<p class="explain">${REVIEW_HELP[String(r.code)]?.help ?? 'Check the details, then apply it if it is right, or dismiss it with a note.'}</p>` : html``}
+        ${t && resolvable && r.account_balance !== null ? html`<p class="${fits ? 'ok-text' : 'muted'}">${fits
+          ? `It still fits the ledger: the account is at transaction #${r.account_version} with ${ksh(r.account_balance)}.`
+          : `It no longer fits the ledger: the account is now at transaction #${r.account_version} with ${ksh(r.account_balance)}. Dismiss it; the device should reload from backup.`}</p>` : html``}
+        <details><summary>Full record</summary><pre>${JSON.stringify(r.payload, null, 2)}</pre></details>
+        ${resolvable && mayResolve ? html`<div class="row review-actions">
+            ${canApply ? html`<form method="post" action="/admin/review/${r.id}/apply">${csrf(session)}<label>Apply — store it in the account (no charge)</label><input name="note" placeholder="Note (optional)" maxlength="300"><button>Apply</button></form>` : html``}
+            <form method="post" action="/admin/review/${r.id}/resolve">${csrf(session)}<label>Dismiss — keep it out of the ledger</label><input name="resolution" placeholder="Why (required)" required maxlength="300"><button class="secondary">Dismiss</button></form>
+          </div>`
+        : resolvable ? html`` : html`<p><span class="pill ${r.action === 'APPLIED' ? 'ok' : ''}">${r.action ?? 'RESOLVED'}</span> ${r.resolution ?? ''} <span class="muted">${r.resolved_by ? `— ${r.resolved_by}, ${fmtDate(r.resolved_at)}` : ''}</span></p>`}
+      </div>`;
+    };
     this.send(res, layout('Review queue', session, html`${this.flash(q)}
-      <p class="muted">Synced operations that failed the server's checks. Nothing here was applied to any balance; the records are kept for review (§24.4).</p>
-      <div class="panel"><h2>Open (${open.length})</h2><table><tr><th>Received</th><th>Code</th><th>Operation</th><th>Detail</th><th></th><th></th></tr>${open.map((r) => item(r, true))}</table></div>
-      <div class="panel"><h2>Resolved</h2><table><tr><th>Received</th><th>Code</th><th>Operation</th><th>Detail</th><th></th><th>Resolution</th></tr>${closed.map((r) => item(r, false))}</table></div>`, '/admin/review'));
+      <p class="muted">Uploads the server could not store as they were. Nothing here has changed any balance on the server. <b>Apply</b> stores a held simulation after all (only when it still fits the account's ledger); <b>Dismiss</b> keeps it out. The device learns the outcome on its next sync.</p>
+      <div class="panel"><h2>Open (${open.length})</h2>${open.length ? open.map((r) => item(r, true)) : html`<p class="muted">Nothing waiting.</p>`}</div>
+      <div class="panel"><h2>Resolved</h2>${closed.map((r) => item(r, false))}</div>`, '/admin/review'));
+  }
+
+  @Post('review/:id/apply')
+  async applyReview(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form, 'RESOLVE_REVIEW');
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    const r = await this.sync.applyReview(id, this.actor(session), (form.note ?? '').trim());
+    this.back(res, '/admin/review', r.ok ? 'Applied: stored in the account' : r.message, !r.ok);
   }
 
   @Post('review/:id/resolve')
@@ -409,10 +461,9 @@ export class AdminController {
       return this.denied(res, session, e);
     }
     const resolution = (form.resolution ?? '').trim();
-    if (!resolution) return this.back(res, '/admin/review', 'Describe what was done', true);
-    await this.db.query('UPDATE sync_review SET resolved_at = now(), resolution = $2, resolved_by = $3 WHERE id = $1 AND resolved_at IS NULL', [id, resolution, this.actor(session)]);
-    await this.db.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, reason) VALUES ($1, $2, $3, $4, $5)', [this.actor(session), 'RESOLVE_REVIEW', 'SYNC_REVIEW', id, resolution]);
-    this.back(res, '/admin/review', 'Marked resolved');
+    if (!resolution) return this.back(res, '/admin/review', 'Say why it is dismissed', true);
+    await this.sync.dismissReview(id, this.actor(session), resolution);
+    this.back(res, '/admin/review', 'Dismissed');
   }
 
   // ------------------------------------------------------------------------------------------ pricing (§35.1)

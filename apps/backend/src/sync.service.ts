@@ -116,9 +116,17 @@ export class SyncService {
 
   async push(installationId: string, operations: SyncOperation[]): Promise<SyncPushResponse> {
     const results: SyncOperationResult[] = [];
+    // Simulations are numbered in order: once one is held for review, the later ones in this upload cannot
+    // fit, so they are handed back untouched (the device retries them once the held one is settled).
+    let blocked = false;
     for (const op of operations) {
+      if (blocked && op.operationType === 'CREATE_SIMULATION') {
+        results.push({ operationId: op.operationId, entityType: op.entityType, status: 'HELD', code: 'HELD', message: 'Waiting for an earlier simulation to be reviewed' });
+        continue;
+      }
       const outcome = await this.db.transaction((q) => this.process(q, installationId, op));
       results.push({ operationId: op.operationId, entityType: op.entityType, ...outcome });
+      if (outcome.status === 'NEEDS_REVIEW' && op.operationType === 'CREATE_SIMULATION') blocked = true;
     }
     // A successful synchronization refreshes the device's offline authorization (§29.4).
     // A device signed out by a sign-in elsewhere only uploads what is left: no renewal, and it is told.
@@ -126,6 +134,57 @@ export class SyncService {
     const signedOut = !!device?.signed_out_at && !!device.user_id;
     const allocation = signedOut ? await this.allocations.current(installationId) : await this.allocations.renew(installationId);
     return { results, server: await this.serverState(this.db, installationId), allocation, ...(signedOut ? { signedOut: true } : {}) };
+  }
+
+  /**
+   * Review items of this device that a reviewer has settled since it uploaded them: APPLIED ones are now
+   * in the ledger (SYNCED), DISMISSED ones never will be.
+   */
+  async reviewOutcomes(installationId: string): Promise<{ operationId: string; entityType: SyncOperation['entityType']; status: 'SYNCED' | 'DISMISSED' }[]> {
+    const rows = await this.db.query<{ operation_id: string; entity_type: SyncOperation['entityType']; action: string }>(
+      "SELECT operation_id, entity_type, action FROM sync_review WHERE installation_id = $1 AND action IN ('APPLIED', 'DISMISSED') AND resolved_at > now() - interval '60 days' ORDER BY resolved_at DESC LIMIT 200",
+      [installationId],
+    );
+    return rows.map((r) => ({ operationId: r.operation_id, entityType: r.entity_type, status: r.action === 'APPLIED' ? 'SYNCED' : 'DISMISSED' }));
+  }
+
+  /**
+   * A reviewer stores a held simulation after all. Every ledger check runs again (it must still be the
+   * next transaction from the server's balance); only the payment rule is skipped. Audited.
+   */
+  async applyReview(reviewId: string, actor: string, note: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    return this.db.transaction(async (q) => {
+      const [r] = await q.query<{ installation_id: string; operation_id: string; entity_type: string; operation_type: string; payload: unknown; resolved_at: Date | null }>(
+        'SELECT installation_id, operation_id, entity_type, operation_type, payload, resolved_at FROM sync_review WHERE id = $1 FOR UPDATE', [reviewId],
+      );
+      if (!r) return { ok: false as const, message: 'Review item not found' };
+      if (r.resolved_at) return { ok: false as const, message: 'Already resolved' };
+      if (r.operation_type !== 'CREATE_SIMULATION') return { ok: false as const, message: 'Only simulations can be applied; dismiss this one with a note' };
+      await q.query('SELECT pg_advisory_xact_lock(hashtext($1))', [r.installation_id]);
+      const op = { operationId: r.operation_id, entityType: r.entity_type, operationType: r.operation_type, payloadVersion: PAYLOAD_VERSION, createdAt: new Date().toISOString(), payload: r.payload } as SyncOperation;
+      const outcome = await this.apply(q, r.installation_id, op, { reviewed: true });
+      if (outcome.status !== 'SYNCED') return { ok: false as const, message: `It no longer fits the account's ledger: ${outcome.message ?? outcome.code}` };
+      await q.query(
+        "UPDATE sync_review SET resolved_at = now(), resolution = $2, resolved_by = $3, action = 'APPLIED' WHERE id = $1",
+        [reviewId, note || 'Applied after review', actor],
+      );
+      await q.query(
+        "UPDATE sync_operations SET status = 'SYNCED', code = 'APPLIED', message = 'Applied after review' WHERE installation_id = $1 AND operation_id = $2 AND entity_type = $3",
+        [r.installation_id, r.operation_id, r.entity_type],
+      );
+      await q.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, reason) VALUES ($1, $2, $3, $4, $5)', [actor, 'APPLY_REVIEW', 'SYNC_REVIEW', reviewId, note || null]);
+      return { ok: true as const };
+    });
+  }
+
+  /** A reviewer keeps a held operation out of the ledger for good (the device is told). Audited. */
+  async dismissReview(reviewId: string, actor: string, note: string): Promise<boolean> {
+    const rows = await this.db.query<{ id: string }>(
+      "UPDATE sync_review SET resolved_at = now(), resolution = $2, resolved_by = $3, action = 'DISMISSED' WHERE id = $1 AND resolved_at IS NULL RETURNING id",
+      [reviewId, note, actor],
+    );
+    if (rows.length) await this.db.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, reason) VALUES ($1, $2, $3, $4, $5)', [actor, 'DISMISS_REVIEW', 'SYNC_REVIEW', reviewId, note]);
+    return rows.length > 0;
   }
 
   /** Server balance and position for this installation (reconciliation, §25.4). */
@@ -180,18 +239,27 @@ export class SyncService {
     return row ? toAccount(row) : null;
   }
 
-  private async apply(q: Queryable, installationId: string, op: SyncOperation): Promise<Outcome> {
+  /** True when this device worked on an account that is now active on another device. */
+  private async movedAway(q: Queryable, installationId: string): Promise<boolean> {
+    const [row] = await q.query<{ active: string | null; signed_out_at: Date | null; user_id: string | null }>(
+      'SELECT a.installation_id AS active, i.signed_out_at, i.user_id FROM installations i JOIN accounts a ON a.id = i.account_id WHERE i.id = $1',
+      [installationId],
+    );
+    return !!row && !!row.signed_out_at && !!row.user_id && row.active !== installationId;
+  }
+
+  private async apply(q: Queryable, installationId: string, op: SyncOperation, options: { reviewed?: boolean } = {}): Promise<Outcome> {
     if (!isObj(op.payload)) return review('VALIDATION', 'payload missing');
-    // After a sign-in on another device, this one may only upload what it recorded before that moment.
-    const [device] = await q.query<{ signed_out_at: Date | null; user_id: string | null }>('SELECT signed_out_at, user_id FROM installations WHERE id = $1', [installationId]);
-    if (device?.signed_out_at && device.user_id && Date.parse(String(op.createdAt)) > new Date(device.signed_out_at).getTime()) {
-      return review('SIGNED_OUT', 'Recorded after this device was signed out (the account moved to another device)');
+    // The account moved to another device (a sign-in there), which continued from the server's ledger at
+    // that moment: anything this device uploads now would conflict with it, so it is kept for review.
+    if (!options.reviewed && (await this.movedAway(q, installationId))) {
+      return review('SIGNED_OUT', 'Not uploaded before the account moved to another device');
     }
     switch (op.operationType) {
       case 'CREATE_ACCOUNT':
         return this.createAccount(q, installationId, op);
       case 'CREATE_SIMULATION':
-        return this.createSimulation(q, installationId, op);
+        return this.createSimulation(q, installationId, op, options);
       case 'UPDATE_ACCOUNT_SETTINGS':
         return this.updateSettings(q, installationId, op);
       case 'UPSERT_FAVOURITE':
@@ -232,7 +300,7 @@ export class SyncService {
     return applied;
   }
 
-  private async createSimulation(q: Queryable, installationId: string, op: Extract<SyncOperation, { operationType: 'CREATE_SIMULATION' }>): Promise<Outcome> {
+  private async createSimulation(q: Queryable, installationId: string, op: Extract<SyncOperation, { operationType: 'CREATE_SIMULATION' }>, options: { reviewed?: boolean } = {}): Promise<Outcome> {
     const { transaction: t, message: m } = op.payload;
     const shape = transactionShapeError(t);
     if (shape) return review('VALIDATION', shape);
@@ -246,8 +314,11 @@ export class SyncService {
     // Checked here rather than left to the UNIQUE constraint, so one bad record cannot block every retry.
     const [clash] = await q.query('SELECT 1 FROM transactions WHERE account_id = $1 AND (reference = $2 OR id = $3)', [account.id, t.reference, t.id]);
     if (clash) return review('VALIDATION', 'transaction ID or reference already used');
-    const paid = await this.verifyPayment(q, installationId, account.id, t);
-    if (paid) return paid;
+    // A reviewer applying a held simulation stores it without charging (the ledger checks above still apply).
+    if (!options.reviewed) {
+      const paid = await this.verifyPayment(q, installationId, account.id, t);
+      if (paid) return paid;
+    }
 
     await q.query(
       `UPDATE accounts SET balance = $2, airtime_balance = $3, version = $4, updated_at = $5 WHERE id = $1`,
@@ -284,7 +355,8 @@ export class SyncService {
       await q.query("UPDATE payments SET simulation_status = 'SUCCESSFUL' WHERE id = $1", [p.id]);
       return null;
     }
-    if ((await this.money.settings(q)).paymentRequired) {
+    // Judged by the settings in force when the simulation happened, not when it was uploaded.
+    if ((await this.money.settingsAt(q, t.completedAt)).paymentRequired) {
       const cost = priceSimulation(await this.money.pricing(q), { accountId, type: t.type as SimulationType, amount: t.amount, at: t.completedAt }).tokenCost;
       if (cost > 0) return review('PAYMENT_REQUIRED', `This simulation costs ${cost} tokens`);
     }

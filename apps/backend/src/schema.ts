@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -367,4 +367,22 @@ ALTER TABLE installations ADD COLUMN IF NOT EXISTS signed_out_at TIMESTAMPTZ;
 -- An account dropped by its device (the person chose another account there) has no active device.
 ALTER TABLE accounts ALTER COLUMN installation_id DROP NOT NULL;
 UPDATE installations i SET account_id = a.id FROM accounts a WHERE a.installation_id = i.id AND i.account_id IS NULL;
+
+-- ---------------------------------------------------------------- v6: settings history, review actions
+
+-- Every version of the monetization settings, so an upload is judged by the settings in force when the
+-- simulation happened (offline devices upload later). Seeded once from the audit log.
+CREATE TABLE IF NOT EXISTS monetization_settings_history (
+  id BIGSERIAL PRIMARY KEY,
+  effective_from TIMESTAMPTZ NOT NULL,
+  settings JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS monetization_settings_history_from ON monetization_settings_history (effective_from);
+INSERT INTO monetization_settings_history (effective_from, settings)
+SELECT created_at, after_value FROM audit_log
+WHERE action = 'UPDATE_MONETIZATION_SETTINGS' AND after_value IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM monetization_settings_history);
+
+-- What a reviewer did: APPLIED (stored after all) or DISMISSED (kept out of the ledger).
+ALTER TABLE sync_review ADD COLUMN IF NOT EXISTS action TEXT;
 `;
