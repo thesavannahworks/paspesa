@@ -1,15 +1,19 @@
 import { parseWholeShillings, setupAccount } from '@paspesa/core';
-import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
-import { Field, PrimaryButton, Screen, T } from '@/components/ui';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { BackHandler, Platform, Pressable, View } from 'react-native';
+import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAppState } from '@/services/AppState';
-import { useSession } from '@/services/session';
+import { signOut, useSession } from '@/services/session';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
 
-/** Account setup with opening balance (White Paper §10.1). Not based on a reference screen. */
+/**
+ * Account setup with opening balance (White Paper §10.1). Not based on a reference screen.
+ * Back (arrow, Android back, "Use a different email") returns to sign-in: nothing exists yet, so signing out
+ * here loses nothing.
+ */
 export default function SetupScreen() {
   const { colors } = useTheme();
   const { deps, account, refresh } = useAppState();
@@ -23,6 +27,23 @@ export default function SetupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const needsPin = deps.config.pinMode === 'USER_PIN';
   const session = useSession();
+  const [leaving, setLeaving] = useState(false);
+  const canGoBack = session.required && !!session.email;
+  const goBack = useCallback(() => {
+    if (leaving) return;
+    setLeaving(true);
+    void signOut(true).finally(() => setLeaving(false)); // the app then shows the sign-in screen
+  }, [leaving]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!canGoBack || Platform.OS !== 'android') return undefined; // the Android back button only
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        goBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [canGoBack, goBack]),
+  );
 
   if (session.required && !session.email) return <Redirect href="/sign-in" />;
   if (account) return <Redirect href="/" />;
@@ -55,11 +76,19 @@ export default function SetupScreen() {
 
   return (
     <Screen refreshable={false} footer={<PrimaryButton title="Create account" onPress={submit} loading={submission.busy} />}>
-      <View style={{ paddingTop: s(32) }}>
+      {canGoBack ? <ScreenHeader onBack={goBack} /> : null}
+      <View style={{ paddingTop: canGoBack ? s(8) : s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="body" color={colors.textSecondary} style={{ marginTop: s(8), lineHeight: s(22) }}>
           Set up your simulated account. Balances, transactions and messages in Paspesa are simulations — not real money.
         </T>
+        {canGoBack ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Use a different email" onPress={goBack} disabled={leaving} style={{ marginTop: s(12), alignSelf: 'flex-start' }}>
+            <T variant="label" color={colors.textSecondary}>
+              Signed in as {session.email} · <T variant="label" color={colors.green}>{leaving ? 'Signing out…' : 'Use a different email'}</T>
+            </T>
+          </Pressable>
+        ) : null}
       </View>
       <Field label="Your name" value={name} onChangeText={edit(setName)} placeholder="Full name" autoCapitalize="words" error={errors.accountName} />
       <Field label="Phone number" value={phone} onChangeText={edit(setPhone)} placeholder="07XX XXX XXX" keyboardType="phone-pad" error={errors.phoneNumber} />
