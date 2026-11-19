@@ -1,10 +1,11 @@
 import { parseWholeShillings, setupAccount } from '@paspesa/core';
-import { Redirect, router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { BackHandler, Platform, Pressable, View } from 'react-native';
+import { Redirect, router } from 'expo-router';
+import { useState } from 'react';
+import { View } from 'react-native';
+import { SignedInAs, useBackToSignIn } from '@/components/BackToSignIn';
 import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAppState } from '@/services/AppState';
-import { signOut, useSession } from '@/services/session';
+import { useSession } from '@/services/session';
 import { useSubmission } from '@/services/useSubmission';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -27,23 +28,7 @@ export default function SetupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const needsPin = deps.config.pinMode === 'USER_PIN';
   const session = useSession();
-  const [leaving, setLeaving] = useState(false);
-  const canGoBack = session.required && !!session.email;
-  const goBack = useCallback(() => {
-    if (leaving) return;
-    setLeaving(true);
-    void signOut(true).finally(() => setLeaving(false)); // the app then shows the sign-in screen
-  }, [leaving]);
-  useFocusEffect(
-    useCallback(() => {
-      if (!canGoBack || Platform.OS !== 'android') return undefined; // the Android back button only
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        goBack();
-        return true;
-      });
-      return () => sub.remove();
-    }, [canGoBack, goBack]),
-  );
+  const back = useBackToSignIn();
 
   if (session.required && !session.email) return <Redirect href="/sign-in" />;
   if (account) return <Redirect href="/" />;
@@ -76,19 +61,13 @@ export default function SetupScreen() {
 
   return (
     <Screen refreshable={false} footer={<PrimaryButton title="Create account" onPress={submit} loading={submission.busy} />}>
-      {canGoBack ? <ScreenHeader onBack={goBack} /> : null}
-      <View style={{ paddingTop: canGoBack ? s(8) : s(32) }}>
+      {back.available ? <ScreenHeader onBack={back.goBack} /> : null}
+      <View style={{ paddingTop: back.available ? s(8) : s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="body" color={colors.textSecondary} style={{ marginTop: s(8), lineHeight: s(22) }}>
           Set up your simulated account. Balances, transactions and messages in Paspesa are simulations — not real money.
         </T>
-        {canGoBack ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Use a different email" onPress={goBack} disabled={leaving} style={{ marginTop: s(12), alignSelf: 'flex-start' }}>
-            <T variant="label" color={colors.textSecondary}>
-              Signed in as {session.email} · <T variant="label" color={colors.green}>{leaving ? 'Signing out…' : 'Use a different email'}</T>
-            </T>
-          </Pressable>
-        ) : null}
+        <SignedInAs back={back} />
       </View>
       <Field label="Your name" value={name} onChangeText={edit(setName)} placeholder="Full name" autoCapitalize="words" error={errors.accountName} />
       <Field label="Phone number" value={phone} onChangeText={edit(setPhone)} placeholder="07XX XXX XXX" keyboardType="phone-pad" error={errors.phoneNumber} />

@@ -2,7 +2,8 @@ import { setPin } from '@paspesa/core';
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Field, PrimaryButton, Screen, T } from '@/components/ui';
+import { SignedInAs, useBackToSignIn } from '@/components/BackToSignIn';
+import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -11,7 +12,8 @@ const digits = (v: string) => v.replace(/\D/g, '').slice(0, 4);
 
 /**
  * After signing in on a new device: the account came back from the server, but the PIN never leaves a
- * device, so the user creates one here. Not based on a reference screen.
+ * device, so the user creates one here. Not based on a reference screen. Back returns to sign-in (another
+ * email); the account stays on the server.
  */
 export default function CreatePinScreen() {
   const { colors } = useTheme();
@@ -20,6 +22,7 @@ export default function CreatePinScreen() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const back = useBackToSignIn();
 
   if (!account) return <Redirect href="/" />;
   if (account.pin) return <Redirect href="/" />;
@@ -36,12 +39,14 @@ export default function CreatePinScreen() {
 
   return (
     <Screen refreshable={false} footer={<PrimaryButton title="Save PIN" onPress={() => void save()} loading={busy} disabled={pin.length !== 4 || confirm.length !== 4} />}>
-      <View style={{ paddingTop: s(32) }}>
+      {back.available ? <ScreenHeader onBack={back.goBack} /> : null}
+      <View style={{ paddingTop: back.available ? s(8) : s(32) }}>
         <T variant="amount" style={{ color: colors.green }}>Paspesa</T>
         <T variant="heading" style={{ marginTop: s(18) }}>Welcome back, {account.accountName.split(' ')[0]}</T>
         <T variant="body" color={colors.textSecondary} style={{ marginTop: s(10), lineHeight: s(22) }}>
           Your account, balance and history are on this device now. Create a Paspesa PIN for it — your PIN stays on each device and is never sent anywhere.
         </T>
+        <SignedInAs back={back} />
       </View>
       <Field label="Create Paspesa PIN" value={pin} onChangeText={(v) => { setPinValue(digits(v)); setError(null); }} placeholder="4 digits" keyboardType="number-pad" secureTextEntry maxLength={4} />
       <Field label="Confirm Paspesa PIN" value={confirm} onChangeText={(v) => { setConfirm(digits(v)); setError(null); }} placeholder="4 digits" keyboardType="number-pad" secureTextEntry maxLength={4} />
