@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -395,4 +395,14 @@ ALTER TABLE installations ADD COLUMN IF NOT EXISTS suspended_by TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_reason TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS suspended_by TEXT;
+
+-- ---------------------------------------------------------------- v8: paced payment status checks
+
+-- send_started_at: a prompt is being sent (a concurrent retry must not send a second one).
+-- next_check_at / check_failures: when the provider may next be asked about this payment (providers
+-- rate-limit status checks; failures back off).
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS send_started_at TIMESTAMPTZ;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS check_failures INTEGER NOT NULL DEFAULT 0;
 `;

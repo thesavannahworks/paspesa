@@ -7,7 +7,7 @@ import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
+import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
 import { ApiError, useApi } from '@/services/api';
 import { useAccount } from '@/services/AppState';
 import { useRemote, type PaymentView } from '@/services/wallet';
@@ -15,7 +15,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { FIXED_TEXT, s } from '@/theme/scale';
 
 const AMOUNTS = [50, 100, 200, 500, 1000];
-const POLL_MS = 3_000;
+const POLL_MS = 4_000;
+/** About 3 minutes of waiting on this screen; the server keeps checking after that. */
+const POLL_TRIES = 45;
 
 export default function BuyTokensScreen() {
   const { colors } = useTheme();
@@ -25,7 +27,8 @@ export default function BuyTokensScreen() {
   const [amount, setAmount] = useState('');
   const [phone, setPhone] = useState(toLocalPhone(account.phoneNumber));
   const [provider, setProvider] = useState<string | null>(null);
-  const [phase, setPhase] = useState<'form' | 'waiting' | 'done'>('form');
+  const [phase, setPhase] = useState<'form' | 'waiting' | 'stalled' | 'done'>('form');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentView | null>(null);
   const key = useRef<string | null>(null);
@@ -44,6 +47,7 @@ export default function BuyTokensScreen() {
         setPayment(p);
         if (p.status === 'SUCCESSFUL') return setPhase('done');
         if (p.status === 'FAILED') {
+          key.current = null; // trying again is a new purchase
           setPhase('form');
           return setError('The M-PESA payment was not completed. No tokens were bought.');
         }
@@ -51,25 +55,26 @@ export default function BuyTokensScreen() {
         // keep waiting
       }
       if (left > 0) poll(id, left - 1);
-      else {
-        setPhase('form');
-        setError('M-PESA has not confirmed yet. If you paid, your tokens will appear shortly in Purchases.');
-      }
+      else setPhase('stalled'); // not a failure: the server keeps checking with M-PESA
     }, POLL_MS);
   };
 
   const buy = async () => {
+    if (busy) return; // one request at a time: a second tap must not send a second prompt
     setError(null);
     if (!shillings) return setError('Enter an amount in whole shillings');
     if (!normalizeKenyanPhone(phone)) return setError('Enter a valid M-PESA number');
     key.current ??= Crypto.randomUUID(); // same key for retries of this purchase: never charged twice
+    setBusy(true);
     try {
       const p = await api.post<PaymentView>('/v1/payments/tokens', { shillings, phone, idempotencyKey: key.current, ...(chosen ? { provider: chosen } : {}) });
       setPayment(p);
       setPhase('waiting');
-      poll(p.id, 40);
+      poll(p.id, POLL_TRIES);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'The purchase could not be started. Please try again.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -87,7 +92,7 @@ export default function BuyTokensScreen() {
   }
 
   return (
-    <Screen footer={phase === 'form' ? <PrimaryButton title={shillings ? `Buy ${shillings} Tokens` : 'Buy Tokens'} onPress={() => void buy()} disabled={!shillings} /> : undefined}>
+    <Screen footer={phase === 'form' ? <PrimaryButton title={shillings ? `Buy ${shillings} Tokens` : 'Buy Tokens'} onPress={() => void buy()} disabled={!shillings} loading={busy} /> : undefined}>
       <ScreenHeader title="Buy Tokens" />
       {phase === 'waiting' ? (
         <View style={{ alignItems: 'center', marginTop: s(90) }}>
@@ -96,6 +101,15 @@ export default function BuyTokensScreen() {
           <T variant="body" color={colors.textSecondary} center style={{ marginTop: s(8), lineHeight: s(22) }}>
             Enter your M-PESA PIN in the prompt to pay Ksh {payment?.amount ?? shillings}.
           </T>
+        </View>
+      ) : phase === 'stalled' && payment ? (
+        <View style={{ alignItems: 'center', marginTop: s(90) }}>
+          <T variant="bodyStrong" center style={{ fontSize: s(19) }}>Waiting for M-PESA</T>
+          <T variant="body" color={colors.textSecondary} center style={{ marginTop: s(8), lineHeight: s(22) }}>
+            M-PESA has not confirmed this payment yet. If you paid, your {payment.tokens} tokens are added automatically as soon as it does — you can leave this page.
+          </T>
+          <PrimaryButton title="Check again" onPress={() => { setPhase('waiting'); poll(payment.id, POLL_TRIES); }} style={{ marginTop: s(24), alignSelf: 'stretch' }} />
+          <View style={{ marginTop: s(12), alignSelf: 'stretch' }}><OutlineButton title="Done" onPress={() => router.back()} /></View>
         </View>
       ) : (
         <>

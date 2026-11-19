@@ -85,6 +85,21 @@ export const ADMIN_JS = `document.querySelectorAll('.pw-toggle').forEach(functio
   });
   b.setAttribute('aria-label', 'Show password');
 });
+// Forms marked data-dirty: their submit buttons stay disabled until a field differs from how the page
+// loaded (changing a value back disables them again). Without JavaScript the buttons simply work.
+document.querySelectorAll('form[data-dirty]').forEach(function (f) {
+  var fields = Array.prototype.filter.call(f.elements, function (e) { return e.name && e.type !== 'hidden' && e.tagName !== 'BUTTON'; });
+  var snap = function () { return fields.map(function (e) { return e.type === 'checkbox' || e.type === 'radio' ? String(e.checked) : e.value; }).join(''); };
+  var start = snap();
+  var buttons = Array.prototype.filter.call(f.querySelectorAll('button'), function (b) { return b.type !== 'button'; });
+  var update = function () {
+    var changed = snap() !== start;
+    buttons.forEach(function (b) { b.disabled = !changed; b.title = changed ? '' : 'Nothing has changed yet'; });
+  };
+  f.addEventListener('input', update);
+  f.addEventListener('change', update);
+  update();
+});
 `;
 
 export const ADMIN_CSS = `
@@ -111,7 +126,7 @@ input.check{width:auto;margin-right:6px}form.inline{display:inline}label{display
 input,select,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:420px}
 textarea{max-width:640px;min-height:90px;font-family:ui-monospace,monospace;font-size:13px}
 button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;margin-top:12px}button.secondary{background:var(--bg);color:var(--text);border:1px solid var(--line)}
-button.danger{background:var(--red)}button.link{background:none;color:var(--muted);padding:8px 10px;margin:0}
+button.danger{background:var(--red)}button:disabled{opacity:.4;cursor:not-allowed;filter:saturate(.4)}button.link{background:none;color:var(--muted);padding:8px 10px;margin:0}
 .notice{padding:10px 12px;border-radius:8px;margin:0 0 16px}.notice.ok{background:var(--accent-soft);color:var(--accent)}.notice.error{background:var(--red-soft);color:var(--red)}
 .muted{color:var(--muted)}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:260px}a{color:var(--accent)}
 body.plain main{max-width:380px;margin:12vh auto}

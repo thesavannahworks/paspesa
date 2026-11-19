@@ -34,13 +34,17 @@ const app = await createApp(db, { paymentProviders, mailer });
 app.enableShutdownHooks();
 await app.listen(port, host);
 if (paymentProviders.all.length) {
-  // Confirm payments still waiting on their provider (callbacks only speed this up).
+  // Confirm payments still waiting on their provider, each when it is due (providers rate-limit status
+  // checks); callbacks only speed this up. One sweep at a time.
   const money = new MonetizationService(db);
+  let sweeping = false;
   setInterval(() => {
-    for (const provider of paymentProviders.all) {
-      void money.verifyPendingPayments(provider).catch((e) => console.warn(`[paspesa] ${provider.name} payment check failed`, e));
-    }
-  }, 20_000);
+    if (sweeping) return;
+    sweeping = true;
+    money.sweepPayments((name) => paymentProviders.byName(name))
+      .catch((e) => console.warn('[paspesa] payment check failed', e))
+      .finally(() => { sweeping = false; });
+  }, 5_000);
 }
 console.log(`[paspesa] payments: ${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
 console.log(`[paspesa] sign-in emails: ${mailer.kind === 'smtp' ? `SMTP via ${process.env.SMTP_HOST}` : 'printed here (set SMTP_* in .env to send real email)'}`);

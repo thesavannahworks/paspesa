@@ -71,7 +71,12 @@ function paymentNote(p: Record<string, unknown>): string {
     }
     return 'Not sent yet';
   }
-  if (p.status === 'PENDING') return p.last_event === 'STATUS_CHECK_TIMEOUT' ? `Status check failed: ${detail?.error ?? 'no answer'}` : 'Prompt sent; waiting for the customer';
+  if (p.status === 'PENDING') {
+    return p.last_event === 'STATUS_CHECK_TIMEOUT'
+      ? `Last check did not get an answer (${detail?.error ?? 'no answer'}); Paspesa keeps checking`
+      : 'Prompt sent; Paspesa checks with the provider until it is paid, cancelled or expires';
+  }
+  if (p.status === 'FAILED' && p.last_event === 'ABANDONED') return 'Closed: the prompt was never sent';
   return '';
 }
 
@@ -291,7 +296,7 @@ export class AdminController {
           <tr><th>Available</th><td>${wallet.balances.total} (purchased ${wallet.balances.PURCHASED} · promotional ${wallet.balances.PROMOTIONAL} · admin ${wallet.balances.ADMIN})</td></tr>
           <tr><th>On the device</th><td>${allocation ? `${allocation.remaining} left · authorized until ${fmtDate(allocation.authorizationExpiresAt)}` : 'none'}</td></tr>
           <tr><th>Reconciliation</th><td>${problems.length ? html`<span class="pill bad">${problems.length} problem(s)</span> ${problems.join('; ')}` : html`<span class="pill ok">consistent</span>`}</td></tr></table>
-          ${mayGrant ? html`<form method="post" action="/admin/accounts/${id}/grant">${csrf(session)}<input type="hidden" name="reference" value="admin:${randomUUID()}">
+          ${mayGrant ? html`<form method="post" action="/admin/accounts/${id}/grant" data-dirty>${csrf(session)}<input type="hidden" name="reference" value="admin:${randomUUID()}">
             <label for="category">Grant tokens</label><select id="category" name="category"><option value="PROMOTIONAL">Promotional</option>
             ${can(session.admin.role, 'GRANT_ADMIN_TOKENS') ? html`<option value="ADMIN">Administrator-issued</option>` : html``}</select>
             <label for="qty">Quantity</label><input id="qty" name="quantity" type="number" min="1" required>
@@ -324,7 +329,7 @@ export class AdminController {
     if (!can(session.admin.role, 'SUSPEND')) return html``;
     return suspended
       ? html`<form method="post" action="/admin/${base}/${id}/reinstate">${csrf(session)}<label>Note (optional)</label><input name="reason" maxlength="200"><button>Reinstate ${what}</button></form>`
-      : html`<details><summary>Suspend ${what}</summary><form method="post" action="/admin/${base}/${id}/suspend">${csrf(session)}
+      : html`<details><summary>Suspend ${what}</summary><form method="post" action="/admin/${base}/${id}/suspend" data-dirty>${csrf(session)}
           <p class="muted">${effect} You can reinstate it at any time.</p>
           <label>Reason (shown to the user)</label><input name="reason" required maxlength="200"><button class="danger">Suspend ${what}</button></form></details>`;
   }
@@ -480,7 +485,7 @@ export class AdminController {
     const [p] = await this.db.query<{ provider: string }>('SELECT provider FROM payments WHERE id = $1', [id]);
     const provider = p ? this.providers.byName(p.provider) : null;
     if (!provider) return this.back(res, '/admin/payments', 'That payment provider is not configured on this server', true);
-    const after = await this.money.verifyPayment(id, provider);
+    const after = await this.money.verifyPayment(id, provider, { force: true });
     await this.db.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, after_value) VALUES ($1, $2, $3, $4, $5)', [this.actor(session), 'VERIFY_PAYMENT', 'PAYMENT', id, JSON.stringify({ status: after.status })]);
     this.back(res, '/admin/payments', `Payment is ${after.status}`);
   }
@@ -570,7 +575,7 @@ export class AdminController {
         <td>${r.transactionType ?? 'all'}</td><td>${r.formula}</td><td class="num">${r.freeThreshold}</td><td class="num">${r.amountPerToken ?? '—'}</td><td>${tiers(r.tiers)}</td>
         <td>${fmtDate(r.effectiveFrom)} → ${r.effectiveTo ? fmtDate(r.effectiveTo) : 'open'}</td><td><span class="pill ${isCurrent(r) ? 'ok' : ''}">${isCurrent(r) ? 'in force' : r.status}</span></td></tr>`)}
       </table></div>
-      ${mayEdit ? html`<form method="post" action="/admin/pricing" class="panel">${csrf(session)}<h2>Publish a rule (new version)</h2>
+      ${mayEdit ? html`<form method="post" action="/admin/pricing" class="panel" data-dirty>${csrf(session)}<h2>Publish a rule (new version)</h2>
         <div class="row"><div>
         <label for="rid">Rule ID</label><input id="rid" name="id" required value="global-default" pattern="[a-z0-9-]{3,40}">
         <label for="scope">Scope</label><select id="scope" name="scopeType"><option value="GLOBAL">Global</option><option value="ACCOUNT">One account</option></select>
@@ -654,7 +659,7 @@ export class AdminController {
     const num = (name: keyof MonetizationSettings, label: string) =>
       html`<label for="${name}">${label}</label><input id="${name}" name="${name}" type="number" min="1" value="${st[name]}" ${mayEdit ? html`` : html`disabled`}>`;
     this.send(res, layout('Settings', session, html`${this.flash(q)}
-      <form method="post" action="/admin/settings" class="panel">${csrf(session)}
+      <form method="post" action="/admin/settings" class="panel" data-dirty>${csrf(session)}
         ${box('paymentRequired', 'Payments required — simulations that cost tokens must be paid (off = everything free)')}
         ${box('freeSimulationsOffline', 'Free simulations may run offline without a device allocation')}
         ${num('shillingsPerToken', 'Shillings per token')}${num('minimumPurchase', 'Smallest token purchase (KSh)')}${num('offlineAuthorizationDays', 'Offline authorization (days)')}
@@ -712,7 +717,7 @@ export class AdminController {
         <td>${u.status === 'ACTIVE' && u.id !== session.admin.id ? html`<form method="post" action="/admin/users/${u.id}/disable" class="inline">${csrf(session)}<button class="secondary">Disable</button></form>` : html``}
           ${u.totp_enabled_at && u.id !== session.admin.id ? html`<form method="post" action="/admin/users/${u.id}/reset-2fa" class="inline">${csrf(session)}<button class="secondary">Reset 2-step</button></form>` : html``}</td></tr>`)}
       </table></div>
-      <form method="post" action="/admin/users" class="panel">${csrf(session)}<h2>Add an admin user</h2>
+      <form method="post" action="/admin/users" class="panel" data-dirty>${csrf(session)}<h2>Add an admin user</h2>
         <label for="em">Email</label><input id="em" name="email" type="email" required><label for="nm">Name</label><input id="nm" name="name" required maxlength="80">
         <label for="rl">Role</label><select id="rl" name="role"><option value="VIEWER">Viewer — read only</option><option value="OPERATOR">Operator — day-to-day operations</option><option value="ADMIN">Administrator — everything</option></select>
         <label for="pw">Temporary password (10+ characters, letters and numbers)</label>${passwordField('pw', 'password', 'new-password')}
@@ -790,11 +795,11 @@ export class AdminController {
           <tr><th>Role</th><td>${me.role}</td></tr>
           <tr><th>Member since</th><td>${fmtDate(me.created_at)}</td></tr>
           <tr><th>Last sign-in</th><td>${fmtDate(me.last_login_at)}</td></tr></table>
-          <form method="post" action="/admin/me/name">${csrf(session)}<label for="nm">Name</label><input id="nm" name="name" value="${me.name}" required maxlength="80"><button class="secondary">Save name</button></form>
+          <form method="post" action="/admin/me/name" data-dirty>${csrf(session)}<label for="nm">Name</label><input id="nm" name="name" value="${me.name}" required maxlength="80"><button class="secondary">Save name</button></form>
         </div>
         <div class="panel"><h2>Password</h2>
           <p class="muted">${me.password_changed_at ? `Last changed ${fmtDate(me.password_changed_at)}.` : 'Never changed since the account was created.'} Changing it signs you out everywhere else.</p>
-          <form method="post" action="/admin/me/password">${csrf(session)}
+          <form method="post" action="/admin/me/password" data-dirty>${csrf(session)}
             <label for="cur">Current password</label>${passwordField('cur', 'current', 'current-password')}
             <label for="new">New password (10+ characters, letters and numbers)</label>${passwordField('new', 'next', 'new-password')}
             <label for="again">New password again</label>${passwordField('again', 'again', 'new-password')}

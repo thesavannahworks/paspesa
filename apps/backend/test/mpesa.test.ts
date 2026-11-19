@@ -49,7 +49,7 @@ describe('Daraja STK Push adapter', () => {
   it('sends the STK request Daraja expects (password, Kenya-time timestamp, phone, amount) and reuses the token', async () => {
     const { http, calls } = fakeDaraja([]);
     const now = () => new Date('2026-11-17T06:05:09Z'); // 09:05:09 in Nairobi
-    const mpesa = new DarajaProvider(config, http, now);
+    const mpesa = new DarajaProvider(config, http, now, 0);
     expect(mpesa.credentials()).toEqual({ Timestamp: '20261117090509', Password: Buffer.from('174379passkey20261117090509').toString('base64') });
     expect(await mpesa.initiate(payment())).toEqual({ providerReference: 'ws_CO_123' });
     await mpesa.initiate(payment({ id: 'p2' }));
@@ -69,12 +69,16 @@ describe('Daraja STK Push adapter', () => {
       { status: 200, body: { ResultCode: '0', ResultDesc: 'The service request is processed successfully.' } },
       { status: 200, body: { ResultCode: '1032', ResultDesc: 'Request cancelled by user' } },
       { status: 503, body: { errorMessage: 'Service unavailable' } },
+      { status: 500, body: { errorCode: '500.001.1001', errorMessage: 'The transaction does not Exist' } },
+      { status: 429, body: { fault: { faultstring: 'Spike arrest violation' } } },
     ]);
-    const mpesa = new DarajaProvider(config, http);
+    const mpesa = new DarajaProvider(config, http, undefined, 0);
     expect(await mpesa.checkStatus('ws_CO_123')).toBe('PENDING');
     expect(await mpesa.checkStatus('ws_CO_123')).toBe('SUCCESSFUL');
     expect(await mpesa.checkStatus('ws_CO_123')).toBe('FAILED');
     await expect(mpesa.checkStatus('ws_CO_123')).rejects.toThrow(/Service unavailable/);
+    expect(await mpesa.checkStatus('ws_CO_123')).toBe('NOT_FOUND'); // same code as "processing", different meaning
+    await expect(mpesa.checkStatus('ws_CO_123')).rejects.toThrow(/limiting status checks/); // rate limit ≠ failure
   });
 });
 
@@ -134,6 +138,8 @@ describe('payment endpoints', () => {
       expect(((await (await fetch(`${base}/v1/payments/${p.id}`, { headers })).json()) as PaymentRecord).status).toBe('PENDING');
       answer = 'SUCCESSFUL';
       await fetch(`${base}/v1/payments/mpesa/callback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ Body: { stkCallback: { CheckoutRequestID: p.providerReference } } }) });
+      // the app's poll asks the provider only when the payment is due (rate limits): let that time pass
+      await db.query("UPDATE payments SET next_check_at = now() - interval '1 second' WHERE id = $1", [p.id]);
       await fetch(`${base}/v1/payments/${p.id}`, { headers });
       const wallet = (await (await fetch(`${base}/v1/wallet`, { headers })).json()) as { balances: { PURCHASED: number; total: number } };
       expect(wallet.balances).toMatchObject({ PURCHASED: 50, total: 50 });

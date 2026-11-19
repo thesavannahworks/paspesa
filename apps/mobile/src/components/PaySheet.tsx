@@ -136,8 +136,11 @@ export function PaySheet({
     }, POLL_MS);
   };
 
+  const [sending, setSending] = useState(false);
   const payDirect = async () => {
+    if (sending) return; // one request at a time: a second tap must not send a second prompt
     setError(null);
+    setSending(true);
     try {
       const p = await api.post<{ payment: DirectPayment }>('/v1/payments/simulation', {
         simulationId: simulation.operationId,
@@ -152,6 +155,8 @@ export function PaySheet({
       poll(p.payment.id);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'The payment could not be started. Please try again.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -211,7 +216,7 @@ export function PaySheet({
             </Pressable>
           ) : null}
           {error ? <T variant="caption" color={colors.red} center style={{ marginTop: s(12) }}>{error}</T> : null}
-          <PrimaryButton title="Continue" onPress={onContinue} disabled={method === 'TOKENS' ? !tokensOk : !api.available || !phoneOk} style={{ marginTop: s(22) }} />
+          <PrimaryButton title="Continue" onPress={onContinue} loading={sending} disabled={method === 'TOKENS' ? !tokensOk : !api.available || !phoneOk} style={{ marginTop: s(22) }} />
         </View>
       ) : (
         <View style={{ alignItems: 'center', paddingVertical: s(26) }}>

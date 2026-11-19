@@ -59,10 +59,15 @@ export const authFields = (auth: PinAuth) => ('pin' in auth ? { pin: auth.pin } 
  * prompt opens straight away and a fingerprint key sits in the keypad's empty bottom-left cell.
  */
 export function PinView({
-  badge, name, amount, fee, onSubmit, onBack, error, busy, allowBiometric = true, biometricPrompt,
+  badge, name, amount, fee, onSubmit, onBack, error, busy, keepCase, allowBiometric = true, biometricPrompt,
 }: {
   badge: ReactNode;
   name: string;
+  /**
+   * The PIN screen shows the person or business in capitals whatever was typed (owner, 2026-11-19 — unlike
+   * messages and statements, which keep the typed case). `keepCase` for labels such as "Buy Airtime".
+   */
+  keepCase?: boolean;
   /** Payment amount line; omitted for non-payment uses (unlocking, confirming a setting). */
   amount?: number;
   fee?: number;
@@ -110,7 +115,7 @@ export function PinView({
       </View>
       <View style={{ alignItems: 'center', marginTop: s(77.5) }}>
         {badge}
-        <T variant="body" color={dark ? '#D7D7D7' : colors.textSecondary} style={{ marginTop: s(20.6), fontSize: s(23.2), lineHeight: s(27) }} center>{name}</T>
+        <T variant="body" color={dark ? '#D7D7D7' : colors.textSecondary} style={{ marginTop: s(20.6), fontSize: s(23.2), lineHeight: s(27) }} center>{keepCase ? name : name.toUpperCase()}</T>
         {amount !== undefined ? (
           <T variant="label" color={dark ? '#DFDFDF' : colors.textSecondary} style={{ marginTop: s(15.6), fontSize: s(18.1), lineHeight: s(22) }}>
             Ksh. {formatAmount(amount)}  Fee:Ksh. {formatAmount(fee ?? 0)}

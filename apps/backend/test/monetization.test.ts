@@ -177,14 +177,14 @@ describe('payments (§31–33, §47.8)', () => {
     expect((await money.initiateTokenPurchase({ accountId, shillings: 150, phone: '0798765432', idempotencyKey: 'buy-1' }, provider)).id).toBe(p.id);
     expect(provider.initiated()).toBe(1);
 
-    expect((await money.verifyPayment(p.id, provider)).status).toBe('PENDING'); // not confirmed yet
+    expect((await money.verifyPayment(p.id, provider, { force: true })).status).toBe('PENDING'); // not confirmed yet
     results[p.providerReference!] = 'TIMEOUT';
-    expect((await money.verifyPayment(p.id, provider)).status).toBe('PENDING'); // timeout ≠ failed
+    expect((await money.verifyPayment(p.id, provider, { force: true })).status).toBe('PENDING'); // timeout ≠ failed
     expect((await money.wallet(accountId)).balances.total).toBe(0); // nothing credited unverified
 
     results[p.providerReference!] = 'SUCCESSFUL';
     expect(await money.verifyPendingPayments(provider)).toBeGreaterThanOrEqual(1);
-    await money.verifyPayment(p.id, provider); // repeated callback / check
+    await money.verifyPayment(p.id, provider, { force: true }); // repeated callback / check
     expect((await money.wallet(accountId)).balances).toMatchObject({ PURCHASED: 150, total: 150 });
     const events = await db.query<{ event: string }>('SELECT event FROM payment_events WHERE payment_id = $1 ORDER BY id', [p.id]);
     expect(events.map((e) => e.event)).toEqual(['INITIATED', 'PENDING', 'STATUS_CHECK_TIMEOUT', 'VERIFIED_SUCCESSFUL']);
@@ -199,7 +199,7 @@ describe('payments (§31–33, §47.8)', () => {
     const { payment: p, pricing } = await money.initiateDirectPayment({ accountId, simulationId: 'op-direct', type: 'SEND_MONEY', simulationAmount: 100, phone: '0798765432', idempotencyKey: 'direct-1' }, provider);
     expect([pricing.tokenCost, p.amount, p.simulationStatus]).toEqual([20, 20, 'AWAITING_PAYMENT']);
     results[p.providerReference!] = 'SUCCESSFUL';
-    expect((await money.verifyPayment(p.id, provider)).simulationStatus).toBe('AUTHORIZED');
+    expect((await money.verifyPayment(p.id, provider, { force: true })).simulationStatus).toBe('AUTHORIZED');
     const failed = await money.recordDirectSimulationResult(p.id, 'FAILED');
     expect(failed).toMatchObject({ status: 'SUCCESSFUL', simulationStatus: 'FAILED', refundStatus: 'REFUNDABLE_CREDIT' });
     await money.recordDirectSimulationResult(p.id, 'FAILED');
@@ -231,13 +231,72 @@ describe('payments (§31–33, §47.8)', () => {
     expect(sent).toEqual(['254711222333']);
   });
 
+  it('two requests at once send one prompt; app polling asks the provider only when due', async () => {
+    const { accountId } = await newAccount();
+    let sent = 0;
+    let asked = 0;
+    const provider: PaymentProvider = {
+      name: 'sandbox',
+      async initiate(p: PaymentRecord) {
+        sent++;
+        await new Promise((r) => setTimeout(r, 150)); // the provider takes a moment
+        return { providerReference: `sbx-${p.id}-${sent}` };
+      },
+      async checkStatus() { asked++; return 'PENDING'; },
+    };
+    const input = { accountId, shillings: 20, phone: '0798765432', idempotencyKey: 'double-tap' };
+    const [a, b] = await Promise.all([money.initiateTokenPurchase(input, provider), money.initiateTokenPurchase(input, provider)]);
+    expect(a.id).toBe(b.id);
+    expect(sent).toBe(1);
+    // polling right after the prompt: not due yet, the provider is not asked
+    await money.verifyPayment(a.id, provider);
+    await money.verifyPayment(a.id, provider);
+    expect(asked).toBe(0);
+    clock = new Date(Date.parse(clock) + 6_000).toISOString(); // the first check is due 5 s after the prompt
+    await money.verifyPayment(a.id, provider);
+    await money.verifyPayment(a.id, provider); // just checked: waits again
+    expect(asked).toBe(1);
+  });
+
+  it('a payment whose stored reference the provider does not know is found by its other prompt and credited', async () => {
+    const { accountId } = await newAccount();
+    const provider: PaymentProvider = {
+      name: 'sandbox',
+      async initiate(p: PaymentRecord) { return { providerReference: `paid-${p.id}` }; },
+      async checkStatus(ref: string) { return ref.startsWith('paid-') ? 'SUCCESSFUL' : 'NOT_FOUND'; },
+    };
+    const p = await money.initiateTokenPurchase({ accountId, shillings: 5, phone: '0798765432', idempotencyKey: 'two-prompts' }, provider);
+    // what the old duplicate-send bug left behind: a second, unknown reference stored over the paid one
+    await db.query("UPDATE payments SET provider_reference = 'ghost-ref' WHERE id = $1", [p.id]);
+    await db.query("INSERT INTO payment_events (payment_id, event, detail) VALUES ($1, 'PENDING', '{\"providerReference\": \"ghost-ref\"}')", [p.id]);
+    const after = await money.verifyPayment(p.id, provider, { force: true });
+    expect(after).toMatchObject({ status: 'SUCCESSFUL', providerReference: `paid-${p.id}` });
+    expect((await money.wallet(accountId)).balances.PURCHASED).toBe(5);
+  });
+
+  it('the background sweep checks due payments and closes prompts that were never sent', async () => {
+    const { accountId } = await newAccount();
+    const provider: PaymentProvider = {
+      name: 'sandbox',
+      async initiate() { throw new Error('M-PESA refused the request: Invalid Access Token'); },
+      async checkStatus() { return 'PENDING'; },
+    };
+    await expect(money.initiateTokenPurchase({ accountId, shillings: 10, phone: '0798765432', idempotencyKey: 'never-sent' }, provider)).rejects.toThrow();
+    clock = new Date(Date.parse(clock) + 2 * 3_600_000).toISOString(); // two hours later
+    await money.sweepPayments(() => provider);
+    const [row] = await db.query<{ status: string; id: string }>("SELECT id, status FROM payments WHERE idempotency_key = 'never-sent'");
+    expect(row!.status).toBe('FAILED');
+    const [ev] = await db.query<{ event: string }>('SELECT event FROM payment_events WHERE payment_id = $1 ORDER BY id DESC LIMIT 1', [row!.id]);
+    expect(ev!.event).toBe('ABANDONED');
+  });
+
   it('a failed direct payment never authorizes the simulation; free simulations and Recharge need no payment', async () => {
     const { accountId } = await newAccount();
     const results: Record<string, 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'TIMEOUT'> = {};
     const provider = sandbox(results);
     const { payment: p } = await money.initiateDirectPayment({ accountId, simulationId: 'op-x', type: 'BUY_GOODS', simulationAmount: 50, phone: '0798765432', idempotencyKey: 'direct-x' }, provider);
     results[p.providerReference!] = 'FAILED';
-    expect(await money.verifyPayment(p.id, provider)).toMatchObject({ status: 'FAILED', simulationStatus: 'FAILED', refundStatus: 'NONE' });
+    expect(await money.verifyPayment(p.id, provider, { force: true })).toMatchObject({ status: 'FAILED', simulationStatus: 'FAILED', refundStatus: 'NONE' });
     await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-y', type: 'BUY_GOODS', simulationAmount: 20, phone: '0798765432', idempotencyKey: 'direct-y' }, provider)).rejects.toThrow(/free/);
     await expect(money.initiateDirectPayment({ accountId, simulationId: 'op-z', type: 'RECHARGE', simulationAmount: 5_000, phone: '0798765432', idempotencyKey: 'direct-z' }, provider)).rejects.toThrow(/free/);
   });

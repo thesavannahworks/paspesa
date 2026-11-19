@@ -60,6 +60,7 @@ export default function BiometricsScreen() {
       <PinView
         badge={fingerprintBadge(79, 52)}
         name="Turn on Biometrics"
+        keepCase
         allowBiometric={false}
         onSubmit={onPin}
         onBack={() => setStep('main')}

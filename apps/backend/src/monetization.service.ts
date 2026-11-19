@@ -50,8 +50,11 @@ export interface PaymentProvider {
   readonly name: string;
   /** Sends the payment request (an M-PESA STK prompt to `payment.payerPhone`). */
   initiate(payment: PaymentRecord): Promise<{ providerReference: string }>;
-  /** The provider's actual status. Throws on timeout — which is NOT a failure (§33.1). */
-  checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED'>;
+  /**
+   * The provider's actual status. Throws on timeout or rate limiting — which is NOT a failure (§33.1).
+   * NOT_FOUND: the provider does not know this reference (it never became a prompt).
+   */
+  checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'NOT_FOUND'>;
 }
 
 const iso = (v: unknown) => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
@@ -66,7 +69,18 @@ interface PaymentRow {
   id: string; owner_id: string; payment_type: PaymentRecord['paymentType']; provider: string; provider_reference: string | null; idempotency_key: string;
   amount: number; currency: 'KES'; status: PaymentStatus; tokens: number | null; payer_phone: string | null; related_simulation_id: string | null;
   simulation_status: PaymentRecord['simulationStatus']; refund_status: PaymentRecord['refundStatus']; created_at: Date; verified_at: Date | null;
+  send_started_at?: Date | null; next_check_at?: Date | null; check_failures?: number;
 }
+
+/** How long a prompt may be "being sent" before a retry may send it again (the first send died). */
+const SEND_GRACE_MS = 60_000;
+/** A prompt the provider never accepted is closed after this long. */
+const ABANDON_AFTER_MS = 30 * 60_000;
+/** A reference the provider does not know is given this long (it can appear late) before it counts as failed. */
+const NOT_FOUND_GRACE_MS = 10 * 60_000;
+/** When to ask the provider again: soon while the customer is likely entering the PIN, then less often. */
+const nextCheckDelay = (ageMs: number, failures: number) =>
+  failures > 0 ? Math.min(120_000, 5_000 * 2 ** Math.min(failures, 5)) : ageMs < 3 * 60_000 ? 5_000 : 30_000;
 const toPayment = (r: PaymentRow): PaymentRecord => ({
   id: r.id, ownerId: r.owner_id, paymentType: r.payment_type, provider: r.provider, providerReference: r.provider_reference, idempotencyKey: r.idempotency_key,
   amount: Number(r.amount), currency: r.currency, status: r.status, tokens: r.tokens === null ? null : Number(r.tokens), payerPhone: r.payer_phone, relatedSimulationId: r.related_simulation_id,
@@ -402,10 +416,10 @@ export class MonetizationService {
     return { payment, pricing };
   }
 
-  /** Re-checks every payment still waiting on the provider (run periodically). */
+  /** Re-checks every payment still waiting on the provider, now (scripts and tests; the server uses sweepPayments). */
   async verifyPendingPayments(provider: PaymentProvider): Promise<number> {
     const pending = await this.db.query<{ id: string }>("SELECT id FROM payments WHERE status = 'PENDING' AND provider = $1 ORDER BY created_at LIMIT 50", [provider.name]);
-    for (const p of pending) await this.verifyPayment(p.id, provider);
+    for (const p of pending) await this.verifyPayment(p.id, provider, { force: true });
     return pending.length;
   }
 
@@ -434,13 +448,15 @@ export class MonetizationService {
     provider: PaymentProvider,
   ): Promise<PaymentRecord> {
     const payment = await this.db.transaction(async (q) => {
-      const [existing] = await q.query<PaymentRow>('SELECT * FROM payments WHERE owner_id = $1 AND idempotency_key = $2', [input.accountId, input.idempotencyKey]);
+      const [existing] = await q.query<PaymentRow>('SELECT * FROM payments WHERE owner_id = $1 AND idempotency_key = $2 FOR UPDATE', [input.accountId, input.idempotencyKey]);
       // A retry of a request the provider never accepted sends the prompt again (same payment, no new charge),
-      // to the number given this time.
+      // to the number given this time — but never while another request is still sending it (two prompts
+      // for one payment, the second overwriting the first's reference).
       if (existing) {
-        const resend = existing.status === 'INITIATED' && !existing.provider_reference;
-        if (resend && existing.payer_phone !== input.phone) {
-          await q.query('UPDATE payments SET payer_phone = $2 WHERE id = $1', [existing.id, input.phone]);
+        const sending = existing.send_started_at && Date.parse(this.now()) - new Date(existing.send_started_at).getTime() < SEND_GRACE_MS;
+        const resend = existing.status === 'INITIATED' && !existing.provider_reference && !sending;
+        if (resend) {
+          await q.query('UPDATE payments SET payer_phone = $2, send_started_at = $3 WHERE id = $1', [existing.id, input.phone, this.now()]);
           existing.payer_phone = input.phone;
         }
         return { record: toPayment(existing), created: resend };
@@ -455,6 +471,7 @@ export class MonetizationService {
          VALUES ($1, $2, $3, $4, NULL, $5, $6, 'KES', 'INITIATED', $7, $8, $9, $10, 'NONE', $11)`,
         [record.id, record.ownerId, record.paymentType, record.provider, record.idempotencyKey, record.amount, record.tokens, record.payerPhone, record.relatedSimulationId, record.simulationStatus, record.createdAt],
       );
+      await q.query('UPDATE payments SET send_started_at = created_at WHERE id = $1', [record.id]);
       await this.paymentEvent(q, record.id, 'INITIATED');
       return { record, created: true };
     });
@@ -465,11 +482,15 @@ export class MonetizationService {
     } catch (e) {
       // The provider refused to send the prompt: nothing was charged. Kept INITIATED (a retry sends it again);
       // the reason is recorded for the back office.
-      await this.db.transaction((q) => this.paymentEvent(q, payment.record.id, 'PROVIDER_REFUSED', { error: e instanceof Error ? e.message : String(e) }));
+      await this.db.transaction(async (q) => {
+        await q.query('UPDATE payments SET send_started_at = NULL WHERE id = $1', [payment.record.id]);
+        await this.paymentEvent(q, payment.record.id, 'PROVIDER_REFUSED', { error: e instanceof Error ? e.message : String(e) });
+      });
       throw e;
     }
     return this.db.transaction(async (q) => {
-      await q.query("UPDATE payments SET provider_reference = $2, status = 'PENDING' WHERE id = $1", [payment.record.id, providerReference]);
+      // The first reference is kept (a late duplicate never replaces it); every one is recorded in the events.
+      await q.query("UPDATE payments SET provider_reference = coalesce(provider_reference, $2), status = 'PENDING', send_started_at = NULL, next_check_at = $3 WHERE id = $1", [payment.record.id, providerReference, new Date(Date.parse(this.now()) + 5_000).toISOString()]);
       await this.paymentEvent(q, payment.record.id, 'PENDING', { providerReference });
       const [row] = await q.query<PaymentRow>('SELECT * FROM payments WHERE id = $1', [payment.record.id]);
       return toPayment(row!);
@@ -480,20 +501,56 @@ export class MonetizationService {
    * Verifies a payment with the provider (callbacks are never trusted on their own, §31.6). A timeout keeps
    * it PENDING (§33.1). A verified token purchase credits PURCHASED tokens exactly once (§47.8).
    */
-  async verifyPayment(paymentId: string, provider: PaymentProvider): Promise<PaymentRecord> {
+  /**
+   * `force` (back office "Check status", a provider callback) asks now; otherwise the provider is asked only
+   * when this payment is due (`next_check_at`), so app polling cannot exceed the provider's rate limit.
+   */
+  async verifyPayment(paymentId: string, provider: PaymentProvider, options: { force?: boolean } = {}): Promise<PaymentRecord> {
     const [current] = await this.db.query<PaymentRow>('SELECT * FROM payments WHERE id = $1', [paymentId]);
     if (!current) throw new MonetizationError('NOT_FOUND', 'Payment not found');
     if (current.status === 'SUCCESSFUL' || current.status === 'FAILED' || !current.provider_reference) return toPayment(current);
-    let status: 'PENDING' | 'SUCCESSFUL' | 'FAILED';
+    const nowMs = Date.parse(this.now());
+    if (!options.force && current.next_check_at && new Date(current.next_check_at).getTime() > nowMs) return toPayment(current);
+    const age = nowMs - new Date(current.created_at).getTime();
+    // Every prompt sent for this payment (an old duplicate-send bug could send two): the stored one first.
+    const events = await this.db.query<{ ref: string }>(
+      "SELECT DISTINCT detail->>'providerReference' AS ref FROM payment_events WHERE payment_id = $1 AND event = 'PENDING' AND detail ? 'providerReference'",
+      [paymentId],
+    );
+    const refs = [current.provider_reference, ...events.map((e) => e.ref).filter((r) => r && r !== current.provider_reference)];
+    let status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' = 'PENDING';
+    let paidRef: string | null = null;
+    const seen: string[] = [];
     try {
-      status = await provider.checkStatus(current.provider_reference);
+      for (const ref of refs) {
+        const answer = await provider.checkStatus(ref);
+        seen.push(answer);
+        if (answer === 'SUCCESSFUL') { paidRef = ref; break; }
+      }
     } catch (e) {
-      await this.db.transaction((q) => this.paymentEvent(q, paymentId, 'STATUS_CHECK_TIMEOUT', { error: e instanceof Error ? e.message : String(e) }));
+      const failures = Number(current.check_failures ?? 0) + 1;
+      await this.db.transaction(async (q) => {
+        await q.query('UPDATE payments SET last_checked_at = $2, next_check_at = $3, check_failures = $4 WHERE id = $1', [
+          paymentId, this.now(), new Date(nowMs + nextCheckDelay(age, failures)).toISOString(), failures,
+        ]);
+        await this.paymentEvent(q, paymentId, 'STATUS_CHECK_TIMEOUT', { error: e instanceof Error ? e.message : String(e) });
+      });
       return toPayment(current);
     }
+    if (paidRef) status = 'SUCCESSFUL';
+    else if (seen.includes('PENDING')) status = 'PENDING';
+    else if (seen.includes('FAILED')) status = 'FAILED';
+    else status = age > NOT_FOUND_GRACE_MS ? 'FAILED' : 'PENDING'; // only unknown references
     const updated = await this.db.transaction(async (q) => {
+      await q.query('UPDATE payments SET last_checked_at = $2, next_check_at = $3, check_failures = 0 WHERE id = $1', [
+        paymentId, this.now(), new Date(nowMs + nextCheckDelay(age, 0)).toISOString(),
+      ]);
       const [row] = await q.query<PaymentRow>('SELECT * FROM payments WHERE id = $1 FOR UPDATE', [paymentId]);
       if (!row || !canMovePayment(row.status, status) || row.status === status) return toPayment(row!);
+      if (paidRef && paidRef !== row.provider_reference) {
+        await q.query('UPDATE payments SET provider_reference = $2 WHERE id = $1', [paymentId, paidRef]);
+        await this.paymentEvent(q, paymentId, 'REFERENCE_CORRECTED', { providerReference: paidRef });
+      }
       await q.query('UPDATE payments SET status = $2, verified_at = CASE WHEN $2 = \'PENDING\' THEN verified_at ELSE $3::timestamptz END WHERE id = $1', [paymentId, status, this.now()]);
       await this.paymentEvent(q, paymentId, `VERIFIED_${status}`);
       if (row.payment_type === 'DIRECT_SIMULATION' && status !== 'PENDING') {
@@ -509,6 +566,32 @@ export class MonetizationService {
       await this.grant({ accountId: updated.ownerId, category: 'PURCHASED', quantity: updated.tokens, reference: `payment:${updated.id}`, actor: `payment:${updated.provider}` });
     }
     return updated;
+  }
+
+  /**
+   * Background check (every few seconds on the server): asks the provider about PENDING payments that are due,
+   * so a payment completes even after the app stopped waiting; closes prompts that were never sent.
+   */
+  async sweepPayments(providerFor: (name: string) => PaymentProvider | null): Promise<void> {
+    const due = await this.db.query<{ id: string; provider: string }>(
+      `SELECT id, provider FROM payments WHERE status = 'PENDING' AND provider_reference IS NOT NULL AND created_at > $2
+         AND (next_check_at IS NULL OR next_check_at <= $1) ORDER BY next_check_at NULLS FIRST LIMIT 3`,
+      [this.now(), new Date(Date.parse(this.now()) - 2 * 86_400_000).toISOString()],
+    );
+    for (const p of due) {
+      const provider = providerFor(p.provider);
+      if (provider) await this.verifyPayment(p.id, provider).catch(() => undefined);
+    }
+    const stale = await this.db.query<{ id: string }>(
+      "SELECT id FROM payments WHERE status = 'INITIATED' AND provider_reference IS NULL AND created_at < $1 AND (send_started_at IS NULL OR send_started_at < $1)",
+      [new Date(Date.parse(this.now()) - ABANDON_AFTER_MS).toISOString()],
+    );
+    for (const p of stale) {
+      await this.db.transaction(async (q) => {
+        const rows = await q.query("UPDATE payments SET status = 'FAILED', simulation_status = CASE WHEN payment_type = 'DIRECT_SIMULATION' THEN 'FAILED' ELSE simulation_status END WHERE id = $1 AND status = 'INITIATED' RETURNING id", [p.id]);
+        if (rows.length) await this.paymentEvent(q, p.id, 'ABANDONED', { reason: 'The prompt was never sent' });
+      });
+    }
   }
 
   /**

@@ -105,6 +105,7 @@ export default function AirtimeScreen() {
       <PinView
         badge={badge(79)}
         name="Buy Airtime"
+        keepCase
         amount={quote.quote.amount}
         fee={quote.quote.fee}
         onSubmit={onPin}

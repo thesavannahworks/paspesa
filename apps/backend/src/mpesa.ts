@@ -48,18 +48,38 @@ export function darajaConfigFromEnv(env: NodeJS.ProcessEnv): DarajaConfig | null
 
 type Fetch = typeof fetch;
 
-/** Daraja answers the query with this error while the customer has not finished. */
+/**
+ * Daraja answers the query with this error code both while the customer has not finished ("The transaction
+ * is being processed") and for a reference it does not know ("The transaction does not Exist").
+ */
 const STILL_PROCESSING = '500.001.1001';
+/** Daraja's limit is 30 calls a minute per app (spike arrest, bursts of 3): keep calls this far apart. */
+export const DARAJA_MIN_GAP_MS = 2_500;
 
 export class DarajaProvider implements PaymentProvider {
   readonly name = 'mpesa-daraja';
   private token: { value: string; expiresAt: number } | null = null;
+  /** Calls to Daraja go out one at a time, `minGapMs` apart (all payments share the app's rate limit). */
+  private queue: Promise<unknown> = Promise.resolve();
+  private lastCallAt = 0;
 
   constructor(
     private readonly config: DarajaConfig,
     private readonly http: Fetch = fetch,
     private readonly now: () => Date = () => new Date(),
+    private readonly minGapMs = DARAJA_MIN_GAP_MS,
   ) {}
+
+  private paced<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(async () => {
+      const wait = this.lastCallAt + this.minGapMs - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      this.lastCallAt = Date.now();
+      return work();
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
 
   private get base() {
     return this.config.environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
@@ -84,12 +104,15 @@ export class DarajaProvider implements PaymentProvider {
   }
 
   private async post<T>(path: string, body: unknown): Promise<{ ok: boolean; status: number; body: T }> {
-    const res = await this.http(`${this.base}${path}`, {
+    const token = await this.accessToken();
+    return this.paced(async () => {
+      const res = await this.http(`${this.base}${path}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${await this.accessToken()}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      });
+      return { ok: res.ok, status: res.status, body: (await res.json().catch(() => ({}))) as T };
     });
-    return { ok: res.ok, status: res.status, body: (await res.json().catch(() => ({}))) as T };
   }
 
   async initiate(payment: PaymentRecord): Promise<{ providerReference: string }> {
@@ -118,13 +141,14 @@ export class DarajaProvider implements PaymentProvider {
     return typeof ref === 'string' ? { providerReference: ref } : null;
   }
 
-  async checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED'> {
+  async checkStatus(providerReference: string): Promise<'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'NOT_FOUND'> {
     const res = await this.post<{ ResultCode?: string | number; errorCode?: string; errorMessage?: string }>('/mpesa/stkpushquery/v1/query', {
       BusinessShortCode: this.config.shortCode,
       ...this.credentials(),
       CheckoutRequestID: providerReference,
     });
-    if (res.body.errorCode === STILL_PROCESSING) return 'PENDING';
+    if (res.body.errorCode === STILL_PROCESSING) return /does not exist/i.test(res.body.errorMessage ?? '') ? 'NOT_FOUND' : 'PENDING';
+    if (res.status === 429) throw new Error('M-PESA is limiting status checks (429); trying again shortly');
     if (res.body.ResultCode === undefined) throw new Error(res.body.errorMessage ?? `M-PESA status unavailable (${res.status})`); // unknown ≠ failed
     // A ResultCode is final: 0 = paid; anything else = not paid (1032 cancelled, 2001 wrong PIN, 1 insufficient
     // funds, 1037 no response from the phone…). "Still waiting" comes back as errorCode 500.001.1001 above.

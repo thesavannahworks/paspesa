@@ -331,3 +331,22 @@ activation, which needs the product-owner inputs listed below (§52).
   forced capitals); M-PESA's double space in two-part names is kept. Messages already saved keep their text.
 - **Sign-out buttons are red** (danger style on PrimaryButton / OutlineButton).
 - **Preferences** must be listed in runtime PREF_KEYS to survive a restart (tokenOrder was missing).
+
+## Daraja payments that actually complete; back-office save buttons (2026-11-19)
+- **What went wrong in the first real sandbox test:** every STK Query was refused with HTTP 429 (Daraja
+  allows 30 calls a minute per app, bursts of 3) because the app polled every 3 s and each poll asked
+  Daraja; a double tap sent two prompts for one payment and the second reference overwrote the paid one;
+  Daraja's "does not exist" answer shares the "still processing" error code and was read as pending.
+- **Now:** one prompt per payment (`send_started_at` guards concurrent sends; the first reference is never
+  overwritten; the Buy and pay-sheet buttons ignore repeat taps). Status checks are paced: per payment
+  (`next_check_at`: every 5 s for 3 minutes, then 30 s; failures back off to 2 minutes) and per Daraja app
+  (calls ≥ 2.5 s apart). The server sweeps due PENDING payments every 5 s, so a payment completes even
+  after the app stops waiting; all prompts of a payment are checked and the paid one is adopted
+  (REFERENCE_CORRECTED). "does not exist" → NOT_FOUND (failed after 10 minutes). Prompts never sent are
+  closed after 30 minutes (ABANDONED). The back office's Check status and provider callbacks ask at once.
+- **Buy Tokens:** after ~3 minutes of waiting the screen says M-PESA has not confirmed yet and the tokens
+  will be added automatically (no red error); a failed payment makes the next try a new purchase.
+- **PIN screen** shows the person or business in capitals (owner, 2026-11-19); messages, success screens
+  and statements keep the typed case.
+- **Back office:** edit forms (settings, pricing, my account, add admin, grant, suspend) keep their buttons
+  disabled until something changes (`data-dirty`, admin.js).

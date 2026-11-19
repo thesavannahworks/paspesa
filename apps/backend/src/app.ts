@@ -428,7 +428,7 @@ class PaymentsController {
       const payment = ref.providerReference
         ? await this.money.paymentByProviderReference(provider.name, ref.providerReference)
         : await this.money.paymentForProvider(provider.name, ref.paymentId!);
-      if (payment) await this.money.verifyPayment(payment.id, provider).catch(() => undefined);
+      if (payment) await this.money.verifyPayment(payment.id, provider, { force: true }).catch(() => undefined);
     }
     return name === 'mpesa' ? { ResultCode: 0, ResultDesc: 'Accepted' } : { received: true };
   }
