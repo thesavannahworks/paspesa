@@ -152,6 +152,41 @@ describe('payment endpoints', () => {
 });
 
 describe('provider registry', () => {
+  it('PayHero: requests, statuses and callbacks match docs.payhero.co.ke; the dashboard token or username + password', async () => {
+    const { PayHeroProvider, providersFromEnv } = await import('../src/providers.js');
+    const calls: { url: string; method: string; auth: string; body: unknown }[] = [];
+    const answers = [
+      { status: 201, body: { success: true, status: 'QUEUED', reference: 'E8UWT7CLUW', CheckoutRequestID: 'ws_CO_15012024164321519708344109' } },
+      { status: 200, body: { success: true, status: 'QUEUED', reference: 'E8UWT7CLUW' } },
+      { status: 200, body: { success: true, status: 'SUCCESS', reference: 'E8UWT7CLUW', provider_reference: 'SKQ96C7K7H' } },
+      { status: 200, body: { success: true, status: 'FAILED', reference: 'E8UWT7CLUW' } },
+    ];
+    const http = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? 'GET', auth: String((init?.headers as Record<string, string>)?.authorization), body: init?.body ? JSON.parse(String(init.body)) : null });
+      const a = answers.shift()!;
+      return new Response(JSON.stringify(a.body), { status: a.status, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    const ph = new PayHeroProvider({ base: 'https://backend.payhero.co.ke/api/v2', basicToken: 'dG9rZW4=', channelId: '133', callbackUrl: null }, http);
+    const started = await ph.initiate(payment({ id: 'pay-1', amount: 100 }));
+    expect(started).toEqual({ providerReference: 'E8UWT7CLUW' });
+    expect(calls[0]).toMatchObject({
+      url: 'https://backend.payhero.co.ke/api/v2/payments', method: 'POST', auth: 'Basic dG9rZW4=',
+      body: { amount: 100, phone_number: '0798765432', channel_id: 133, provider: 'm-pesa', external_reference: 'pay-1' },
+    });
+    expect(calls[0]!.body).not.toHaveProperty('callback_url'); // optional
+    expect(await ph.checkStatus('E8UWT7CLUW')).toBe('PENDING');
+    expect(calls[1]!.url).toBe('https://backend.payhero.co.ke/api/v2/transaction-status?reference=E8UWT7CLUW');
+    expect(await ph.checkStatus('E8UWT7CLUW')).toBe('SUCCESSFUL');
+    expect(await ph.checkStatus('E8UWT7CLUW')).toBe('FAILED');
+    // the documented callback names our payment through ExternalReference
+    expect(ph.callbackReference({ forward_url: '', response: { Amount: 10, CheckoutRequestID: 'ws_CO_1', ExternalReference: 'pay-1', ResultCode: 0, Status: 'Success' }, status: true }))
+      .toEqual({ paymentId: 'pay-1' });
+    // credentials: the dashboard token (with or without "Basic "), or username + password; channel required
+    expect(providersFromEnv({ PAYHERO_BASIC_TOKEN: 'Basic dG9rZW4=', PAYHERO_CHANNEL_ID: '133' }).all.map((x) => x.name)).toEqual(['payhero']);
+    expect(providersFromEnv({ PAYHERO_API_USERNAME: 'u', PAYHERO_API_PASSWORD: 'p', PAYHERO_CHANNEL_ID: '133' }).all.map((x) => x.name)).toEqual(['payhero']);
+    expect(providersFromEnv({ PAYHERO_BASIC_TOKEN: 'dG9rZW4=' }).all).toEqual([]);
+  });
+
   it('switches on exactly the providers whose credentials are set; PAYMENT_PROVIDER picks the default', async () => {
     const { providersFromEnv } = await import('../src/providers.js');
     expect(providersFromEnv({}).all).toEqual([]);

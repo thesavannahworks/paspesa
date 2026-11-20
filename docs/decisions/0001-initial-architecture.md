@@ -367,3 +367,9 @@ activation, which needs the product-owner inputs listed below (§52).
   `app.paspesa.simulator`. Built after hosting, with `EXPO_PUBLIC_PASPESA_API_URL` set as an EAS environment
   variable to the HTTPS backend (release builds on Android 9+ refuse plain http).
 - **Back office on phones:** Menu button, stacked tables, full-width forms (see admin.js / admin.css).
+- **PayHero (owner's chosen provider), checked against docs.payhero.co.ke (2026-11-20):** the adapter's
+  request, status values (QUEUED/SUCCESS/FAILED) and callback (`response.ExternalReference`) match the docs.
+  Credentials: the dashboard's Basic Authorization token (`PAYHERO_BASIC_TOKEN`) or username + password;
+  the callback URL is optional. A channel can be a till, a paybill or a bank account (bank paybill + account
+  number), so testing does not need a till; PayHero gives new developer accounts up to KSh 300 of test
+  credits on request. PayHero blocks a phone for 24 h after 10 successive failed/cancelled prompts.

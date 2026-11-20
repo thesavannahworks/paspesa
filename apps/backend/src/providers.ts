@@ -180,16 +180,22 @@ export class PaystackProvider implements PaymentProvider, CallbackAware {
 }
 
 // ------------------------------------------------------------------------------------------------ PayHero
+// Checked against https://docs.payhero.co.ke/docs (2026-11-20): Basic auth (the dashboard's "Basic
+// Authorization token", or API username + password); POST /payments → { success, status: QUEUED, reference,
+// CheckoutRequestID }; GET /transaction-status?reference= → status QUEUED | SUCCESS | FAILED; callback body
+// { response: { ExternalReference, CheckoutRequestID, ResultCode, Status: "Success" … }, status }.
+// Abuse protection: more than 10 successive failed/cancelled prompts to one phone block that phone for 24 h;
+// over 50 failures in 6 h restrict the account.
 
 export class PayHeroProvider implements PaymentProvider, CallbackAware {
   readonly name = 'payhero';
   constructor(
-    private readonly cfg: { base: string; username: string; password: string; channelId: string; callbackUrl: string },
+    private readonly cfg: { base: string; basicToken: string; channelId: string; callbackUrl: string | null },
     private readonly http: Fetch = fetch,
   ) {}
 
   private headers() {
-    return { authorization: `Basic ${Buffer.from(`${this.cfg.username}:${this.cfg.password}`).toString('base64')}`, 'content-type': 'application/json' };
+    return { authorization: `Basic ${this.cfg.basicToken}`, 'content-type': 'application/json' };
   }
 
   async initiate(p: PaymentRecord) {
@@ -202,7 +208,7 @@ export class PayHeroProvider implements PaymentProvider, CallbackAware {
         channel_id: Number(this.cfg.channelId),
         provider: 'm-pesa',
         external_reference: p.id,
-        callback_url: this.cfg.callbackUrl,
+        ...(this.cfg.callbackUrl ? { callback_url: this.cfg.callbackUrl } : {}),
       }),
     });
     const body = await readJson(res);
@@ -211,7 +217,7 @@ export class PayHeroProvider implements PaymentProvider, CallbackAware {
     return { providerReference: reference };
   }
 
-  /** unverified: status endpoint and values (SUCCESS / FAILED / QUEUED) are from community integrations. */
+  /** QUEUED (no result yet) → PENDING; SUCCESS → SUCCESSFUL; FAILED → FAILED. */
   async checkStatus(reference: string): Promise<Status> {
     const res = await this.http(`${this.cfg.base}/transaction-status?reference=${encodeURIComponent(reference)}`, { headers: this.headers() });
     if (!res.ok) throw new Error(`PayHero status unavailable (${res.status})`);
@@ -255,8 +261,11 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): PaymentProviders {
   if (env.PAYSTACK_SECRET_KEY) {
     list.push(new PaystackProvider({ secretKey: env.PAYSTACK_SECRET_KEY, emailDomain: env.PAYSTACK_EMAIL_DOMAIN || 'customers.paspesa.app', base: env.PAYSTACK_BASE_URL || 'https://api.paystack.co' }));
   }
-  if (env.PAYHERO_API_USERNAME && env.PAYHERO_API_PASSWORD && env.PAYHERO_CHANNEL_ID && env.PAYHERO_CALLBACK_URL) {
-    list.push(new PayHeroProvider({ base: env.PAYHERO_BASE_URL || 'https://backend.payhero.co.ke/api/v2', username: env.PAYHERO_API_USERNAME, password: env.PAYHERO_API_PASSWORD, channelId: env.PAYHERO_CHANNEL_ID, callbackUrl: env.PAYHERO_CALLBACK_URL }));
+  // The dashboard's ready-made token (PAYHERO_BASIC_TOKEN, with or without "Basic "), or username + password.
+  const payheroToken = env.PAYHERO_BASIC_TOKEN?.trim().replace(/^Basic\s+/i, '')
+    || (env.PAYHERO_API_USERNAME && env.PAYHERO_API_PASSWORD ? Buffer.from(`${env.PAYHERO_API_USERNAME}:${env.PAYHERO_API_PASSWORD}`).toString('base64') : '');
+  if (payheroToken && env.PAYHERO_CHANNEL_ID) {
+    list.push(new PayHeroProvider({ base: env.PAYHERO_BASE_URL || 'https://backend.payhero.co.ke/api/v2', basicToken: payheroToken, channelId: env.PAYHERO_CHANNEL_ID, callbackUrl: env.PAYHERO_CALLBACK_URL || null }));
   }
   return providerRegistry(list, env.PAYMENT_PROVIDER);
 }
