@@ -5,7 +5,7 @@
  * Also keeps the engine's pricing and monetization settings in step with the back office: they are fetched
  * on every sync, cached for offline use, and applied to `deps.config`.
  */
-import type { EngineDeps, MonetizationSettings, PricingConfiguration } from '@paspesa/core';
+import type { EngineDeps, FeeSchedule, MonetizationSettings, PricingConfiguration } from '@paspesa/core';
 import * as Crypto from 'expo-crypto';
 import type { KeyValueStore } from './kvTypes';
 
@@ -111,11 +111,17 @@ export function createApi(deps: EngineDeps, kv: KeyValueStore, platform: string)
   return current;
 }
 
-type ServerConfig = PricingConfiguration & { settings: MonetizationSettings };
+type ServerConfig = PricingConfiguration & { settings: MonetizationSettings; feeSchedules?: FeeSchedule[] };
 
 const apply = (deps: EngineDeps, cfg: ServerConfig) => {
-  const { settings, ...pricing } = cfg;
-  deps.config = { ...deps.config, pricing, monetization: { ...deps.config.monetization, ...settings } };
+  const { settings, feeSchedules, ...pricing } = cfg;
+  deps.config = {
+    ...deps.config,
+    pricing,
+    monetization: { ...deps.config.monetization, ...settings },
+    // Fee schedules edited in the back office (older servers send none: keep the built-in ones).
+    ...(feeSchedules?.length ? { feeSchedules } : {}),
+  };
 };
 
 /** Applies the last pricing/settings received from the server (offline start-up). */
