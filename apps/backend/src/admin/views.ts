@@ -42,8 +42,12 @@ const NAV: [string, string][] = [
 ];
 
 export function layout(title: string, session: AdminSession | null, body: Html, active = ''): string {
+  // Phones: a top bar with a Menu button opens the same navigation (admin.js; without scripts it stays open).
+  const topbar = session
+    ? html`<div class="topbar"><div class="brand">Paspesa <span>Back office</span></div><button type="button" class="secondary menu-btn" aria-controls="nav" aria-expanded="false" hidden>Menu</button></div>`
+    : html``;
   const nav = session
-    ? html`<nav class="side"><div class="brand">Paspesa <span>Back office</span></div>
+    ? html`<nav class="side" id="nav"><div class="brand">Paspesa <span>Back office</span></div>
         ${NAV.map(([href, label]) => html`<a href="${href}" class="${active === href ? 'on' : ''}">${label}</a>`)}
         <form method="post" action="/admin/logout" class="logout">${csrf(session)}<button class="link">Sign out</button></form>
       </nav>`
@@ -51,7 +55,7 @@ export function layout(title: string, session: AdminSession | null, body: Html, 
   const who = session ? html`<div class="who"><a href="/admin/me">${session.admin.name}</a> · <b>${session.admin.role}</b></div>` : html``;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} · Paspesa back office</title><link rel="stylesheet" href="/admin/assets/admin.css"><script src="/admin/assets/admin.js" defer></script></head>
-<body class="${session ? 'app' : 'plain'}">${nav.value}<main><header><h1>${esc(title)}</h1>${who.value}</header>${body.value}</main></body></html>`;
+<body class="${session ? 'app' : 'plain'}">${topbar.value}${nav.value}<main><header><h1>${esc(title)}</h1>${who.value}</header>${body.value}</main></body></html>`;
 }
 
 export const csrf = (session: AdminSession) => html`<input type="hidden" name="_csrf" value="${session.csrf}">`;
@@ -84,6 +88,43 @@ export const ADMIN_JS = `document.querySelectorAll('.pw-toggle').forEach(functio
     input.focus();
   });
   b.setAttribute('aria-label', 'Show password');
+});
+// Phones: the navigation opens from the top bar's Menu button.
+(function () {
+  var btn = document.querySelector('.menu-btn');
+  if (!btn) return;
+  document.documentElement.classList.add('js');
+  btn.hidden = false;
+  btn.addEventListener('click', function () {
+    var open = document.body.classList.toggle('nav-open');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = open ? 'Close' : 'Menu';
+  });
+})();
+// Tables with a header row become stacked cards on phones: each cell gets its column name as a label.
+document.querySelectorAll('table').forEach(function (t) {
+  var head = t.rows[0];
+  if (head && t.rows.length === 1 && head.cells.length > 2 && head.cells[0].tagName === 'TH') {
+    // a list with no rows: say so instead of showing column names over nothing (unless the page already does)
+    var next = t.nextElementSibling;
+    if (next && next.classList.contains('muted')) { t.remove(); return; }
+    var none = document.createElement('p');
+    none.className = 'muted';
+    none.textContent = 'Nothing yet.';
+    t.replaceWith(none);
+    return;
+  }
+  if (!head || t.rows.length < 2) return;
+  var cells = Array.prototype.slice.call(head.cells);
+  if (cells.length < 3 || cells.some(function (c) { return c.tagName !== 'TH'; })) return;
+  t.classList.add('stack');
+  head.classList.add('head');
+  for (var i = 1; i < t.rows.length; i++) {
+    Array.prototype.forEach.call(t.rows[i].cells, function (c, j) {
+      var label = cells[j] ? cells[j].textContent.trim() : '';
+      if (label) c.setAttribute('data-label', label); else c.classList.add('nolabel');
+    });
+  }
 });
 // Forms marked data-dirty: their submit buttons stay disabled until a field differs from how the page
 // loaded (changing a value back disables them again). Without JavaScript the buttons simply work.
@@ -130,5 +171,37 @@ button.danger{background:var(--red)}button:disabled{opacity:.4;cursor:not-allowe
 .notice{padding:10px 12px;border-radius:8px;margin:0 0 16px}.notice.ok{background:var(--accent-soft);color:var(--accent)}.notice.error{background:var(--red-soft);color:var(--red)}
 .muted{color:var(--muted)}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:260px}a{color:var(--accent)}
 body.plain main{max-width:380px;margin:12vh auto}
-@media (max-width:760px){body.app{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;flex-wrap:wrap}.brand{width:100%}main{padding:16px}}
+/* ---- phones and narrow windows ---- */
+.topbar{display:none}
+@media (max-width:760px){
+  body.app{display:block}
+  .topbar{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);padding:8px 14px}
+  .topbar .brand{padding:0;font-size:17px}.topbar .brand span{display:inline;margin-left:6px}
+  .menu-btn{margin:0;padding:7px 14px}
+  .side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 10px 12px}
+  .side .brand{display:none}
+  html.js .side{display:none}html.js body.nav-open .side{display:flex}
+  .side a{padding:11px 12px;font-size:16px}.logout{margin-top:6px}
+  main{padding:14px}
+  header{flex-wrap:wrap;gap:4px;margin-bottom:14px}h1{font-size:20px}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card .v{font-size:19px}
+  .panel{padding:12px;border-radius:10px}
+  .row>*{min-width:0;flex-basis:100%}
+  input,select,textarea{max-width:none;font-size:16px}
+  button{padding:10px 16px}
+  form:not(.inline)>button,details form>button{width:100%}
+  ol.steps form,.pw{max-width:none;flex-wrap:wrap}
+  ol.steps{padding-left:18px}
+  /* tables with a header row: one card per row, each value labelled */
+  table.stack,table.stack tbody,table.stack tr,table.stack td{display:block;width:100%}
+  table.stack tr.head{display:none}
+  table.stack tr{border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:10px;background:var(--panel)}
+  table.stack td{border:0;padding:5px 0;display:flex;gap:12px;justify-content:space-between;text-align:right;overflow-wrap:anywhere}
+  table.stack td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left;flex:0 0 38%}
+  table.stack td.nolabel{justify-content:flex-start;text-align:left}table.stack td.nolabel::before{content:none}
+  table.stack td.num{text-align:right}
+  table.stack td:empty{display:none}
+  table.stack td form{margin:0}table.stack td details{width:100%;text-align:left}
+}
+@media (max-width:420px){.cards{grid-template-columns:1fr 1fr}.card{padding:10px 12px}}
 `;
