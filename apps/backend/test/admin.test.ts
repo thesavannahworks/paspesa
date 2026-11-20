@@ -162,6 +162,38 @@ describe('back office', () => {
     expect(audit.every((a) => a.actor_id === 'admin:ops@example.com')).toBe(true);
   });
 
+  it('fees are edited on the Fees page: a new version for admins only, with clear errors', async () => {
+    const viewer = await signIn('look@example.com');
+    const boss = await signIn('boss@example.com');
+    const page = await (await boss.get('/admin/fees')).text();
+    expect(page).toContain('action="/admin/fees/AGENT_WITHDRAWAL"');
+    const { FeeService } = await import('../src/fees.service.js');
+    const current = (await new FeeService(db).current()).find((x) => x.id === 'AGENT_WITHDRAWAL')!;
+    const form: Record<string, string> = {};
+    current.bands.forEach((band, i) => { form[`min_${i}`] = String(band.min); form[`max_${i}`] = String(band.max); form[`fee_${i}`] = String(i === 0 ? band.fee + 1 : band.fee); });
+    expect((await viewer.post('/admin/fees/AGENT_WITHDRAWAL', form)).status).toBe(403);
+    expect((await boss.post('/admin/fees/AGENT_WITHDRAWAL', { ...form, fee_0: 'ten' })).status).toBe(303); // refused: not a number
+    expect((await new FeeService(db).current()).find((x) => x.id === 'AGENT_WITHDRAWAL')!.version).toBe(current.version);
+    expect((await boss.post('/admin/fees/AGENT_WITHDRAWAL', form)).status).toBe(303);
+    const after = (await new FeeService(db).current()).find((x) => x.id === 'AGENT_WITHDRAWAL')!;
+    expect(after.version).toBe(current.version + 1);
+    expect(after.bands[0]!.fee).toBe(current.bands[0]!.fee + 1);
+  });
+
+  it('when 2-step sign-in is required, an admin without it can only reach My account', async () => {
+    const c = await signIn('look@example.com');
+    process.env.ADMIN_REQUIRE_2FA = 'true';
+    try {
+      const res = await c.get('/admin/accounts');
+      expect(res.status).toBe(303);
+      expect(res.headers.get('location')).toMatch(/^\/admin\/me\?err=/);
+      expect((await c.get('/admin/me')).status).toBe(200);
+    } finally {
+      delete process.env.ADMIN_REQUIRE_2FA;
+    }
+    expect((await c.get('/admin/accounts')).status).toBe(200);
+  });
+
   it('grants are idempotent per form submission', async () => {
     const { accountId } = await newAccount();
     const c = await signIn('boss@example.com');
@@ -213,10 +245,16 @@ describe('back office', () => {
 
   it('every page renders for a signed-in viewer', async () => {
     const c = await signIn('look@example.com');
-    for (const p of ['/admin', '/admin/accounts', '/admin/devices', '/admin/payments', '/admin/review', '/admin/pricing', '/admin/fees', '/admin/settings', '/admin/audit']) {
+    for (const p of ['/admin', '/admin/reports', '/admin/reports?days=7', '/admin/accounts', '/admin/devices', '/admin/payments', '/admin/review', '/admin/pricing', '/admin/fees', '/admin/settings', '/admin/audit']) {
       const res = await c.get(p);
       expect(res.status, p).toBe(200);
     }
+    // the report counts this suite's simulations; its CSV has one line per day
+    const report = await (await c.get('/admin/reports?days=7')).text();
+    expect(report).toContain('Simulations per day');
+    const csv = await c.get('/admin/reports.csv?days=7');
+    expect(csv.headers.get('content-type')).toMatch(/text\/csv/);
+    expect((await csv.text()).trim().split(/\r?\n/)).toHaveLength(8);
     expect((await fetch(`${base}/admin/assets/admin.css`)).headers.get('content-type')).toMatch(/text\/css/);
   });
 

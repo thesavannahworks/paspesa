@@ -29,6 +29,7 @@ export const raw = (s: string) => new Html(s);
 
 const NAV: [string, string][] = [
   ['/admin', 'Dashboard'],
+  ['/admin/reports', 'Reports'],
   ['/admin/accounts', 'Accounts'],
   ['/admin/devices', 'Devices'],
   ['/admin/payments', 'Payments'],
@@ -158,7 +159,7 @@ body.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
 .logout{margin-top:auto}main{padding:22px 28px;max-width:1200px;width:100%}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}h1{font-size:22px;margin:0}h2{font-size:16px;margin:24px 0 10px}
 .who{color:var(--muted);font-size:14px}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}.card .k{color:var(--muted);font-size:13px}.card .v{font-size:22px;font-weight:650;margin-top:4px}
+.cards{margin-bottom:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}.card .k{color:var(--muted);font-size:13px}.card .v{font-size:22px;font-weight:650;margin-top:4px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -169,7 +170,11 @@ textarea{max-width:640px;min-height:90px;font-family:ui-monospace,monospace;font
 button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;margin-top:12px}button.secondary{background:var(--bg);color:var(--text);border:1px solid var(--line)}
 button.danger{background:var(--red)}button:disabled{opacity:.4;cursor:not-allowed;filter:saturate(.4)}button.link{background:none;color:var(--muted);padding:8px 10px;margin:0}
 .notice{padding:10px 12px;border-radius:8px;margin:0 0 16px}.notice.ok{background:var(--accent-soft);color:var(--accent)}.notice.error{background:var(--red-soft);color:var(--red)}
-.muted{color:var(--muted)}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:260px}a{color:var(--accent)}
+.chart{margin:0}.chart figcaption{font-weight:600;font-size:15px;margin-bottom:6px}.chart svg{width:100%;height:auto;display:block}
+.chart .bar{fill:var(--accent)}.chart .hit{fill:transparent}.chart .slot:hover .bar{opacity:.75}.chart .slot:hover .hit{fill:var(--accent-soft)}
+.chart .base{stroke:var(--line);stroke-width:1}.chart .tick,.chart .peak{fill:var(--muted);font-size:20px}.chart .peak{fill:var(--text);font-weight:600}
+form.period{display:flex;flex-wrap:wrap;gap:10px;align-items:center}form.period label{margin:0}form.period select{width:auto}form.period button{margin:0}form.period .csv{margin-left:auto}
+.muted{color:var(--muted)}table.fees input{max-width:140px;text-align:right}table.fees td{text-align:right}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:260px}a{color:var(--accent)}
 body.plain main{max-width:380px;margin:12vh auto}
 /* ---- phones and narrow windows ---- */
 .topbar{display:none}
@@ -200,6 +205,7 @@ body.plain main{max-width:380px;margin:12vh auto}
   table.stack td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left;flex:0 0 38%}
   table.stack td.nolabel{justify-content:flex-start;text-align:left}table.stack td.nolabel::before{content:none}
   table.stack td.num{text-align:right}
+  table.fees tr.head{display:table-row}table.fees,table.fees tbody{display:table}table.fees tr{display:table-row;border:0;padding:0;margin:0;background:none}table.fees td{display:table-cell;padding:4px}table.fees td::before{content:none}
   table.stack td:empty{display:none}
   table.stack td form{margin:0}table.stack td details{width:100%;text-align:left}
 }

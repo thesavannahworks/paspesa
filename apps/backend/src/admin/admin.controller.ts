@@ -10,6 +10,8 @@ import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
 import { SyncService } from '../sync.service.js';
 import { SuspensionService } from '../suspension.js';
+import { FeeService } from '../fees.service.js';
+import { REPORT_PERIODS, buildReport, reportCsv, reportHtml, type ReportPeriod } from './reports.js';
 import type { PaymentProviders } from '../providers.js';
 import QRCode from 'qrcode';
 import { AdminAuth, can, clearCookie, clearPendingCookie, PENDING_COOKIE, pendingCookie, readCookie, SESSION_COOKIE, sessionCookie, type AdminAction, type AdminRole, type AdminSession } from './auth.js';
@@ -22,7 +24,15 @@ export const ADMIN_PROVIDERS = Symbol('ADMIN_PROVIDERS');
 interface Req {
   headers: Record<string, string | string[] | undefined>;
   secure?: boolean;
+  originalUrl?: string;
 }
+
+/**
+ * 2-step sign-in is required for every admin once the back office is hosted (owner, 2026-11-20): on when
+ * ADMIN_REQUIRE_2FA=true, or in production unless ADMIN_REQUIRE_2FA=false. Off on a laptop by default.
+ */
+export const twoStepRequired = (env: NodeJS.ProcessEnv = process.env) =>
+  env.ADMIN_REQUIRE_2FA === 'true' || (env.NODE_ENV === 'production' && env.ADMIN_REQUIRE_2FA !== 'false');
 interface Res {
   status(code: number): Res;
   setHeader(name: string, value: string | string[]): void;
@@ -86,6 +96,7 @@ export class AdminController {
   private readonly money: MonetizationService;
   private readonly allocations: AllocationService;
   private readonly suspensions: SuspensionService;
+  private readonly feeSchedules: FeeService;
   private readonly sync: SyncService;
 
   constructor(
@@ -97,6 +108,7 @@ export class AdminController {
     this.allocations = new AllocationService(db, this.money);
     this.sync = new SyncService(db, undefined, this.money, this.allocations);
     this.suspensions = new SuspensionService(db);
+    this.feeSchedules = new FeeService(db);
   }
 
   // ------------------------------------------------------------------------------------------ plumbing
@@ -114,7 +126,19 @@ export class AdminController {
   /** The signed-in admin, or a redirect to the login page. */
   private async session(req: Req, res: Res): Promise<AdminSession | null> {
     const session = await this.auth.session(readCookie(req.headers.cookie as string | undefined, SESSION_COOKIE));
-    if (!session) res.redirect(303, '/admin/login');
+    if (!session) {
+      res.redirect(303, '/admin/login');
+      return null;
+    }
+    // Required 2-step sign-in: until it is set up, only My account (to set it up) is open.
+    const path = (req.originalUrl ?? '').split('?')[0] ?? '';
+    if (twoStepRequired() && !path.startsWith('/admin/me')) {
+      const [u] = await this.db.query<{ on: boolean }>('SELECT totp_enabled_at IS NOT NULL AS on FROM admin_users WHERE id = $1', [session.admin.id]);
+      if (!u?.on) {
+        res.redirect(303, `/admin/me?err=${encodeURIComponent('Set up 2-step sign-in to use the back office (required for every admin).')}`);
+        return null;
+      }
+    }
     return session;
   }
 
@@ -245,6 +269,28 @@ export class AdminController {
     this.send(res, layout('Dashboard', session, html`
       <p class="muted">Payments are <b>${settings.paymentRequired ? 'ON' : 'OFF'}</b> · free simulations offline: <b>${settings.freeSimulationsOffline ? 'allowed' : 'not allowed'}</b> · payment providers: <b>${this.providers.all.map((p) => p.name).join(', ') || 'none configured'}</b></p>
       <div class="cards">${stats.map(([k, v]) => html`<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`)}</div>`, '/admin'));
+  }
+
+  // ------------------------------------------------------------------------------------------ reports
+
+  @Get('reports')
+  async reports(@Req() req: Req, @Res() res: Res, @Query('days') daysRaw = '30') {
+    const session = await this.session(req, res);
+    if (!session) return;
+    const days = (REPORT_PERIODS as readonly number[]).includes(Number(daysRaw)) ? (Number(daysRaw) as ReportPeriod) : 30;
+    this.send(res, layout('Reports', session, reportHtml(await buildReport(this.db, days)), '/admin/reports'));
+  }
+
+  @Get('reports.csv')
+  async reportsCsv(@Req() req: Req, @Res() res: Res, @Query('days') daysRaw = '30') {
+    const session = await this.session(req, res);
+    if (!session) return;
+    const days = (REPORT_PERIODS as readonly number[]).includes(Number(daysRaw)) ? (Number(daysRaw) as ReportPeriod) : 30;
+    const report = await buildReport(this.db, days);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="paspesa-daily-${report.from}-to-${report.to}.csv"`);
+    res.status(200).send(reportCsv(report));
   }
 
   // ------------------------------------------------------------------------------------------ accounts (§35.4–35.5)
@@ -635,15 +681,57 @@ export class AdminController {
   // ------------------------------------------------------------------------------------------ fees (§35.2, read-only for now)
 
   @Get('fees')
-  async fees(@Req() req: Req, @Res() res: Res) {
+  async fees(@Req() req: Req, @Res() res: Res, @Query() q: { ok?: string; err?: string }) {
     const session = await this.session(req, res);
     if (!session) return;
     const c = DEFAULT_CONFIG;
-    this.send(res, layout('Transaction fees', session, html`
-      <p class="muted">Simulated M-PESA tariffs (White Paper §13–17), config version ${c.version}. They are built into the app and server; editing them from here comes when fee schedules move to central configuration.</p>
-      <div class="panel"><h2>Assignment</h2><table><tr><th>Transaction type</th><th>Fee schedule</th></tr>${Object.entries(c.feeScheduleByType).map(([t, id]) => html`<tr><td>${t}</td><td>${id}</td></tr>`)}</table></div>
-      ${c.feeSchedules.map((sch) => html`<div class="panel"><h2>${sch.name} <span class="muted">(${sch.id} v${sch.version}, ${sch.status}, from ${fmtDate(sch.effectiveFrom)})</span></h2>
-        <table><tr><th class="num">From KSh</th><th class="num">To KSh</th><th class="num">Fee KSh</th></tr>${sch.bands.map((b) => html`<tr><td class="num">${b.min}</td><td class="num">${b.max}</td><td class="num">${b.fee}</td></tr>`)}</table></div>`)}`, '/admin/fees'));
+    const schedules = await this.feeSchedules.current();
+    const mayEdit = can(session.admin.role, 'EDIT_PRICING');
+    const usedBy = (id: string) => Object.entries(c.feeScheduleByType).filter(([, s]) => s === id).map(([t]) => t.replace('_', ' ').toLowerCase()).join(', ');
+    const blank = 3;
+    this.send(res, layout('Transaction fees', session, html`${this.flash(q)}
+      <p class="muted">Simulated M-PESA transaction costs. Saving publishes a new version: phones pick it up on their next sync; what
+        a phone did offline with the old fees is still accepted. Bands must cover every amount with no gaps or overlaps.</p>
+      ${schedules.map((sch) => html`<div class="panel"><h2>${sch.name} <span class="muted">· version ${sch.version}${usedBy(sch.id) ? ` · used by ${usedBy(sch.id)}` : ''}</span></h2>
+        ${mayEdit ? html`<form method="post" action="/admin/fees/${sch.id}" data-dirty>${csrf(session)}
+          <table class="fees"><tr><th class="num">From KSh</th><th class="num">To KSh</th><th class="num">Fee KSh</th></tr>
+          ${[...sch.bands, ...Array.from({ length: blank }, () => null)].map((b, i) => html`<tr>
+            <td><input name="min_${i}" inputmode="numeric" value="${b ? String(b.min) : ''}" aria-label="From KSh, row ${i + 1}"></td>
+            <td><input name="max_${i}" inputmode="numeric" value="${b ? String(b.max) : ''}" aria-label="To KSh, row ${i + 1}"></td>
+            <td><input name="fee_${i}" inputmode="numeric" value="${b ? String(b.fee) : ''}" aria-label="Fee KSh, row ${i + 1}"></td></tr>`)}
+          </table>
+          <p class="muted">To remove a band, clear its row. The empty rows at the end add bands.</p>
+          <label for="why-${sch.id}">Reason (optional, kept in the audit log)</label><input id="why-${sch.id}" name="reason" maxlength="200">
+          <button>Publish version ${sch.version + 1}</button></form>`
+        : html`<table><tr><th class="num">From KSh</th><th class="num">To KSh</th><th class="num">Fee KSh</th></tr>${sch.bands.map((b) => html`<tr><td class="num">${b.min}</td><td class="num">${b.max}</td><td class="num">${b.fee}</td></tr>`)}</table>`}
+        </div>`)}`, '/admin/fees'));
+  }
+
+  @Post('fees/:id')
+  async publishFees(@Req() req: Req, @Res() res: Res, @Param('id') id: string, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form, 'EDIT_PRICING');
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    const bands: { min: number; max: number; fee: number }[] = [];
+    const bad: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      const raw = [form[`min_${i}`], form[`max_${i}`], form[`fee_${i}`]].map((v) => String(v ?? '').replace(/[,\s]/g, ''));
+      if (raw.every((v) => v === '')) continue; // cleared or unused row
+      if (raw.some((v) => !/^\d+$/.test(v))) { bad.push(`row ${i + 1}`); continue; }
+      const [min, max, fee] = raw.map(Number) as [number, number, number];
+      bands.push({ min, max, fee });
+    }
+    if (bad.length) return this.back(res, '/admin/fees', `Use whole shillings in every box (${bad.join(', ')})`, true);
+    try {
+      const saved = await this.feeSchedules.publish(id, bands, this.actor(session), (form.reason ?? '').trim() || null);
+      this.back(res, '/admin/fees', `${saved.name}: version ${saved.version} published`);
+    } catch (e) {
+      this.back(res, '/admin/fees', e instanceof Error ? e.message : 'Could not publish', true);
+    }
   }
 
   // ------------------------------------------------------------------------------------------ settings
@@ -812,7 +900,9 @@ export class AdminController {
               <b>${me.recoveryCodesLeft}</b> recovery code${me.recoveryCodesLeft === 1 ? '' : 's'} left.</p>
             <div class="row">
               <form method="post" action="/admin/me/2fa/recovery">${csrf(session)}<label for="rpw">New recovery codes (the old ones stop working) — your password</label>${passwordField('rpw', 'password', 'current-password')}<button class="secondary">Make new recovery codes</button></form>
-              <form method="post" action="/admin/me/2fa/disable">${csrf(session)}<label for="dpw">Turn off 2-step sign-in — your password</label>${passwordField('dpw', 'password', 'current-password')}<button class="danger">Turn off</button></form>
+              ${twoStepRequired()
+                ? html`<p class="muted">2-step sign-in is required for every admin on this server.</p>`
+                : html`<form method="post" action="/admin/me/2fa/disable">${csrf(session)}<label for="dpw">Turn off 2-step sign-in — your password</label>${passwordField('dpw', 'password', 'current-password')}<button class="danger">Turn off</button></form>`}
             </div>`
           : html`<p><span class="pill bad">Off</span> Protect your account with a code from an authenticator app (Google Authenticator, Microsoft Authenticator, Authy…) in addition to your password.</p>
             <form method="post" action="/admin/me/2fa/start">${csrf(session)}<button>Set up 2-step sign-in</button></form>`}
@@ -931,6 +1021,7 @@ export class AdminController {
     if (!session) return;
     try {
       this.guard(session, form);
+      if (twoStepRequired()) throw new Error('2-step sign-in is required for every admin on this server; it cannot be turned off');
       await this.auth.disableTotp(session.admin.id, form.password ?? '', this.actor(session));
       this.back(res, '/admin/me', '2-step sign-in is off');
     } catch (e) {

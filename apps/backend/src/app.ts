@@ -60,6 +60,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SYNC_API_VERSION, type SyncOperation, type SyncPushRequest } from '@paspesa/core';
 import type { Database } from './database.js';
 import { AllocationService } from './allocation.service.js';
+import { FeeService } from './fees.service.js';
 import { MonetizationError, MonetizationService, type PaymentProvider } from './monetization.service.js';
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
@@ -258,7 +259,8 @@ class MonetizationController {
   /** The active pricing configuration and back-office settings (devices keep them for offline use, §27.6). */
   @Get('pricing')
   async pricing() {
-    return { ...(await this.money.pricing()), settings: await this.money.settings() };
+    // Fee schedules travel with pricing and settings: devices keep all three for offline use.
+    return { ...(await this.money.pricing()), settings: await this.money.settings(), feeSchedules: await new FeeService(this.db).current() };
   }
 
   @Post('pricing/quote')

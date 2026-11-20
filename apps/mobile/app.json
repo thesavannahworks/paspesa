@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "app.paspesa.simulator",
       "adaptiveIcon": {
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/android-icon-foreground.png",

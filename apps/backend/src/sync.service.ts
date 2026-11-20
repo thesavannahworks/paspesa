@@ -28,6 +28,7 @@ import {
 } from '@paspesa/core';
 import { priceSimulation, tokenSplit } from '@paspesa/core';
 import { AllocationService } from './allocation.service.js';
+import { FeeService } from './fees.service.js';
 import type { Database, Queryable } from './database.js';
 import { MonetizationError, MonetizationService } from './monetization.service.js';
 
@@ -112,7 +113,12 @@ export class SyncService {
     private readonly config: SimulatorConfig = DEFAULT_CONFIG,
     private readonly money: MonetizationService = new MonetizationService(db),
     private readonly allocations: AllocationService = new AllocationService(db, money),
-  ) {}
+  ) {
+    this.fees = new FeeService(db);
+  }
+
+  /** Fee schedules as published from the back office (an upload is checked with the version it used). */
+  private readonly fees: FeeService;
 
   async push(installationId: string, operations: SyncOperation[]): Promise<SyncPushResponse> {
     const results: SyncOperationResult[] = [];
@@ -309,7 +315,7 @@ export class SyncService {
     if (!account) return review('NO_ACCOUNT', 'the account has not been synchronized yet');
     if (t.accountId !== account.id) return review('VALIDATION', 'transaction belongs to another account');
 
-    const check = checkSyncedTransaction(account, this.config, t);
+    const check = checkSyncedTransaction(account, await this.fees.configFor(q, this.config, t), t);
     if (!check.ok) return review(check.code, check.message);
     // Checked here rather than left to the UNIQUE constraint, so one bad record cannot block every retry.
     const [clash] = await q.query('SELECT 1 FROM transactions WHERE account_id = $1 AND (reference = $2 OR id = $3)', [account.id, t.reference, t.id]);

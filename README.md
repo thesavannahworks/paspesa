@@ -51,6 +51,21 @@ npx expo start --web        # or open in a browser at http://localhost:8081
 Data is stored on the device (SQLite on the phone, IndexedDB in the browser). It survives restarts.
 Clearing app or browser data erases it; the backend (below) keeps a synchronized copy.
 
+### Installable Android app (APK)
+
+Built in the cloud by Expo (a free Expo account is enough); the result is a download link to open on the phone.
+The server address is built into the app, so build it once the backend has its public HTTPS address (hosting):
+
+```bash
+cd apps/mobile
+npx eas-cli@latest login
+npx eas-cli@latest env:set --name EXPO_PUBLIC_PASPESA_API_URL --value https://<your-backend> --environment preview --visibility plaintext
+npx eas-cli@latest build -p android --profile preview
+```
+
+`eas.json` has the profiles: `preview` makes an APK for testers, `production` a Play Store bundle. The Android
+package name is `app.paspesa.simulator` (it cannot change once published on the Play Store).
+
 ### Run the backend (optional, no cloud host needed)
 
 ```bash

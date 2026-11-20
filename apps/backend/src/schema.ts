@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -405,4 +405,19 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS send_started_at TIMESTAMPTZ;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS check_failures INTEGER NOT NULL DEFAULT 0;
+
+-- ---------------------------------------------------------------- v9: editable fee schedules
+
+-- Every version of each simulated M-PESA fee schedule (seeded from the built-in ones; old versions kept so
+-- uploads made with them can still be checked).
+CREATE TABLE IF NOT EXISTS fee_schedules (
+  id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  bands JSONB NOT NULL,
+  effective_from TIMESTAMPTZ NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (id, version)
+);
 `;

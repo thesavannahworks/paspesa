@@ -350,3 +350,20 @@ activation, which needs the product-owner inputs listed below (§52).
   and statements keep the typed case.
 - **Back office:** edit forms (settings, pricing, my account, add admin, grant, suspend) keep their buttons
   disabled until something changes (`data-dirty`, admin.js).
+
+## Fees, reports, required 2-step sign-in, APK set-up (2026-11-20)
+- **Fee schedules are edited in the back office** (Fees page, Admin role): each save publishes a new version
+  (table `fee_schedules`, seeded from the built-in schedules; old versions kept). Devices receive the current
+  schedules with `/v1/pricing` and keep them offline. An upload is checked against the schedule version it
+  recorded (a phone offline during a change is not flagged); a version the server never published falls
+  back to the one in force when the transaction happened. Bands are whole shillings, no gaps or overlaps.
+- **Reports** (`/admin/reports`, 7/30/90 days, Kenya days): totals, simulations and money received per day
+  (SVG bar charts with hover titles; CSP allows no scripts or inline styles), by transaction type, payment
+  outcomes, a daily table and its CSV download.
+- **2-step sign-in required for every admin** when `ADMIN_REQUIRE_2FA=true`, and by default in production
+  (`NODE_ENV=production`, unless `ADMIN_REQUIRE_2FA=false`): an admin without it can only open My account to
+  set it up, and it cannot be turned off.
+- **APK:** `apps/mobile/eas.json` (`preview` = internal APK, `production` = Play bundle), Android package
+  `app.paspesa.simulator`. Built after hosting, with `EXPO_PUBLIC_PASPESA_API_URL` set as an EAS environment
+  variable to the HTTPS backend (release builds on Android 9+ refuse plain http).
+- **Back office on phones:** Menu button, stacked tables, full-width forms (see admin.js / admin.css).
