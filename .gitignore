@@ -10,3 +10,14 @@ coverage/
 
 # backend embedded database (PGlite)
 .data/
+
+# Notes
+notes.md
+
+# Engineering reports and local tools
+Paspesa Engineering Report.md
+ngrok.exe
+ngrok-v3-stable-windows-amd64.zip
+
+# IDE
+.vscode/
