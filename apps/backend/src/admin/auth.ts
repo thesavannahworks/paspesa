@@ -3,7 +3,7 @@
  *
  *  - Passwords: scrypt with a per-user salt; compared in constant time.
  *  - Login lock: 5 failed attempts lock the account for 15 minutes.
- *  - Sessions: random token in an HttpOnly, SameSite=Strict cookie; only its SHA-256 is stored; 8 hours.
+ *  - Sessions: random token in an HttpOnly, SameSite=Strict cookie; only its SHA-256 is stored; 2 hours (max).
  *  - CSRF: every session has its own token, required on every form submission.
  *  - 2-step sign-in (optional per admin): an authenticator-app code after the password, or a one-time
  *    recovery code. The password step leaves only a 5-minute pending token (HttpOnly cookie, 5 tries).
@@ -55,7 +55,7 @@ export const can = (role: AdminRole, action: AdminAction) => PERMISSIONS[role].i
 export const SESSION_COOKIE = 'paspesa_admin';
 export const PENDING_COOKIE = 'paspesa_admin_2fa';
 const PENDING_MINUTES = 5;
-const SESSION_HOURS = 8;
+const SESSION_HOURS = 2; // Maximum admin session duration (owner decision: reduced from 8h to 2h)
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
 const N = 16384;

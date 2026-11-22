@@ -36,6 +36,7 @@ const NAV: [string, string][] = [
   ['/admin/review', 'Review queue'],
   ['/admin/pricing', 'Pricing'],
   ['/admin/fees', 'Fees'],
+  ['/admin/calculator', 'Calculator'],
   ['/admin/settings', 'Settings'],
   ['/admin/audit', 'Audit log'],
   ['/admin/users', 'Admin users'],

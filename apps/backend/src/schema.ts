@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -420,4 +420,13 @@ CREATE TABLE IF NOT EXISTS fee_schedules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (id, version)
 );
+
+-- ---------------------------------------------------------------- v10: transaction and payment method controls
+-- Control which transaction types are available and which payment methods (tokens vs pay-per-simulation).
+-- transaction_type_controls: map of SimulationType -> boolean (enabled/disabled)
+-- payment_method_controls: { tokensEnabled: boolean, directPayEnabled: boolean }
+ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS transaction_type_controls JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS payment_method_controls JSONB NOT NULL DEFAULT '{"tokensEnabled":true,"directPayEnabled":true}';
+-- Admin session timeout reduced from 8h to 2h (max 2 hours, owner decision)
+-- Existing sessions exceeding 2h will naturally expire
 `;

@@ -302,7 +302,15 @@ describe('payments (§31–33, §47.8)', () => {
   });
 
   it('back-office settings: defaults, audited changes, validation', async () => {
-    expect(await money.settings()).toEqual({ paymentRequired: false, freeSimulationsOffline: true, shillingsPerToken: 1, minimumPurchase: 1, offlineAuthorizationDays: 3 });
+    expect(await money.settings()).toEqual({ 
+      paymentRequired: false, 
+      freeSimulationsOffline: true, 
+      shillingsPerToken: 1, 
+      minimumPurchase: 1, 
+      offlineAuthorizationDays: 3,
+      transactionTypeControls: {},
+      paymentMethodControls: { tokensEnabled: true, directPayEnabled: true },
+    });
     expect((await money.updateSettings({ freeSimulationsOffline: false }, 'admin:test')).freeSimulationsOffline).toBe(false);
     expect((await money.settings()).freeSimulationsOffline).toBe(false);
     await expect(money.updateSettings({ shillingsPerToken: 0 }, 'admin:test')).rejects.toThrow(/at least 1/);

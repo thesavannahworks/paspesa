@@ -92,6 +92,15 @@ export interface MonetizationSettings {
   minimumPurchase: number;
   /** How long a device may spend its allocation offline before renewing online (§29.4, default 3 days). */
   offlineAuthorizationDays: number;
+  /** Control which transaction types are enabled (map of SimulationType -> boolean). Empty = all enabled. */
+  transactionTypeControls?: Record<string, boolean>;
+  /** Control which payment methods are available. */
+  paymentMethodControls?: {
+    /** Tokens payment method enabled (from device allocation + central balance). */
+    tokensEnabled: boolean;
+    /** Direct pay-per-simulation enabled (M-PESA prompt for individual simulation). */
+    directPayEnabled: boolean;
+  };
 }
 
 export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
@@ -100,6 +109,11 @@ export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
   shillingsPerToken: SHILLINGS_PER_TOKEN,
   minimumPurchase: 1,
   offlineAuthorizationDays: 3,
+  transactionTypeControls: {},
+  paymentMethodControls: {
+    tokensEnabled: true,
+    directPayEnabled: true,
+  },
 };
 
 /** Shilling price of a pay-per-simulation: its token cost at the token rate. */
