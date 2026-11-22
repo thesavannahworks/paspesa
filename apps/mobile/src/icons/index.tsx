@@ -327,6 +327,14 @@ export const AirtimeResetIcon = make((c, a) => (
   </>
 ));
 
+export const CalculatorIcon = make((c, a) => (
+  <>
+    <Rect x={4.6} y={3.6} width={14.8} height={16.8} rx={2.6} stroke={c} />
+    <Rect x={7.2} y={6.2} width={9.6} height={3.2} rx={0.8} stroke={a} />
+    <Path d="M8.4 13h.2M11.6 13h.2M14.8 13h.2M8.4 16.2h.2M11.6 16.2h.2M14.8 16.2h.2" stroke={c} strokeWidth={2.2} />
+  </>
+));
+
 export const MessageIcon = make((c, a) => (
   <>
     <Path d="M4 6.4A2.4 2.4 0 0 1 6.4 4h11.2A2.4 2.4 0 0 1 20 6.4v8.2a2.4 2.4 0 0 1-2.4 2.4H9.4L5.2 20v-3H6.4" stroke={c} />

@@ -734,6 +734,74 @@ export class AdminController {
     }
   }
 
+  // ------------------------------------------------------------------------------------------ token calculator
+
+  @Get('calculator')
+  async calculator(@Req() req: Req, @Res() res: Res) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    const settings = await this.money.settings();
+    
+    this.send(res, layout('Token Calculator', session, html`
+      <script>window.PASPESA_SETTINGS = ${raw(JSON.stringify({ shillingsPerToken: settings.shillingsPerToken, freeThreshold: 20, amountPerToken: 5 }))};</script>
+      <div class="panel">
+        <h2>Paspesa Token Calculator</h2>
+        <p class="muted">Calculate how many tokens are needed to simulate a transaction, or how much can be simulated with available tokens. Changes update in real-time.</p>
+        
+        <div style="margin: 2em 0;">
+          <h3>Shillings to Tokens</h3>
+          <p>Calculate tokens needed for a simulation</p>
+          <label for="amountToTokens">Simulation amount (KSh)</label>
+          <input id="amountToTokens" type="number" min="0" max="250000" value="100" style="width: 100%; max-width: 300px;">
+          <label for="txType">Transaction type</label>
+          <select id="txType" style="width: 100%; max-width: 300px;">
+            <option value="SEND_MONEY">Send Money</option>
+            <option value="POCHI">Pochi la Biashara</option>
+            <option value="BUY_GOODS">Buy Goods</option>
+            <option value="PAYBILL">Paybill</option>
+            <option value="AIRTIME">Airtime</option>
+            <option value="WITHDRAW">Withdraw</option>
+          </select>
+          <div id="tokensResult" style="margin-top: 1em; padding: 1em; background: #f0f0f0; border-radius: 4px;">
+            <strong>Tokens needed: <span id="tokensNeeded">-</span></strong><br>
+            <span class="muted">Cost: KSh <span id="tokensCost">-</span></span>
+          </div>
+        </div>
+        
+        <div style="margin: 2em 0;">
+          <h3>Tokens to Shillings</h3>
+          <p>Calculate how much can be simulated with tokens</p>
+          <label for="tokensAvailable">Available tokens</label>
+          <input id="tokensAvailable" type="number" min="0" value="20" style="width: 100%; max-width: 300px;">
+          <label for="txType2">Transaction type</label>
+          <select id="txType2" style="width: 100%; max-width: 300px;">
+            <option value="SEND_MONEY">Send Money</option>
+            <option value="POCHI">Pochi la Biashara</option>
+            <option value="BUY_GOODS">Buy Goods</option>
+            <option value="PAYBILL">Paybill</option>
+            <option value="AIRTIME">Airtime</option>
+            <option value="WITHDRAW">Withdraw</option>
+          </select>
+          <div id="amountResult" style="margin-top: 1em; padding: 1em; background: #f0f0f0; border-radius: 4px;">
+            <strong>Can simulate up to: KSh <span id="maxAmount">-</span></strong><br>
+            <span class="muted">Based on the pricing formula</span>
+          </div>
+        </div>
+        
+        <div style="margin: 2em 0;">
+          <h3>Current Pricing Configuration</h3>
+          <p class="muted">Global default rule (active)</p>
+          <ul class="muted">
+            <li>Formula: Full Amount</li>
+            <li>Free threshold: KSh 20</li>
+            <li>Amount per token: KSh 5</li>
+            <li>Shillings per token: ${settings.shillingsPerToken}</li>
+          </ul>
+        </div>
+      </div>
+    `, '/admin/calculator'));
+  }
+
   // ------------------------------------------------------------------------------------------ settings
 
   @Get('settings')
@@ -746,11 +814,54 @@ export class AdminController {
       html`<label><input type="checkbox" name="${name}" value="true" ${st[name] ? html`checked` : html``} ${mayEdit ? html`` : html`disabled`} class="check"> ${label}</label>`;
     const num = (name: keyof MonetizationSettings, label: string) =>
       html`<label for="${name}">${label}</label><input id="${name}" name="${name}" type="number" min="1" value="${st[name]}" ${mayEdit ? html`` : html`disabled`}>`;
+    
+    // Transaction type controls
+    const txControls = st.transactionTypeControls ?? {};
+    const txCheckbox = (type: SimulationType, label: string) => {
+      const enabled = txControls[type] !== false; // Default to enabled if not specified
+      return html`<label><input type="checkbox" name="tx_${type}" value="true" ${enabled ? html`checked` : html``} ${mayEdit ? html`` : html`disabled`} class="check"> ${label}</label>`;
+    };
+    
+    // Payment method controls
+    const pmControls = st.paymentMethodControls ?? { tokensEnabled: true, directPayEnabled: true };
+    const pmCheckbox = (name: 'tokensEnabled' | 'directPayEnabled', label: string) =>
+      html`<label><input type="checkbox" name="pm_${name}" value="true" ${pmControls[name] ? html`checked` : html``} ${mayEdit ? html`` : html`disabled`} class="check"> ${label}</label>`;
+    
+    // Payment providers
+    const providers = this.providers.all;
+    const activeProvider = st.activePaymentProvider || '';
+    
     this.send(res, layout('Settings', session, html`${this.flash(q)}
       <form method="post" action="/admin/settings" class="panel" data-dirty>${csrf(session)}
+        <h3>Monetization</h3>
         ${box('paymentRequired', 'Payments required — simulations that cost tokens must be paid (off = everything free)')}
         ${box('freeSimulationsOffline', 'Free simulations may run offline without a device allocation')}
         ${num('shillingsPerToken', 'Shillings per token')}${num('minimumPurchase', 'Smallest token purchase (KSh)')}${num('offlineAuthorizationDays', 'Offline authorization (days)')}
+        
+        <h3>Payment Provider</h3>
+        <p class="muted">Select which M-PESA payment provider to use. Only one can be active at a time. Configure keys in .env file.</p>
+        <label for="activePaymentProvider">Active Provider</label>
+        <select id="activePaymentProvider" name="activePaymentProvider" ${mayEdit ? html`` : html`disabled`}>
+          <option value="">Default (first configured)</option>
+          ${providers.map(p => html`<option value="${p.name}" ${activeProvider === p.name ? html`selected` : html``}>${p.name}</option>`)}
+        </select>
+        ${providers.length === 0 ? html`<p class="muted" style="color: #E92536; margin-top: 8px;">⚠ No payment providers configured. Add provider keys to .env file.</p>` : html``}
+        
+        <h3>Transaction Type Controls</h3>
+        <p class="muted">Control which transaction types users can perform. Unchecked types will be disabled in the app.</p>
+        ${txCheckbox('SEND_MONEY', 'Send Money')}
+        ${txCheckbox('POCHI', 'Pochi la Biashara')}
+        ${txCheckbox('BUY_GOODS', 'Buy Goods (Till)')}
+        ${txCheckbox('PAYBILL', 'Paybill')}
+        ${txCheckbox('AIRTIME', 'Airtime')}
+        ${txCheckbox('WITHDRAW', 'Withdraw')}
+        ${txCheckbox('RECHARGE', 'Recharge')}
+        
+        <h3>Payment Method Controls</h3>
+        <p class="muted">Control which payment methods are available when payments are required.</p>
+        ${pmCheckbox('tokensEnabled', 'Tokens payment (from device allocation + central balance)')}
+        ${pmCheckbox('directPayEnabled', 'Direct pay-per-simulation (M-PESA prompt per simulation)')}
+        
         ${mayEdit ? html`<button>Save settings</button>` : html`<p class="muted">Only administrators can change settings.</p>`}
       </form><p class="muted">Phones pick up changes on their next sync.</p>`, '/admin/settings'));
   }
@@ -765,12 +876,27 @@ export class AdminController {
       return this.denied(res, session, e);
     }
     try {
+      // Build transaction type controls map
+      const transactionTypeControls: Record<string, boolean> = {};
+      SIM_TYPES.forEach((type) => {
+        transactionTypeControls[type] = form[`tx_${type}`] === 'true';
+      });
+      
+      // Build payment method controls
+      const paymentMethodControls = {
+        tokensEnabled: form.pm_tokensEnabled === 'true',
+        directPayEnabled: form.pm_directPayEnabled === 'true',
+      };
+      
       await this.money.updateSettings({
         paymentRequired: form.paymentRequired === 'true',
         freeSimulationsOffline: form.freeSimulationsOffline === 'true',
         shillingsPerToken: Number(form.shillingsPerToken),
         minimumPurchase: Number(form.minimumPurchase),
         offlineAuthorizationDays: Number(form.offlineAuthorizationDays),
+        transactionTypeControls,
+        paymentMethodControls,
+        activePaymentProvider: form.activePaymentProvider || null,
       }, this.actor(session));
       this.back(res, '/admin/settings', 'Settings saved');
     } catch (e) {

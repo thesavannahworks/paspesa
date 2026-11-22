@@ -109,6 +109,9 @@ export default function WalletScreen() {
       <Row icon={<ReceiptIcon size={26} />} label="Purchases" sub="Token purchases and simulation payments" href="/wallet/history?tab=purchases" />
       <Row icon={<SpendIcon size={26} />} label="Spending" sub="Tokens used, refunded or expired" href="/wallet/history?tab=spending" />
       <Row icon={<TokenIcon size={26} />} label="All token activity" sub="Every movement in your token wallet" href="/wallet/history?tab=all" />
+      
+      <T variant="heading" style={{ marginTop: s(30), fontSize: s(20) }}>Tools</T>
+      <Row icon={<TokenIcon size={26} />} label="Token Calculator" sub="Calculate tokens needed or how much you can simulate" href={"/wallet/calculator" as Href} />
 
       <SetAsideSheet
         visible={setAsideOpen}
