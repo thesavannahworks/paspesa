@@ -21,6 +21,10 @@ export default function GeneralOperationsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const sender = account.rechargeSenderDefaults ?? deps.config.defaultRechargeSender;
 
+  // Check if RECHARGE transaction type is enabled
+  const controls = deps.config.monetization.transactionTypeControls ?? {};
+  const rechargeEnabled = controls.RECHARGE !== false;
+
   const doReset = async () => {
     const res = await resetAirtimeBalance(deps);
     setConfirmReset(false);
@@ -47,7 +51,7 @@ export default function GeneralOperationsScreen() {
       </View>
 
       <View style={[styles.list, { backgroundColor: colors.surface }]}>
-        <Item icon={<RechargeIcon size={26} />} title="Recharge account" subtitle="Add simulated funds to your M-PESA balance" href="/recharge" />
+        <Item icon={<RechargeIcon size={26} />} title="Recharge account" subtitle="Add simulated funds to your M-PESA balance" href={rechargeEnabled ? '/recharge' : undefined} />
         <Item
           icon={<ContactIcon size={26} />}
           title="Default recharge sender"

@@ -425,8 +425,10 @@ CREATE TABLE IF NOT EXISTS fee_schedules (
 -- Control which transaction types are available and which payment methods (tokens vs pay-per-simulation).
 -- transaction_type_controls: map of SimulationType -> boolean (enabled/disabled)
 -- payment_method_controls: { tokensEnabled: boolean, directPayEnabled: boolean }
+-- active_payment_provider: which provider to use for payments (mpesa-daraja, payhero, etc.)
 ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS transaction_type_controls JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS payment_method_controls JSONB NOT NULL DEFAULT '{"tokensEnabled":true,"directPayEnabled":true}';
+ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS active_payment_provider TEXT;
 -- Admin session timeout reduced from 8h to 2h (max 2 hours, owner decision)
 -- Existing sessions exceeding 2h will naturally expire
 `;

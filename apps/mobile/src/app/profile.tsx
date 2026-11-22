@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppModal as Modal } from '@/components/LayoutFrame';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Inert, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, SheetRow, T } from '@/components/ui';
-import { CameraIcon, ChevronLeftIcon, ChevronRightIcon, TokenIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
+import { CalculatorIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, TokenIcon, FingerprintIcon, GalleryIcon, GearIcon, InfoIcon, LockIcon, MoonIcon, PersonIcon, ShareIcon, SunIcon, TrashIcon, WalletIcon } from '@/icons';
 import { useProfilePhoto } from '@/services/profilePhoto';
 import { syncNow, useSyncStatus } from '@/services/sync';
 import { messageOf, reloadFromBackup, signOut, useSession } from '@/services/session';
@@ -64,8 +64,11 @@ export default function ProfileScreen() {
 
       <T variant="heading" style={{ marginTop: s(34), fontSize: s(22) }}>Quick actions</T>
       <View style={styles.tileRow}>
-        <Tile icon={<SunIcon size={28} />} label="Appearance" onPress={() => setThemeOpen(true)} wide />
-        <Tile icon={<FingerprintIcon size={28} />} label={'Biometric\nAuthentication'} href="/biometrics" wide />
+        <Tile icon={<SunIcon size={28} />} label="Appearance" onPress={() => setThemeOpen(true)} />
+        <Tile icon={<FingerprintIcon size={28} />} label={'Biometric\nAuthentication'} href="/biometrics" />
+      </View>
+      <View style={styles.tileRow}>
+        <Tile icon={<CalculatorIcon size={28} />} label={'Token Calculator'} href={"/wallet/calculator" as Href} wide />
       </View>
 
       <T variant="heading" style={{ marginTop: s(34), fontSize: s(22) }}>Account and Settings</T>

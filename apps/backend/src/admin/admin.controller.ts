@@ -741,20 +741,20 @@ export class AdminController {
     const session = await this.session(req, res);
     if (!session) return;
     const settings = await this.money.settings();
-    const pricing = await this.money.pricing();
     
     this.send(res, layout('Token Calculator', session, html`
+      <script>window.PASPESA_SETTINGS = ${raw(JSON.stringify({ shillingsPerToken: settings.shillingsPerToken, freeThreshold: 20, amountPerToken: 5 }))};</script>
       <div class="panel">
         <h2>Paspesa Token Calculator</h2>
-        <p class="muted">Calculate how many tokens are needed to simulate a transaction, or how much can be simulated with available tokens.</p>
+        <p class="muted">Calculate how many tokens are needed to simulate a transaction, or how much can be simulated with available tokens. Changes update in real-time.</p>
         
         <div style="margin: 2em 0;">
           <h3>Shillings to Tokens</h3>
           <p>Calculate tokens needed for a simulation</p>
           <label for="amountToTokens">Simulation amount (KSh)</label>
-          <input id="amountToTokens" type="number" min="0" max="250000" value="100" oninput="calculateTokens()">
+          <input id="amountToTokens" type="number" min="0" max="250000" value="100" style="width: 100%; max-width: 300px;">
           <label for="txType">Transaction type</label>
-          <select id="txType" onchange="calculateTokens()">
+          <select id="txType" style="width: 100%; max-width: 300px;">
             <option value="SEND_MONEY">Send Money</option>
             <option value="POCHI">Pochi la Biashara</option>
             <option value="BUY_GOODS">Buy Goods</option>
@@ -772,9 +772,9 @@ export class AdminController {
           <h3>Tokens to Shillings</h3>
           <p>Calculate how much can be simulated with tokens</p>
           <label for="tokensAvailable">Available tokens</label>
-          <input id="tokensAvailable" type="number" min="0" value="20" oninput="calculateAmount()">
+          <input id="tokensAvailable" type="number" min="0" value="20" style="width: 100%; max-width: 300px;">
           <label for="txType2">Transaction type</label>
-          <select id="txType2" onchange="calculateAmount()">
+          <select id="txType2" style="width: 100%; max-width: 300px;">
             <option value="SEND_MONEY">Send Money</option>
             <option value="POCHI">Pochi la Biashara</option>
             <option value="BUY_GOODS">Buy Goods</option>
@@ -799,38 +799,6 @@ export class AdminController {
           </ul>
         </div>
       </div>
-      
-      <script>
-        const settings = ${raw(JSON.stringify({ shillingsPerToken: settings.shillingsPerToken, freeThreshold: 20, amountPerToken: 5 }))};
-        
-        function calculateTokens() {
-          const amount = parseInt(document.getElementById('amountToTokens').value) || 0;
-          let tokens = 0;
-          if (amount <= settings.freeThreshold) {
-            tokens = 0;
-          } else {
-            tokens = Math.ceil(amount / settings.amountPerToken);
-          }
-          document.getElementById('tokensNeeded').textContent = tokens;
-          document.getElementById('tokensCost').textContent = (tokens * settings.shillingsPerToken).toFixed(2);
-        }
-        
-        function calculateAmount() {
-          const tokens = parseInt(document.getElementById('tokensAvailable').value) || 0;
-          // For full amount formula: tokens = ceil(amount / amountPerToken) when amount > freeThreshold
-          // So: amount = tokens * amountPerToken (approximately, may need adjustment)
-          let maxAmount = 0;
-          if (tokens === 0) {
-            maxAmount = settings.freeThreshold;
-          } else {
-            maxAmount = tokens * settings.amountPerToken;
-          }
-          document.getElementById('maxAmount').textContent = maxAmount;
-        }
-        
-        calculateTokens();
-        calculateAmount();
-      </script>
     `, '/admin/calculator'));
   }
 
@@ -859,12 +827,25 @@ export class AdminController {
     const pmCheckbox = (name: 'tokensEnabled' | 'directPayEnabled', label: string) =>
       html`<label><input type="checkbox" name="pm_${name}" value="true" ${pmControls[name] ? html`checked` : html``} ${mayEdit ? html`` : html`disabled`} class="check"> ${label}</label>`;
     
+    // Payment providers
+    const providers = this.providers.all;
+    const activeProvider = st.activePaymentProvider || '';
+    
     this.send(res, layout('Settings', session, html`${this.flash(q)}
       <form method="post" action="/admin/settings" class="panel" data-dirty>${csrf(session)}
         <h3>Monetization</h3>
         ${box('paymentRequired', 'Payments required — simulations that cost tokens must be paid (off = everything free)')}
         ${box('freeSimulationsOffline', 'Free simulations may run offline without a device allocation')}
         ${num('shillingsPerToken', 'Shillings per token')}${num('minimumPurchase', 'Smallest token purchase (KSh)')}${num('offlineAuthorizationDays', 'Offline authorization (days)')}
+        
+        <h3>Payment Provider</h3>
+        <p class="muted">Select which M-PESA payment provider to use. Only one can be active at a time. Configure keys in .env file.</p>
+        <label for="activePaymentProvider">Active Provider</label>
+        <select id="activePaymentProvider" name="activePaymentProvider" ${mayEdit ? html`` : html`disabled`}>
+          <option value="">Default (first configured)</option>
+          ${providers.map(p => html`<option value="${p.name}" ${activeProvider === p.name ? html`selected` : html``}>${p.name}</option>`)}
+        </select>
+        ${providers.length === 0 ? html`<p class="muted" style="color: #E92536; margin-top: 8px;">⚠ No payment providers configured. Add provider keys to .env file.</p>` : html``}
         
         <h3>Transaction Type Controls</h3>
         <p class="muted">Control which transaction types users can perform. Unchecked types will be disabled in the app.</p>
@@ -915,6 +896,7 @@ export class AdminController {
         offlineAuthorizationDays: Number(form.offlineAuthorizationDays),
         transactionTypeControls,
         paymentMethodControls,
+        activePaymentProvider: form.activePaymentProvider || null,
       }, this.actor(session));
       this.back(res, '/admin/settings', 'Settings saved');
     } catch (e) {

@@ -64,13 +64,19 @@ export default function HomeScreen() {
   const firstName = account.accountName.split(' ')[0] ?? account.accountName;
   const unread = messages.some((m) => !m.readAt && !m.deletedAt);
 
+  // Check transaction type controls to make buttons inert when disabled
+  const controls = deps.config.monetization.transactionTypeControls ?? {};
+  const sendMoneyEnabled = controls.SEND_MONEY !== false;
+  const lipaEnabled = controls.BUY_GOODS !== false || controls.PAYBILL !== false;
+  const airtimeEnabled = controls.AIRTIME !== false;
+
   const quickActions: QuickAction[] = [
-    { label: 'Send\nMoney', icon: <SendMoneyIcon size={33} />, href: '/send-money' },
-    { label: 'Lipa na\nM-PESA', icon: <LipaIcon size={33} />, href: '/lipa' },
+    { label: 'Send\nMoney', icon: <SendMoneyIcon size={33} />, href: sendMoneyEnabled ? '/send-money' : undefined },
+    { label: 'Lipa na\nM-PESA', icon: <LipaIcon size={33} />, href: lipaEnabled ? '/lipa' : undefined },
     { label: 'Withdraw\nMoney', icon: <WithdrawIcon size={33} /> },
     { label: 'Pochi\nWallet', icon: <PochiWalletIcon size={33} /> },
     { label: 'Buy\nBundles', icon: <BundlesIcon size={31} /> },
-    { label: 'Airtime\nTop Up', icon: <AirtimeIcon size={33} />, href: '/airtime' },
+    { label: 'Airtime\nTop Up', icon: <AirtimeIcon size={33} />, href: airtimeEnabled ? '/airtime' : undefined },
     { label: 'Tunukiwa\nBundles', icon: <GiftIcon size={33} /> },
     { label: 'Home\nInternet', icon: <HomeInternetIcon size={33} /> },
   ];

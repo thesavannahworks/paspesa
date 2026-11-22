@@ -101,6 +101,8 @@ export interface MonetizationSettings {
     /** Direct pay-per-simulation enabled (M-PESA prompt for individual simulation). */
     directPayEnabled: boolean;
   };
+  /** Active payment provider (mpesa-daraja, payhero, kopokopo, intasend, paystack). */
+  activePaymentProvider?: string | null;
 }
 
 export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
@@ -114,6 +116,7 @@ export const DEFAULT_MONETIZATION_SETTINGS: MonetizationSettings = {
     tokensEnabled: true,
     directPayEnabled: true,
   },
+  activePaymentProvider: null,
 };
 
 /** Shilling price of a pay-per-simulation: its token cost at the token rate. */

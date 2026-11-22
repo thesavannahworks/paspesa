@@ -310,6 +310,7 @@ describe('payments (§31–33, §47.8)', () => {
       offlineAuthorizationDays: 3,
       transactionTypeControls: {},
       paymentMethodControls: { tokensEnabled: true, directPayEnabled: true },
+      activePaymentProvider: null,
     });
     expect((await money.updateSettings({ freeSimulationsOffline: false }, 'admin:test')).freeSimulationsOffline).toBe(false);
     expect((await money.settings()).freeSimulationsOffline).toBe(false);

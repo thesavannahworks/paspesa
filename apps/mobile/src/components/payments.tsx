@@ -104,7 +104,11 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
   const submission = useSubmission();
   const params = useLocalSearchParams<Partial<Record<keyof FormState | 'tab', string>>>();
 
-  const initialType = types.find((t) => t === params.tab) ?? types[0]!;
+  // Check which transaction types are enabled
+  const controls = deps.config.monetization.transactionTypeControls ?? {};
+  const isTypeEnabled = (type: PaymentType) => controls[type] !== false;
+
+  const initialType = types.find((t) => t === params.tab && isTypeEnabled(t)) ?? types.find(isTypeEnabled) ?? types[0]!;
   const [type, setType] = useState<PaymentType>(initialType);
   const [form, setForm] = useState<FormState>(() => ({
     ...EMPTY,
@@ -296,7 +300,15 @@ export function PaymentJourneyScreen({ title, types, lowercaseLabels }: { title:
     <Screen>
       <ScreenHeader title={title} />
       <View style={{ marginTop: s(8) }}>
-        <SegmentedTabs value={type} onChange={switchType} tabs={types.map((t) => ({ key: t, label: t === 'POCHI' && types.length > 2 ? 'Pochi la Biashara' : TAB_LABEL[t] }))} />
+        <SegmentedTabs 
+          value={type} 
+          onChange={switchType} 
+          tabs={types.map((t) => ({ 
+            key: t, 
+            label: t === 'POCHI' && types.length > 2 ? 'Pochi la Biashara' : TAB_LABEL[t],
+            inert: !isTypeEnabled(t)
+          }))} 
+        />
       </View>
 
       <FavouritesStrip items={favs} onPick={pickFavourite} onAdd={() => setAddOpen(true)} />
