@@ -4,20 +4,37 @@ dist/
 web-build/
 coverage/
 *.log
+
+# Environment files with secrets
 .env
 .env.*
 !.env.example
 
-# backend embedded database (PGlite)
+# Backend embedded database (PGlite)
 .data/
 
-# Notes
+# Notes and reports (keep production docs tracked)
 notes.md
-
-# Engineering reports and local tools
 Paspesa Engineering Report.md
+*.draft.md
+
+# Local tools
 ngrok.exe
 ngrok-v3-stable-windows-amd64.zip
 
 # IDE
 .vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database dumps and backups
+*.dump
+*.dump.enc
+backups/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
