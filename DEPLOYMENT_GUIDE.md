@@ -35,45 +35,75 @@ Neon (FREE Forever - Hobby Plan)
 
 ---
 
-## PHASE 1: NEON DATABASE SETUP (15 minutes)
+## PHASE 1: NEON DATABASE SETUP ✅ COMPLETE
 
-### Step 1: Create Neon Account
-
-1. Go to https://neon.tech
-2. Click "Sign Up"
-3. Choose **GitHub login** (easier connection to Railway)
-4. Confirm email
-
-### Step 2: Create Database
-
-1. Click "Create Project"
-2. Project name: `paspesa-production`
-3. PostgreSQL version: **15** (recommended)
-4. Region: Choose closest to your users (e.g., `AWS / eu-central-1 (Frankfurt)`)
-5. Click "Create Project"
-
-### Step 3: Get Connection String
-
-1. In Neon dashboard, click your project
-2. Click "Connection Details"
-3. Copy the **Connection string** (looks like):
-   ```
-   postgresql://pascal:[password]@ep-[random].eu-central-1.aws.neon.tech/paspesa?sslmode=require
-   ```
-4. **SAVE THIS** - you'll need it for Railway
-
-### Step 4: Verify Database
+### Step 1: Install Neon CLI
 
 ```bash
-# Optional: Test connection locally
-DATABASE_URL="postgresql://pascal:[password]@ep-[random].eu-central-1.aws.neon.tech/paspesa?sslmode=require" \
-  npm run dev -w @paspesa/backend
+npm i -g neon@latest
+```
+
+### Step 2: Initialize Neon Project
+
+```bash
+# From your project root
+neon init -y \
+  --org-id org-snowy-bonus-23086424 \
+  --project-id quiet-hall-63898390 \
+  --branch production \
+  --services postgres
+```
+
+This creates:
+- `neon.ts` - Neon configuration file
+- `.neon/` - Neon metadata (gitignored)
+
+### Step 3: Deploy and Get Credentials
+
+```bash
+neon deploy
+```
+
+This will:
+1. Open browser for authentication
+2. Pull DATABASE_URL to `.env.local`
+3. Create these environment variables:
+   ```
+   DATABASE_URL=postgresql://neondb_owner:...@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?sslmode=require
+   DATABASE_URL_UNPOOLED=postgresql://...
+   NEON_BRANCH=production
+   NEON_BRANCH_ID=br-flat-mud-bh2jqiy1
+   NEON_FUNCTION_HOST_SUFFIX=.compute.c-10.eu-central-1.aws.neon.tech
+   ```
+
+### Step 4: Update Backend Configuration
+
+Copy `DATABASE_URL` from `.env.local` to `apps/backend/.env`:
+
+```bash
+# apps/backend/.env
+DATABASE_URL=postgresql://neondb_owner:npg_pgUViQc3rLX6@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+```
+
+### Step 5: Verify Local Connection
+
+```bash
+npm run start -w @paspesa/backend
 
 # Should see:
 # [paspesa] backend listening on http://0.0.0.0:3000 (database: PostgreSQL)
 ```
 
-**Expected Result:** ✅ Fresh empty database ready
+```bash
+# Run tests to verify schema creation
+npm test -w @paspesa/backend
+
+# Should see:
+# Test Files  7 passed (7)
+# Tests  68 passed (68)
+```
+
+**Result:** ✅ Neon database configured and tested locally (68/68 tests passing)
 
 ---
 
