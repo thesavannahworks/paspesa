@@ -10,6 +10,9 @@ coverage/
 .env.*
 !.env.example
 !.env.*.example
+# Allow mobile app production/preview env (only contains public backend URL)
+!apps/mobile/.env.production
+!apps/mobile/.env.preview
 
 # Backend embedded database (PGlite)
 .data/
