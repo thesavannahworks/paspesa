@@ -48,9 +48,10 @@ if (paymentProviders.all.length) {
 }
 console.log(`[paspesa] payments: ${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
 console.log(`[paspesa] sign-in emails: ${
+  mailer.kind === 'sendgrid' ? `SendGrid (${process.env.MAIL_FROM || 'noreply@example.com'})` :
   mailer.kind === 'resend' ? `Resend API (${process.env.MAIL_FROM || 'onboarding@resend.dev'})` :
   mailer.kind === 'smtp' ? `SMTP via ${process.env.SMTP_HOST}` :
-  'printed to console (set RESEND_API_KEY to send real email)'
+  'printed to console (set SENDGRID_API_KEY or RESEND_API_KEY to send real email)'
 }`);
 console.log(`[paspesa] backend listening on http://${host}:${port} (database: ${db.kind === 'postgres' ? 'PostgreSQL' : `embedded PostgreSQL in ${pgliteDir}`})`);
 

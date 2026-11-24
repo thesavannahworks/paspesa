@@ -1,20 +1,23 @@
 /**
- * Outgoing email (sign-in codes). Three options:
+ * Outgoing email (sign-in codes). Four options (priority order):
  *
- * 1. Resend (recommended for production - uses HTTPS API):
+ * 1. SendGrid (recommended - works on Railway, can verify individual sender):
+ *    SENDGRID_API_KEY=SG....
+ *    MAIL_FROM="Paspesa <thesavannahworks@gmail.com>"  (must be verified in SendGrid)
+ *
+ * 2. Resend (requires custom domain for production):
  *    RESEND_API_KEY=re_...
- *    MAIL_FROM="Paspesa <onboarding@resend.dev>"  (or your custom domain)
+ *    MAIL_FROM="Paspesa <onboarding@resend.dev>"  (testing only, or custom domain)
  *
- * 2. SMTP (blocked by Railway and most cloud providers):
+ * 3. SMTP (blocked by Railway and most cloud providers):
  *    SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_PASS, MAIL_FROM
  *
- * 3. Console (development only - prints codes to logs):
- *    Leave both RESEND_API_KEY and SMTP_HOST unset
- *
- * Gmail works with an App Password (Google account → Security → 2-Step Verification → App passwords).
+ * 4. Console (development only - prints codes to logs):
+ *    Leave all API keys and SMTP_HOST unset
  */
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 
 export interface Mail {
   to: string;
@@ -24,13 +27,31 @@ export interface Mail {
 }
 
 export interface Mailer {
-  /** 'resend' uses Resend API; 'smtp' sends via SMTP; 'console' prints it (development). */
-  readonly kind: 'resend' | 'smtp' | 'console' | 'memory';
+  /** Email service being used. */
+  readonly kind: 'sendgrid' | 'resend' | 'smtp' | 'console' | 'memory';
   send(mail: Mail): Promise<void>;
 }
 
 export function mailerFromEnv(env: NodeJS.ProcessEnv): Mailer {
-  // Priority 1: Resend (works on Railway and all cloud platforms)
+  // Priority 1: SendGrid (works on Railway, can verify individual email addresses)
+  if (env.SENDGRID_API_KEY) {
+    sgMail.setApiKey(env.SENDGRID_API_KEY);
+    const from = env.MAIL_FROM || 'Paspesa <noreply@example.com>';
+    return {
+      kind: 'sendgrid',
+      async send(mail) {
+        await sgMail.send({
+          from,
+          to: mail.to,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
+        });
+      },
+    };
+  }
+
+  // Priority 2: Resend (works on Railway but requires custom domain for production)
   if (env.RESEND_API_KEY) {
     const resend = new Resend(env.RESEND_API_KEY);
     const from = env.MAIL_FROM || 'Paspesa <onboarding@resend.dev>';
@@ -48,7 +69,7 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv): Mailer {
     };
   }
 
-  // Priority 2: SMTP (blocked by Railway)
+  // Priority 3: SMTP (blocked by Railway)
   if (env.SMTP_HOST) {
     const port = Number(env.SMTP_PORT ?? 587);
     const transport = nodemailer.createTransport({
