@@ -75,11 +75,12 @@ export default function ProfileScreen() {
       <View style={styles.tileRow}>
         <Tile icon={<WalletIcon size={28} />} label={'General\nOperations'} href="/general-operations" />
         <Tile icon={<LockIcon size={28} />} label="Paspesa PIN" href="/change-pin" />
-        <Tile icon={<InfoIcon size={28} />} label="About App" />
+        <Tile icon={<InfoIcon size={28} />} label="About App" href="/about" />
       </View>
       <View style={styles.tileRow}>
         <Tile icon={<PersonIcon size={28} />} label={'Account\nDetails'} href="/account-details" />
         <Tile icon={<ShareIcon size={28} />} label={'Recommend\nA Friend'} />
+        <Tile icon={<GearIcon size={28} />} label={'Help &\nUser Guide'} href="/help" />
       </View>
 
       <T variant="label" color={colors.textSecondary} style={{ marginTop: s(30) }}>

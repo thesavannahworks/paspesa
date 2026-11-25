@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd apps/mobile && npx expo export --platform web",
+  "outputDirectory": "apps/mobile/dist",
+  "installCommand": "npm install --ignore-scripts && npm rebuild --if-present",
+  "framework": null,
+  "env": {
+    "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
+  }
+}

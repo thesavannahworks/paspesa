@@ -2,6 +2,7 @@ import { isValidEmail, normalizeEmail } from '@paspesa/core';
 import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { Checkbox } from '@/components/Checkbox';
 import { Field, OutlineButton, PrimaryButton, Screen, T } from '@/components/ui';
 import { useAppState } from '@/services/AppState';
 import { messageOf, requestCode, useSession, verifyCode } from '@/services/session';
@@ -26,6 +27,7 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -38,6 +40,7 @@ export default function SignInScreen() {
   const send = async () => {
     const clean = normalizeEmail(email);
     if (!isValidEmail(clean)) return setError('Enter a valid email address');
+    if (!agreedToTerms) return setError('You must accept the Privacy Policy, Terms of Service, and Data Protection notice to continue');
     setBusy(true);
     setError(null);
     try {
@@ -156,6 +159,46 @@ export default function SignInScreen() {
         returnKeyType="send"
       />
       {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(14) }}>{error}</T> : null}
+      
+      <View style={{ marginTop: s(20) }}>
+        <Checkbox
+          checked={agreedToTerms}
+          onPress={() => setAgreedToTerms(!agreedToTerms)}
+          label={
+            <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>
+              I have read and agree to the{' '}
+              <T
+                variant="body"
+                color={colors.green}
+                onPress={() => router.push('/legal/privacy')}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                Privacy Policy
+              </T>
+              {', '}
+              <T
+                variant="body"
+                color={colors.green}
+                onPress={() => router.push('/legal/terms')}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                Terms of Service
+              </T>
+              {', and '}
+              <T
+                variant="body"
+                color={colors.green}
+                onPress={() => router.push('/legal/data-protection')}
+                style={{ textDecorationLine: 'underline' }}
+              >
+                Data Protection
+              </T>
+              {' notice'}
+            </T>
+          }
+        />
+      </View>
+      
       <View style={{ marginTop: s(14), padding: s(14), borderRadius: s(10), backgroundColor: colors.raised }}>
         <T variant="caption" color={colors.textSecondary} style={{ lineHeight: s(19) }}>
           Paspesa is a simulator. It never asks for your real M-PESA PIN, and no real money moves.

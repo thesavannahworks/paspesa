@@ -7,6 +7,22 @@ Product source of truth: [`paspesa white paper v0.3.md`](paspesa%20white%20paper
 Architecture: [`docs/decisions/0001-initial-architecture.md`](docs/decisions/0001-initial-architecture.md) ·
 UI references: [`reference-screenshots/`](reference-screenshots)
 
+## 🚀 Live Deployment
+
+- **Web App:** https://paspesa-mu.vercel.app
+- **Backend API:** https://paspesa-production.up.railway.app
+- **GitHub:** https://github.com/thesavannahworks/paspesa
+
+### Production Stack
+
+- **Frontend:** Vercel (web app)
+- **Backend:** Railway (Node.js)
+- **Database:** Neon PostgreSQL (serverless)
+- **Email:** SendGrid (authentication codes)
+- **Payments:** PayHero (Paspesa Token purchases)
+
+All services run on free tiers.
+
 ## Layout
 
 ```
@@ -14,6 +30,18 @@ packages/core   @paspesa/core — engine, fee schedules, messages, ledger, state
 apps/mobile     @paspesa/mobile — Expo app (Android / iOS / web from one codebase)
 apps/backend    @paspesa/backend — NestJS + PostgreSQL: account persistence and synchronization API
 ```
+
+## Legal Documents
+
+Legal documents are stored as markdown files in `apps/mobile/legal/`:
+
+- **Privacy Policy** (`privacy-policy.md`) - Data collection and usage
+- **Terms of Service** (`terms-of-service.md`) - User agreement and acceptable use
+- **Data Protection** (`data-protection.md`) - GDPR/Kenya DPA compliance
+- **Help & User Guide** (`help.md`) - Complete user documentation
+- **About App** (`about.md`) - App information and mission
+
+These are rendered in-app via `/legal/*`, `/help`, and `/about` routes. Users must accept legal terms before signing in.
 
 ## Getting started
 
