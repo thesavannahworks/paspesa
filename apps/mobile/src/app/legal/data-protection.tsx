@@ -1,8 +1,8 @@
 import { Screen, ScreenHeader } from '@/components/ui';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
 
-// Import the markdown content as a string
-const dataProtectionContent = require('../../../legal/data-protection.md');
+// Import markdown as string
+const dataProtectionContent = require('../../../legal/data-protection.md') as string;
 
 /**
  * Data Protection - loaded from markdown file

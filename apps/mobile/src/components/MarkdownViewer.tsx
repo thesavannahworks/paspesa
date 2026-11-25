@@ -11,7 +11,7 @@ interface MarkdownViewerProps {
  * Renders markdown content with app-consistent styling
  */
 export function MarkdownViewer({ content }: MarkdownViewerProps) {
-  const { colors, mode } = useTheme();
+  const { colors } = useTheme();
 
   const markdownStyles = StyleSheet.create({
     body: {

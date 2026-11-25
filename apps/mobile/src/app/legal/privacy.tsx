@@ -1,8 +1,8 @@
 import { Screen, ScreenHeader } from '@/components/ui';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
 
-// Import the markdown content as a string
-const privacyPolicyContent = require('../../../legal/privacy-policy.md');
+// Import markdown as string
+const privacyPolicyContent = require('../../../legal/privacy-policy.md') as string;
 
 /**
  * Privacy Policy - loaded from markdown file

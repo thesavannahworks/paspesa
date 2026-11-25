@@ -1,8 +1,8 @@
 import { Screen, ScreenHeader } from '@/components/ui';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
 
-// Import the markdown content as a string
-const termsContent = require('../../../legal/terms-of-service.md');
+// Import markdown as string
+const termsContent = require('../../../legal/terms-of-service.md') as string;
 
 /**
  * Terms of Service - loaded from markdown file

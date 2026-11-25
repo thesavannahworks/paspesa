@@ -165,36 +165,26 @@ export default function SignInScreen() {
           checked={agreedToTerms}
           onPress={() => setAgreedToTerms(!agreedToTerms)}
           label={
-            <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>
-              I have read and agree to the{' '}
-              <T
-                variant="body"
-                color={colors.green}
-                onPress={() => router.push('/legal/privacy')}
-                style={{ textDecorationLine: 'underline' }}
-              >
-                Privacy Policy
+            <View>
+              <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22), marginBottom: s(8) }}>
+                I have read and agree to the following:
               </T>
-              {', '}
-              <T
-                variant="body"
-                color={colors.green}
-                onPress={() => router.push('/legal/terms')}
-                style={{ textDecorationLine: 'underline' }}
-              >
-                Terms of Service
-              </T>
-              {', and '}
-              <T
-                variant="body"
-                color={colors.green}
-                onPress={() => router.push('/legal/data-protection')}
-                style={{ textDecorationLine: 'underline' }}
-              >
-                Data Protection
-              </T>
-              {' notice'}
-            </T>
+              <Pressable onPress={() => router.push('/legal/privacy')} hitSlop={4}>
+                <T variant="body" color={colors.green} style={{ textDecorationLine: 'underline', marginBottom: s(4) }}>
+                  • Privacy Policy
+                </T>
+              </Pressable>
+              <Pressable onPress={() => router.push('/legal/terms')} hitSlop={4}>
+                <T variant="body" color={colors.green} style={{ textDecorationLine: 'underline', marginBottom: s(4) }}>
+                  • Terms of Service
+                </T>
+              </Pressable>
+              <Pressable onPress={() => router.push('/legal/data-protection')} hitSlop={4}>
+                <T variant="body" color={colors.green} style={{ textDecorationLine: 'underline' }}>
+                  • Data Protection Notice
+                </T>
+              </Pressable>
+            </View>
           }
         />
       </View>

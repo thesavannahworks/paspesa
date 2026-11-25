@@ -1,8 +1,8 @@
 import { Screen, ScreenHeader } from '@/components/ui';
 import { MarkdownViewer } from '@/components/MarkdownViewer';
 
-// Import the markdown content as a string
-const aboutContent = require('../../legal/about.md');
+// Import markdown as string
+const aboutContent = require('../../legal/about.md') as string;
 
 /**
  * About App - loaded from markdown file
