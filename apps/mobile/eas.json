@@ -8,13 +8,19 @@
       "android": {
         "buildType": "apk"
       },
-      "environment": "preview"
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
+      }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
       },
-      "environment": "production"
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
+      }
     }
   }
 }
