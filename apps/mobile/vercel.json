@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npx expo export --platform web",
+  "outputDirectory": "dist",
+  "framework": null,
+  "installCommand": "npm install",
+  "env": {
+    "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
+  }
+}
