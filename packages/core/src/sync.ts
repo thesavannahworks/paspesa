@@ -47,7 +47,8 @@ export type SyncOperation =
   | (OperationBase & { entityType: 'TRANSACTION'; operationType: 'CREATE_SIMULATION'; payload: { transaction: SyncTransaction; message: SyncMessage | null } })
   | (OperationBase & { entityType: 'ACCOUNT'; operationType: 'UPDATE_ACCOUNT_SETTINGS'; payload: Extract<OutboxPayload, { kind: string }> })
   | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'UPSERT_FAVOURITE'; payload: { favourite: Favourite } })
-  | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'DELETE_FAVOURITE'; payload: { favouriteId: string } });
+  | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'DELETE_FAVOURITE'; payload: { favouriteId: string } })
+  | (OperationBase & { entityType: 'ACCOUNT'; operationType: 'DELETE_ACCOUNT'; payload: Extract<OutboxPayload, { kind: 'DELETE_ACCOUNT' }> });
 
 export interface SyncPushRequest {
   apiVersion: number;
@@ -167,6 +168,11 @@ export async function buildSyncOperation(entry: OutboxEntry, store: StoreReader)
     }
     case 'DELETE_FAVOURITE':
       return { ...base, entityType: 'FAVOURITE', operationType: 'DELETE_FAVOURITE', payload: { favouriteId: entry.entityId } };
+    case 'DELETE_ACCOUNT':
+      if (entry.payload && 'kind' in entry.payload && entry.payload.kind === 'DELETE_ACCOUNT') {
+        return { ...base, entityType: 'ACCOUNT', operationType: 'DELETE_ACCOUNT', payload: entry.payload };
+      }
+      return null;
   }
 }
 

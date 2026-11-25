@@ -225,7 +225,7 @@ export interface OutboxEntry {
   operationId: string;
   entityType: 'ACCOUNT' | 'TRANSACTION' | 'FAVOURITE';
   entityId: string;
-  operationType: 'CREATE_ACCOUNT' | 'UPDATE_ACCOUNT_SETTINGS' | 'CREATE_SIMULATION' | 'UPSERT_FAVOURITE' | 'DELETE_FAVOURITE';
+  operationType: 'CREATE_ACCOUNT' | 'UPDATE_ACCOUNT_SETTINGS' | 'CREATE_SIMULATION' | 'UPSERT_FAVOURITE' | 'DELETE_FAVOURITE' | 'DELETE_ACCOUNT';
   payloadVersion: number;
   createdAt: string;
   attemptCount: number;
@@ -245,6 +245,7 @@ export type OutboxPayload =
   | { kind: 'DETAILS'; accountName: string; phoneNumber: string }
   | { kind: 'RECHARGE_SENDER'; defaults: { name: string; phone: string } | null }
   | { kind: 'AIRTIME_RESET'; amount: number }
+  | { kind: 'DELETE_ACCOUNT'; accountId: string }
   | { favourite: Favourite }
   | { favouriteId: string };
 

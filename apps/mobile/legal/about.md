@@ -32,9 +32,10 @@ Experience the full range of mobile money operations:
 ### 🎯 Paspesa Tokens
 A unique token system that makes simulation sustainable:
 - Purchase tokens with real money (via PayHero)
+- **1 Token = KSh 1** - simple, transparent pricing
 - Use tokens to initiate transactions
 - Receiving money is always free
-- Flexible token packages to suit your needs
+- Enter any amount you need
 
 ### 🔒 Secure & Private
 - Industry-standard encryption
@@ -109,7 +110,7 @@ We take your privacy seriously:
 - ✅ Compliance with Kenya Data Protection Act and GDPR
 - ✅ Your right to access, correct, or delete your data
 
-For details, see our [Privacy Policy](#) and [Data Protection](#) pages.
+For details, see our Privacy Policy and Data Protection pages in the app menu.
 
 ## Support & Contact
 
@@ -152,9 +153,9 @@ We thank our users, testers, and everyone who has contributed feedback to make P
 
 By using Paspesa, you agree to our:
 
-- [Terms of Service](#)
-- [Privacy Policy](#)
-- [Data Protection Notice](#)
+- Terms of Service
+- Privacy Policy
+- Data Protection Notice
 
 All Paspesa Token purchases are final and non-refundable. See our Terms of Service for complete details.
 

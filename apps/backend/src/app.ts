@@ -65,6 +65,7 @@ import { MonetizationError, MonetizationService, type PaymentProvider } from './
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
 import { SignInError, SignInService } from './signin.service.js';
+import { AccountDeletionService } from './account-deletion.service.js';
 import { blockFor } from './suspension.js';
 import { mailerFromEnv, type Mailer } from './mailer.js';
 import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.controller.js';
@@ -154,7 +155,11 @@ const signInFail = (e: unknown) => {
 @Controller('v1')
 @UseGuards(InstallationAuthGuard)
 class SignInController {
-  constructor(@Inject(SignInService) private readonly signIn: SignInService) {}
+  constructor(
+    @Inject(SignInService) private readonly signIn: SignInService,
+    @Inject(AccountDeletionService) private readonly deletion: AccountDeletionService,
+    @Inject(DATABASE) private readonly db: Database,
+  ) {}
 
   @Post('auth/code')
   @HttpCode(200)
@@ -195,6 +200,39 @@ class SignInController {
     } catch (e) {
       throw signInFail(e);
     }
+  }
+
+  @Post('account/delete')
+  @HttpCode(200)
+  async deleteAccount(@Req() req: AuthedRequest) {
+    // Get account from installation
+    const [account] = await this.db.query<{ id: string; account_name: string }>(
+      'SELECT a.id, a.account_name FROM accounts a WHERE a.installation_id = $1',
+      [req.installationId!],
+    );
+    
+    if (!account) {
+      throw fail(HttpStatus.NOT_FOUND, 'NO_ACCOUNT', 'No account found for this device');
+    }
+
+    // Check if account can be deleted
+    const canDelete = await this.deletion.canDelete(account.id);
+    if (!canDelete.ok) {
+      throw fail(HttpStatus.BAD_REQUEST, 'CANNOT_DELETE', canDelete.reason!);
+    }
+
+    // Perform deletion
+    const result = await this.deletion.deleteAccount(account.id);
+    
+    if (!result.ok) {
+      throw fail(HttpStatus.INTERNAL_SERVER_ERROR, 'DELETE_FAILED', 'Failed to delete account');
+    }
+
+    return {
+      deleted: true,
+      accountName: account.account_name,
+      message: result.message,
+    };
   }
 }
 
@@ -455,6 +493,7 @@ class AppModule {
           useFactory: (money: MonetizationService, allocations: AllocationService) => new SyncService(db, undefined, money, allocations),
           inject: [MonetizationService, AllocationService],
         },
+        { provide: AccountDeletionService, useFactory: () => new AccountDeletionService(db) },
         InstallationAuthGuard,
       ],
     };

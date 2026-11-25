@@ -127,13 +127,13 @@ Paspesa Tokens are **virtual credits** that let you initiate simulated transacti
 
 1. Tap your profile picture
 2. Tap **"Paspesa Tokens"**
-3. Select a token package:
-   - 10 Tokens = KES 50
-   - 50 Tokens = KES 200
-   - 100 Tokens = KES 350
-   - 500 Tokens = KES 1,500
-4. Complete payment through PayHero (M-PESA)
-5. Tokens are added to your account instantly
+3. Enter the amount in Kenyan Shillings (KSh)
+   - **1 Token = KSh 1**
+   - Suggested amounts: 50, 100, 200, 500, 1000
+   - Or enter any custom amount
+4. Enter your M-PESA phone number
+5. Complete payment through PayHero (M-PESA STK push)
+6. Tokens are added to your account instantly after payment confirmation
 
 ### Token Allocation
 
@@ -271,6 +271,17 @@ Yes! You can send to any Kenyan number. The recipient won't receive real money, 
 ### How do I delete my account?
 
 Email us at **thesavannahworks@gmail.com** with your request. We'll delete your account and data within 30 days.
+
+### How do I delete my account?
+
+To permanently delete your Paspesa account:
+
+1. Email **thesavannahworks@gmail.com** with your request
+2. Include your registered email address
+3. We'll confirm your identity and process the deletion within 30 days
+4. All your data will be permanently deleted, except what we're legally required to keep (financial records for 7 years)
+
+**Important:** Account deletion is permanent and cannot be undone. Any unused tokens will be forfeited with no refund.
 
 ### Can I get a refund for tokens?
 
