@@ -1,303 +1,192 @@
-# Paspesa Help & User Guide
+# Help and User Guide
 
-Welcome to Paspesa! This guide will help you get started and make the most of your mobile-money simulation experience.
+Paspesa lets you practise mobile-money transactions safely: everything looks and works like the real thing, but **no real money moves when you simulate**, and Paspesa **never asks for your real M-PESA PIN**.
 
-## Table of Contents
+**Contents**
 
-1. [Getting Started](#getting-started)
-2. [Understanding Paspesa](#understanding-paspesa)
-3. [Core Features](#core-features)
-4. [Paspesa Tokens](#paspesa-tokens)
-5. [Security & Authentication](#security--authentication)
-6. [Troubleshooting](#troubleshooting)
-7. [Frequently Asked Questions](#frequently-asked-questions)
+- [Getting started](#getting-started)
+- [Your home screen](#your-home-screen)
+- [Send money](#send-money)
+- [Lipa na M-PESA](#lipa-na-m-pesa)
+- [Scan to pay](#scan-to-pay)
+- [Airtime top up](#airtime-top-up)
+- [Adding simulated funds](#adding-simulated-funds)
+- [Messages and statements](#messages-and-statements)
+- [Paspesa tokens](#paspesa-tokens)
+- [Backups and other devices](#backups-and-other-devices)
+- [Your PIN and security](#your-pin-and-security)
+- [Your account](#your-account)
+- [Troubleshooting](#troubleshooting)
+- [Questions people ask](#questions-people-ask)
+- [Contact us](#contact-us)
 
----
+## Getting started
 
-## Getting Started
+1. Enter your **email address**, tick the box to accept the [Privacy Policy](privacy-policy.md), the [Terms of Service](terms-of-service.md) and the [Data Protection Notice](data-protection.md), and tap **Send code**.
+2. We email you a **6-digit code**. Enter it and tap **Sign in**. A code works once, for 10 minutes.
+3. **New account:** enter your name, a phone number and an opening balance (up to KSh 250,000 of practice money), and create a 4-digit **Paspesa PIN**. Tap **Create account**.
+4. **Existing account:** your balance and history are restored from your backup. On a new phone you create a Paspesa PIN for it.
 
-### Creating Your Account
+Use a name and number you are happy to see in your practice messages. **Do not use your real M-PESA PIN as your Paspesa PIN.**
 
-1. **Sign In:** Tap "Sign in" on the welcome screen
-2. **Enter Email:** Provide a valid email address
-3. **Verify Code:** Check your email for a 6-digit code and enter it
-4. **Agree to Terms:** Accept the Privacy Policy, Terms of Service, and Data Protection notice
-5. **Set Up PIN:** Create a 4-digit Paspesa PIN for quick access
-6. **Choose Identity:** Select your phone number and account name
+## Your home screen
 
-### First Steps
+- **M-PESA Balance** shows your simulated balance. Tap the eye to show or hide it.
+- **View Statements** opens your simulated statement.
+- The quick actions open **Send Money**, **Lipa na M-PESA** and **Airtime Top Up**. Some tiles are there for the look of the real app and do nothing yet.
+- The bell opens your **messages**; the magnifier lets you **search** for any feature.
+- **Scan to pay** at the bottom opens the QR scanner.
+- Your picture at the top opens your **Profile**.
 
-Once your account is set up:
+## Send money
 
-- **Explore the Home Screen:** See your simulated balance and recent transactions
-- **Check Your Profile:** Customize your name and profile picture
-- **Buy Tokens:** Purchase Paspesa Tokens to start making transactions
-- **Add Contacts:** Save frequently used phone numbers
+1. Tap **Send Money**.
+2. Type a phone number or choose someone from your contacts, then enter the amount.
+3. Check the details, including the fee, and enter your Paspesa PIN.
+4. You see the confirmation and receive a practice message, just like the real service.
 
----
+You can also send to a **Pochi la Biashara** number from the same screen. Fees follow Paspesa's reference tariff.
 
-## Understanding Paspesa
+## Lipa na M-PESA
 
-### What is Paspesa?
+- **Buy Goods (till):** enter the till number and the amount.
+- **Paybill:** enter the business number, the account number and the amount.
+- **Pochi la Biashara:** enter the business's phone number and the amount.
 
-Paspesa is a **mobile-money transaction simulator** that replicates the experience of using M-PESA and similar services. It's designed for:
+Confirm with your Paspesa PIN. Numbers you use often appear as favourites to save typing.
 
-- Learning how mobile money works
-- Training staff on mobile money operations
-- Testing payment flows without risk
-- Demonstrating mobile money to others
+## Scan to pay
 
-### What's Real and What's Simulated?
+Tap **Scan to pay** and point the camera at a **Paspesa** payment QR code, or pick a photo of one from your gallery. Paspesa opens the right payment with the details filled in, and you confirm the amount and your PIN. Real M-PESA and merchant QR codes are not read.
 
-| Feature | Status |
-|---------|--------|
-| Money sent in transactions | ❌ **Simulated** (not real) |
-| Account balances | ❌ **Simulated** (not real) |
-| Transaction history | ❌ **Simulated** (for training) |
-| Paspesa Token purchases | ✅ **Real** (actual payment) |
-| Your email and account | ✅ **Real** (backed up to cloud) |
-| PayHero payments | ✅ **Real** (actual money) |
+The **My QR** tab shows your own code, so someone practising on another phone can scan it and "send" you money. The camera is used only while the scanner is open.
 
-**Important:** Paspesa never asks for your real M-PESA PIN or accesses your actual mobile money accounts.
+## Airtime top up
 
----
+1. Tap **Airtime Top Up**.
+2. Choose **Own Number** or **Other Number** and enter the amount.
+3. Tap **Top Up** and confirm with your PIN.
 
-## Core Features
+Simulated airtime has a limit of KSh 1,000. To start again, go to **Profile → General Operations → Reset airtime balance**.
 
-### Send Money
+## Adding simulated funds
 
-Send simulated money to any Kenyan phone number:
+To practise with more money, go to **Profile → General Operations → Recharge account**. The money arrives from your **default recharge sender**, which you can change on the same screen. Recharging never costs tokens.
 
-1. Tap **"Send Money"** on the home screen
-2. Enter the recipient's phone number (or select from contacts)
-3. Enter the amount to send
-4. Confirm with your Paspesa PIN
-5. View the transaction confirmation
+## Messages and statements
 
-**Note:** Each transaction uses 1 Paspesa Token.
+- **Messages** (the bell) lists every practice message. You can read, star and delete them; this only changes what you see on this phone.
+- **Statements** list every simulated transaction with its date, amount, fee and balance. Tap one to see its details.
 
-### Lipa na M-PESA (Pay Bill / Buy Goods)
+## Paspesa tokens
 
-Make simulated payments to businesses:
+When payment is switched on, a simulation is paid for with **Paspesa tokens** or with a one-off M-PESA payment.
 
-1. Tap **"Lipa na M-PESA"**
-2. Choose **"Pay Bill"** (account number required) or **"Buy Goods and Services"** (till number)
-3. Enter the business number and account/reference
-4. Enter the amount
-5. Confirm with your PIN
+**What things cost**
 
-### Recharge (Buy Airtime)
+- **1 token = KSh 1.** Pay KSh 100 and you get 100 tokens.
+- Small simulations are free. Above that, the cost grows with the amount: for example, a KSh 100 simulation costs **20 tokens**.
+- To see the cost of any amount, or how much you can simulate with your tokens, use the **Token Calculator** (Profile → Token Calculator).
+- Recharging your simulated balance is always free.
 
-Simulate buying airtime for yourself or others:
+**Buying tokens**
 
-1. Tap **"Recharge"** (airtime icon)
-2. Select **"For Me"** or **"For Someone Else"**
-3. Enter the amount (minimum KES 10)
-4. Confirm with your PIN
+1. Open **Profile → Paspesa Tokens** and tap **Buy Tokens**.
+2. Enter how many tokens you want and the M-PESA number to pay from.
+3. Approve the payment prompt on that phone with **your real M-PESA PIN**. This happens on Safaricom's prompt, never inside Paspesa.
+4. The tokens appear when the payment is confirmed, usually within a minute.
 
-### View Statements
+**Using tokens without internet**
 
-Access your complete transaction history:
+Tokens normally sit in your account balance. To pay for simulations while offline, tap **Set Aside** to move some onto this phone. They work offline for a few days (the screen shows until when), and only this phone can use them. Tap **Return** to give unused ones back to your balance, so you can use them on another phone. **Return your tokens before you reset, sell or lose a phone**, or they may be lost.
 
-1. Tap **"Messages"** to see recent transaction notifications
-2. Or tap the menu → **"M-PESA Statement"** for detailed history
-3. Filter by date range or transaction type
+**Paying for one simulation**
 
-### Manage Contacts
+Instead of tokens, choose **M-PESA** when Paspesa asks how you want to pay. You approve a payment prompt for the cost of that simulation. If the simulation then fails, the money is kept for you as a credit.
 
-Save frequently used numbers for quick access:
+**Your token history**
 
-1. Tap your profile picture → **"Account Details"**
-2. Scroll to **"Contacts"**
-3. Add, edit, or delete saved numbers
+**Paspesa Tokens → History** shows your purchases, what you spent tokens on, and every movement in your token wallet.
 
----
+## Backups and other devices
 
-## Paspesa Tokens
+- While you are online, Paspesa backs up your account and simulations about once a minute. Profile shows when the last backup happened; tap **Back up now** to do it straight away.
+- Sign in with the same email on another phone to continue there. Your account is active on one phone at a time.
+- If something you did was not accepted into the backup, Profile says the phone no longer matches it. **Reload from backup** puts the phone back in line with the backup (your PIN and settings stay).
+- **Sign out** clears Paspesa from this phone. Paspesa first finishes the backup so nothing is lost.
 
-### What are Paspesa Tokens?
+## Your PIN and security
 
-Paspesa Tokens are **virtual credits** that let you initiate simulated transactions:
+- **Change your PIN:** Profile → **Paspesa PIN**.
+- **Fingerprint or face unlock:** Profile → **Biometric Authentication**. Your phone checks it; Paspesa never sees it.
+- Your PIN is stored only on this phone, in scrambled form. We cannot see it or reset it for you.
+- **Never share** a sign-in code or your Paspesa PIN, and never give anyone your real M-PESA PIN.
 
-- **1 Token = 1 transaction** you can send
-- Purchased with **real money** via PayHero
-- Used to simulate Send Money, Lipa, and Recharge transactions
+**Beware of misuse.** A Paspesa message or screenshot is not proof of payment. If someone shows you a "payment" to get goods or money, check your real M-PESA account.
 
-### How to Buy Tokens
+## Your account
 
-1. Tap your profile picture
-2. Tap **"Paspesa Tokens"**
-3. Enter the amount in Kenyan Shillings (KSh)
-   - **1 Token = KSh 1**
-   - Suggested amounts: 50, 100, 200, 500, 1000
-   - Or enter any custom amount
-4. Enter your M-PESA phone number
-5. Complete payment through PayHero (M-PESA STK push)
-6. Tokens are added to your account instantly after payment confirmation
-
-### Token Allocation
-
-Tokens are split between:
-
-- **Cloud Balance:** Stored in your account (backed up)
-- **Device Balance:** Stored on this phone (for offline use)
-
-You can move tokens between cloud and device in the Paspesa Tokens screen.
-
-### Important Token Rules
-
-- ✅ Tokens remain valid as long as your account is active
-- ✅ Tokens sync across all your devices
-- ❌ Tokens cannot be refunded or exchanged for cash
-- ❌ Tokens cannot be transferred to other accounts
-- ❌ Receiving simulated money does **not** use tokens (only sending does)
-
----
-
-## Security & Authentication
-
-### Paspesa PIN
-
-Your 4-digit PIN secures transactions on this device:
-
-- Required for every transaction
-- **Never shared** with Paspesa servers (stored encrypted on your device)
-- Different from your real M-PESA PIN
-
-**To Change PIN:**
-1. Profile → **"Paspesa PIN"**
-2. Enter your current PIN
-3. Enter and confirm your new PIN
-
-### Email Verification
-
-Your email is used for:
-
-- Signing in on new devices
-- Account recovery
-- Important notifications
-- Multi-device sync
-
-**Tip:** Use a secure, permanent email address.
-
-### Biometric Authentication
-
-Enable fingerprint or face unlock for quick access:
-
-1. Profile → **"Biometric Authentication"**
-2. Toggle on and authenticate
-3. Next time, unlock with biometrics instead of PIN
-
-### Account Backup
-
-Your account is automatically backed up to the cloud:
-
-- Transactions sync in the background
-- Balance and history are saved
-- Sign in on any device to restore
-
-**To Back Up Now:**
-Profile → **"Back up now"**
-
----
+- **Change your name or phone number:** Profile → **Account Details**. Past transactions keep the details they had.
+- **Appearance:** Profile → **Appearance** for light or dark mode.
+- **Delete your account:** Profile → **Account Details → Delete my account**. You confirm with your PIN and a code we email you. This erases your simulations, messages, email address and tokens, and cannot be undone. See the [Data Protection Notice](data-protection.md#deleting-your-account) for exactly what is kept.
+- **A copy of your data:** write to us, see [Getting a copy of your data](data-protection.md#getting-a-copy-of-your-data).
 
 ## Troubleshooting
 
-### I didn't receive the sign-in code
+**The sign-in code did not arrive**
 
-1. Check your spam/junk folder
-2. Wait 60 seconds and tap **"Resend code"**
-3. Verify you entered the correct email address
-4. Check your internet connection
+- Look in your spam or junk folder, and check the email address you typed.
+- Wait a minute, then ask for a new code. There is a daily limit on codes.
+- A code expires after 10 minutes and locks after 5 wrong tries; ask for a new one.
 
-### My transaction failed
+**A simulation was refused**
 
-- **Insufficient Balance:** Check if your simulated balance is enough
-- **No Tokens:** Buy Paspesa Tokens to continue
-- **Invalid Number:** Ensure the phone number is a valid Kenyan number (07XX or 01XX)
-- **Offline:** Connect to the internet and try again
+- **Not enough balance:** add simulated funds (see [Adding simulated funds](#adding-simulated-funds)).
+- **Not enough tokens:** buy tokens, or pay for this one simulation with M-PESA.
+- **Wrong PIN:** enter your Paspesa PIN, not your real M-PESA PIN.
+- **Invalid number:** use a Kenyan number such as 07XX XXX XXX or 01XX XXX XXX.
 
-### I forgot my Paspesa PIN
+**I forgot my Paspesa PIN**
 
-1. Sign out from Profile
-2. Sign back in with your email
-3. Set a new PIN during setup
+Make sure your backup is up to date (Profile shows it), sign out, then sign in again with your email. Your account is restored and you create a new PIN.
 
-**Note:** Signing out clears local data, but your cloud backup remains safe.
+**I paid but the tokens have not appeared**
 
-### My balance is wrong after signing in
+1. Check that you received the M-PESA confirmation message on your phone.
+2. Wait a minute, then pull down on the Paspesa Tokens screen to refresh.
+3. If they are still missing after 10 minutes, write to us with the M-PESA confirmation code, the date and the amount.
 
-If your device balance doesn't match your backup:
+**The app says it is offline**
 
-1. Profile → **"Reload from backup"**
-2. This replaces your local balance with the cloud backup
+Signing in, buying tokens, backups and deleting your account need the internet. You can keep simulating offline; your work is backed up when you reconnect.
 
-### Tokens not showing after purchase
+**My account is suspended**
 
-1. Check if the payment completed in M-PESA
-2. Wait 1-2 minutes for processing
-3. Pull down to refresh on the home screen
-4. If still missing after 5 minutes, contact support with your M-PESA confirmation code
+Write to us and we will explain why and what you can do.
 
----
+## Questions people ask
 
-## Frequently Asked Questions
+**Is any of this real money?**
+No. Simulations never move real money. The only real payments are the ones you approve for tokens or for a single simulation.
 
-### Is Paspesa real money?
+**Can I withdraw my simulated balance?**
+No. It is practice money with no value.
 
-No. Transactions within Paspesa are **simulations only**. The only real money involved is when you buy Paspesa Tokens.
+**Will the person whose number I enter get money or a message?**
+No. Nothing is sent to them; the transaction exists only in your Paspesa.
 
-### Can I withdraw my simulated balance?
+**Is Paspesa part of Safaricom or M-PESA?**
+No. Paspesa is an independent training app by The Savannah Works.
 
-No. Simulated balances have no cash value and cannot be converted to real money.
+**Do I need the internet?**
+To sign in, buy tokens and back up, yes. To simulate, no.
 
-### Do I need internet to use Paspesa?
+**Can I get a refund for tokens?**
+Not for a change of mind. If you were charged in error, write to us within 30 days; see the [Terms of Service](terms-of-service.md#refunds-and-charges-made-in-error).
 
-- **Yes** for signing in, backing up, and buying tokens
-- **No** for making transactions once you've signed in (uses device tokens)
+**What happens to my data if I delete my account?**
+It is erased straight away, except the payment records we must keep, without your phone number. See [Deleting your account](data-protection.md#deleting-your-account).
 
-### Can I use Paspesa on multiple devices?
+## Contact us
 
-Yes! Sign in with the same email on any device. Your balance and history sync automatically.
-
-### What happens if I uninstall the app?
-
-Your cloud backup is safe. Reinstall and sign in with your email to restore everything. Any tokens on your device (not synced) will be lost.
-
-### Can I send simulated money to real phone numbers?
-
-Yes! You can send to any Kenyan number. The recipient won't receive real money, but the transaction appears in your simulated history as it would in real M-PESA.
-
-### How do I delete my account?
-
-Email us at **thesavannahworks@gmail.com** with your request. We'll delete your account and data within 30 days.
-
-### How do I delete my account?
-
-To permanently delete your Paspesa account:
-
-1. Email **thesavannahworks@gmail.com** with your request
-2. Include your registered email address
-3. We'll confirm your identity and process the deletion within 30 days
-4. All your data will be permanently deleted, except what we're legally required to keep (financial records for 7 years)
-
-**Important:** Account deletion is permanent and cannot be undone. Any unused tokens will be forfeited with no refund.
-
-### Can I get a refund for tokens?
-
-No. All token purchases are final and non-refundable as stated in our Terms of Service.
-
----
-
-## Need More Help?
-
-If you couldn't find the answer here:
-
-📧 **Email:** thesavannahworks@gmail.com  
-📱 **In-App:** Profile → About App → Contact Support
-
-We typically respond within 24-48 hours.
-
----
-
-**Happy simulating!** 🎉
+Email [thesavannahworks@gmail.com](mailto:thesavannahworks@gmail.com). Tell us the email you sign in with and, for a payment, the M-PESA confirmation code. We usually reply within two working days.

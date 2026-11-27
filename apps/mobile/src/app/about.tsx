@@ -1,17 +1,9 @@
-import { Screen, ScreenHeader } from '@/components/ui';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { useLocalSearchParams } from 'expo-router';
+import { DocumentScreen } from '@/components/MarkdownViewer';
+import { DOCUMENTS } from '@/services/legal';
 
-// Import markdown as string
-const aboutContent = require('../../legal/about.md') as string;
-
-/**
- * About App - loaded from markdown file
- */
-export default function AboutAppScreen() {
-  return (
-    <Screen background="page">
-      <ScreenHeader title="About Paspesa" />
-      <MarkdownViewer content={aboutContent} />
-    </Screen>
-  );
+/** Shows the document from apps/mobile/legal (see services/legal.ts); `?section=` opens it at a heading. */
+export default function AboutScreen() {
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  return <DocumentScreen doc={DOCUMENTS.about} section={section ?? null} />;
 }

@@ -1,177 +1,59 @@
 # About Paspesa
 
-## What is Paspesa?
+Paspesa is a **mobile-money simulator**. It looks and behaves like the mobile-money app people use every day, so you can learn and practise sending money, paying tills and paybills, buying airtime and reading statements, without any real money moving.
 
-Paspesa is a comprehensive mobile-money transaction simulator that replicates the experience of using M-PESA and similar mobile money services. Designed for education, training, and demonstration purposes, Paspesa provides a safe, risk-free environment to learn and practice mobile money operations without involving real money.
+## Who it is for
 
-## Our Mission
+- **First-time users** who want to try mobile money before using their own.
+- **Trainers, schools and businesses** teaching staff or students how payments work.
+- **Anyone demonstrating** a payment journey without risking real money.
 
-To make mobile money education accessible to everyone by providing a realistic, hands-on simulation platform that:
+## What you can do
 
-- **Educates** users on how mobile money works
-- **Trains** staff and agents on mobile money operations
-- **Demonstrates** payment flows to stakeholders
-- **Tests** integrations without financial risk
+- **Send Money** and **Pochi la Biashara**
+- **Lipa na M-PESA:** Buy Goods (till) and Paybill
+- **Airtime Top Up** for your own number or another
+- **Scan to pay** with Paspesa QR codes, and your own **My QR**
+- Realistic **messages**, **statements** and fees
+- **Offline use:** keep simulating without internet; your work is backed up when you reconnect
+- **Backup and restore:** sign in with your email on another phone and continue where you left off
 
-## Key Features
+See the [Help and User Guide](help.md) for step-by-step instructions.
 
-### 🔄 Complete Simulation
-Experience the full range of mobile money operations:
-- Send Money to any phone number
-- Lipa na M-PESA (Pay Bill & Buy Goods)
-- Buy Airtime for yourself or others
-- Withdraw Cash simulations
-- Full transaction history and statements
+## What is real and what is not
 
-### 💾 Cloud Backup & Sync
-- Automatic backup to secure cloud storage
-- Sync across all your devices
-- Never lose your simulation progress
-- Sign in anywhere to continue
+| What | Real or practice? |
+| --- | --- |
+| Your simulated balance, transactions, messages and statements | **Practice only.** No real money, no value |
+| The people and businesses you "pay" | **Nothing is sent to them** |
+| Paspesa tokens you buy, and one-off payments for a simulation | **Real payments** with M-PESA, which you approve on Safaricom's prompt |
+| Your Paspesa PIN | A practice PIN, stored only on your phone |
+| Your real M-PESA PIN | **Never asked for by Paspesa** |
 
-### 🎯 Paspesa Tokens
-A unique token system that makes simulation sustainable:
-- Purchase tokens with real money (via PayHero)
-- **1 Token = KSh 1** - simple, transparent pricing
-- Use tokens to initiate transactions
-- Receiving money is always free
-- Enter any amount you need
+A Paspesa message or screenshot is never proof of payment.
 
-### 🔒 Secure & Private
-- Industry-standard encryption
-- Biometric authentication support
-- Local PIN protection
-- Full compliance with data protection laws
+## Your privacy
 
-### 🌐 Multi-Platform
-- Native Android app
-- Progressive Web App
-- Same account across all platforms
+- We collect only what Paspesa needs: your email, the details you enter, your simulations and your token payments.
+- Your contacts, profile picture, PIN and biometrics stay on your phone.
+- We never sell your data or use it for advertising.
+- You can correct your details or delete your account yourself, in the app.
 
-## How It Works
+Read the [Privacy Policy](privacy-policy.md), the [Data Protection Notice](data-protection.md) and the [Terms of Service](terms-of-service.md).
 
-1. **Sign Up:** Create a free account with your email
-2. **Buy Tokens:** Purchase Paspesa Tokens for real money
-3. **Simulate:** Use tokens to send money, pay bills, buy airtime
-4. **Learn:** Experience how mobile money works in a safe environment
+## Not affiliated with M-PESA
 
-**Remember:** Transactions within Paspesa are simulations only. No real money moves between users. The only real payment is when you buy Paspesa Tokens.
+Paspesa is an independent training app. It is **not affiliated with, endorsed by or sponsored by Safaricom or M-PESA**. M-PESA is a trademark of its owner and is named only to describe what Paspesa simulates.
 
-## Why Paspesa?
+## Who makes Paspesa
 
-### For Learners
-- Safe environment to practice before using real mobile money
-- Learn without fear of making costly mistakes
-- Understand fees, limits, and processes
+Paspesa is made and run by **The Savannah Works**.
 
-### For Businesses
-- Train staff on mobile money operations
-- Demonstrate payment flows to clients
-- Test integrations before going live
+## Contact and feedback
 
-### For Developers
-- Build and test mobile money features
-- Prototype payment experiences
-- Train users on your app's payment flows
-
-## Technology
-
-Paspesa is built with modern, reliable technology:
-
-- **Frontend:** React Native (mobile), Expo (web), TypeScript
-- **Backend:** Node.js, Express, TypeScript
-- **Database:** Neon PostgreSQL (serverless)
-- **Hosting:** Railway (backend), Vercel (web)
-- **Payments:** PayHero (M-PESA integration)
-- **Email:** SendGrid (authentication codes)
-
-## Important Disclaimers
-
-### Not Affiliated with M-PESA
-Paspesa is an independent simulator and is **not affiliated with, endorsed by, or sponsored by Safaricom, M-PESA, or any mobile money service provider.** All trademarks and service marks are the property of their respective owners.
-
-### Educational Purpose Only
-Paspesa is designed for educational, training, and demonstration purposes. It should not be used:
-- As a substitute for real mobile money services
-- To mislead others about real transactions
-- For any illegal or fraudulent activities
-
-### No Real Money Transfers
-Simulated transactions within Paspesa **do not involve real money**. Only Paspesa Token purchases are real payments processed through PayHero.
-
-## Privacy & Security
-
-We take your privacy seriously:
-
-- ✅ We never sell your data
-- ✅ Encrypted data transmission and storage
-- ✅ Minimal data collection (only what's necessary)
-- ✅ Full transparency in our Privacy Policy
-- ✅ Compliance with Kenya Data Protection Act and GDPR
-- ✅ Your right to access, correct, or delete your data
-
-For details, see our Privacy Policy and Data Protection pages in the app menu.
-
-## Support & Contact
-
-We're here to help!
-
-**Email:** thesavannahworks@gmail.com
-
-**Response Time:** We typically respond within 24-48 hours
-
-**What We Help With:**
-- Account issues and recovery
-- Token purchase problems
-- Bug reports and feature requests
-- General questions about Paspesa
-
-## Development & Feedback
-
-Paspesa is actively developed and improved based on user feedback. We welcome:
-
-- 🐛 Bug reports
-- 💡 Feature suggestions
-- 📝 User experience feedback
-- 🤝 Partnership opportunities
-
-Contact us at thesavannahworks@gmail.com with your ideas!
-
-## Version Information
-
-**Current Version:** 1.0.0  
-**Last Updated:** November 2024  
-**Platform:** Android, Web (iOS coming soon)
-
-## Acknowledgments
-
-Paspesa is developed and maintained by **The Savannah Works**.
-
-We thank our users, testers, and everyone who has contributed feedback to make Paspesa better.
-
-## Legal
-
-By using Paspesa, you agree to our:
-
-- Terms of Service
-- Privacy Policy
-- Data Protection Notice
-
-All Paspesa Token purchases are final and non-refundable. See our Terms of Service for complete details.
+Questions, problems with a payment, bug reports and ideas are all welcome at [thesavannahworks@gmail.com](mailto:thesavannahworks@gmail.com). For a payment, include the M-PESA confirmation code. We usually reply within two working days.
 
 ---
 
-## Get Started Today
-
-Ready to experience mobile money simulation?
-
-1. **Sign up** with your email
-2. **Buy your first tokens**
-3. **Start simulating!**
-
-Thank you for choosing Paspesa! 🎉
-
----
-
-**Paspesa** — Mobile Money Simulation Made Simple  
-© 2024 The Savannah Works. All rights reserved.
+**Version 1.0.0** · Android and web
+© 2026 The Savannah Works

@@ -318,6 +318,24 @@ describe('payments (§31–33, §47.8)', () => {
     expect((await db.query("SELECT 1 FROM audit_log WHERE action = 'UPDATE_MONETIZATION_SETTINGS'")).length).toBe(1);
     await money.updateSettings({ freeSimulationsOffline: true }, 'admin:test');
   });
+
+  it('back-office switches are validated and a switched-off direct payment is refused', async () => {
+    await expect(money.updateSettings({ transactionTypeControls: { TELEPORT: false } }, 'admin:test')).rejects.toThrow(/known types/);
+    await expect(money.updateSettings({ transactionTypeControls: { SEND_MONEY: 'no' as unknown as boolean } }, 'admin:test')).rejects.toThrow(/known types/);
+    await expect(money.updateSettings({ paymentMethodControls: { tokensEnabled: true } as never }, 'admin:test')).rejects.toThrow(/true or false/);
+    await expect(money.updateSettings({ activePaymentProvider: '<script>' }, 'admin:test')).rejects.toThrow(/Unknown payment provider/);
+
+    const { accountId } = await newAccount();
+    const provider = sandbox({});
+    const direct = (key: string, type: 'BUY_GOODS' | 'PAYBILL' = 'BUY_GOODS') =>
+      money.initiateDirectPayment({ accountId, simulationId: `op-${key}`, type, simulationAmount: 100, phone: '0798765432', idempotencyKey: `switch-${key}` }, provider);
+    await money.updateSettings({ paymentMethodControls: { tokensEnabled: true, directPayEnabled: false } }, 'admin:test');
+    await expect(direct('a')).rejects.toThrow(/not available/);
+    await money.updateSettings({ paymentMethodControls: { tokensEnabled: true, directPayEnabled: true }, transactionTypeControls: { PAYBILL: false } }, 'admin:test');
+    await expect(direct('b', 'PAYBILL')).rejects.toThrow(/not available/);
+    await expect(direct('c')).resolves.toMatchObject({ payment: { status: expect.any(String) } });
+    await money.updateSettings({ transactionTypeControls: {} }, 'admin:test');
+  });
 });
 
 describe('monetization API (read-only)', () => {

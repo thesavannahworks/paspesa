@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res } from '@nestjs/common';
-import { DEFAULT_CONFIG, validatePricingRule, type MonetizationSettings, type PricingRule, type PricingTier, type SimulationType } from '@paspesa/core';
+import { DEFAULT_CONFIG, PRICED_TYPES, calculateTokens, validatePricingRule, type MonetizationSettings, type PricingRule, type PricingTier, type SimulationType } from '@paspesa/core';
 import { AllocationService } from '../allocation.service.js';
 import type { Database } from '../database.js';
 import { MonetizationService } from '../monetization.service.js';
@@ -29,10 +29,11 @@ interface Req {
 
 /**
  * 2-step sign-in is required for every admin once the back office is hosted (owner, 2026-11-20): on when
- * ADMIN_REQUIRE_2FA=true, or in production unless ADMIN_REQUIRE_2FA=false. Off on a laptop by default.
+ * ADMIN_REQUIRE_2FA=true, or in production (NODE_ENV=production or on Railway) unless ADMIN_REQUIRE_2FA=false.
+ * Off on a laptop by default.
  */
 export const twoStepRequired = (env: NodeJS.ProcessEnv = process.env) =>
-  env.ADMIN_REQUIRE_2FA === 'true' || (env.NODE_ENV === 'production' && env.ADMIN_REQUIRE_2FA !== 'false');
+  env.ADMIN_REQUIRE_2FA === 'true' || ((env.NODE_ENV === 'production' || !!env.RAILWAY_ENVIRONMENT) && env.ADMIN_REQUIRE_2FA !== 'false');
 interface Res {
   status(code: number): Res;
   setHeader(name: string, value: string | string[]): void;
@@ -41,6 +42,7 @@ interface Res {
 }
 type Form = Record<string, string | undefined>;
 
+const PRICED = PRICED_TYPES;
 const SIM_TYPES: SimulationType[] = ['SEND_MONEY', 'POCHI', 'BUY_GOODS', 'PAYBILL', 'AIRTIME', 'WITHDRAW', 'RECHARGE'];
 const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
@@ -301,7 +303,7 @@ export class AdminController {
     if (!session) return;
     const term = q.trim();
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, a.suspended_at, coalesce(i.status, 'NO DEVICE') AS device_status, coalesce(w.total_balance_cache, 0) AS tokens, u.email
+      `SELECT a.id, a.account_name, a.phone_number, a.balance, a.created_at, a.suspended_at, a.deleted_at, coalesce(i.status, 'NO DEVICE') AS device_status, coalesce(w.total_balance_cache, 0) AS tokens, u.email
        FROM accounts a LEFT JOIN installations i ON i.id = a.installation_id LEFT JOIN token_wallets w ON w.owner_id = a.id LEFT JOIN users u ON u.id = a.user_id
        WHERE $1 = '' OR a.account_name ILIKE '%' || $1 || '%' OR a.phone_number LIKE '%' || $1 || '%' OR a.id = $1 OR u.email ILIKE '%' || $1 || '%'
        ORDER BY a.created_at DESC LIMIT 200`,
@@ -311,7 +313,7 @@ export class AdminController {
       <form method="get" class="panel"><label for="q">Search name, phone, email or account ID</label><input id="q" name="q" value="${term}"><button class="secondary">Search</button></form>
       <div class="panel"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th class="num">Balance</th><th class="num">Tokens</th><th>Status</th><th>Device</th><th>Created</th></tr>
       ${rows.map((r) => html`<tr><td><a href="/admin/accounts/${r.id}">${r.account_name}</a></td><td>${r.phone_number}</td><td>${r.email ?? html`<span class="muted">not signed in</span>`}</td><td class="num">${ksh(r.balance)}</td><td class="num">${r.tokens}</td>
-        <td>${r.suspended_at ? html`<span class="pill bad">SUSPENDED</span>` : html`<span class="pill ok">ACTIVE</span>`}</td>
+        <td>${r.deleted_at ? html`<span class="pill">DELETED</span>` : r.suspended_at ? html`<span class="pill bad">SUSPENDED</span>` : html`<span class="pill ok">ACTIVE</span>`}</td>
         <td><span class="pill ${r.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${r.device_status}</span></td><td>${fmtDate(r.created_at)}</td></tr>`)}
       </table>${rows.length ? html`` : html`<p class="muted">No accounts.</p>`}</div>`, '/admin/accounts'));
   }
@@ -334,7 +336,9 @@ export class AdminController {
           <tr><th>Opening balance</th><td>${ksh(a.opening_balance)}</td></tr><tr><th>Airtime</th><td>${ksh(a.airtime_balance)}</td></tr>
           <tr><th>Device</th><td>${a.platform ?? '—'} · <span class="pill ${a.device_status === 'ACTIVE' ? 'ok' : 'bad'}">${a.device_status}</span> · last seen ${fmtDate(a.last_seen_at)}</td></tr>
           <tr><th>Account ID</th><td class="muted">${a.id}</td></tr>
-          <tr><th>Status</th><td>${a.suspended_at
+          <tr><th>Status</th><td>${a.deleted_at
+            ? html`<span class="pill">DELETED</span> on ${fmtDate(a.deleted_at)} at the holder's request; personal data erased`
+            : a.suspended_at
             ? html`<span class="pill bad">SUSPENDED</span> since ${fmtDate(a.suspended_at)} by ${a.suspended_by} — ${a.suspended_reason}`
             : html`<span class="pill ok">ACTIVE</span>`}</td></tr></table>
           ${this.suspendForm(session, 'accounts', id, !!a.suspended_at, 'account', 'It cannot sign in or sync until reinstated. Nothing is deleted.')}</div>
@@ -737,67 +741,43 @@ export class AdminController {
   // ------------------------------------------------------------------------------------------ token calculator
 
   @Get('calculator')
-  async calculator(@Req() req: Req, @Res() res: Res) {
+  async calculator(@Req() req: Req, @Res() res: Res, @Query() q: { type?: string; amount?: string; tokens?: string; account?: string }) {
     const session = await this.session(req, res);
     if (!session) return;
+    // Server-rendered (the admin CSP allows no inline script): the same calculation the app and the charges use.
+    const type = (PRICED.includes(q.type as SimulationType) ? q.type : 'SEND_MONEY') as SimulationType;
+    const amount = Math.min(Math.max(0, Number.parseInt(q.amount ?? '100', 10) || 0), DEFAULT_CONFIG.maxOpeningBalance);
+    const tokens = Math.max(0, Number.parseInt(q.tokens ?? '20', 10) || 0);
+    const accountId = typeof q.account === 'string' && /^[\w-]{1,64}$/.test(q.account) ? q.account : '';
     const settings = await this.money.settings();
-    
+    let result: ReturnType<typeof calculateTokens> | null = null;
+    let problem = '';
+    try {
+      result = calculateTokens(await this.money.pricing(), settings, { accountId: accountId || '-', type, amount, tokens, at: new Date().toISOString(), limit: DEFAULT_CONFIG.maxOpeningBalance });
+    } catch (e) {
+      problem = e instanceof Error ? e.message : 'No pricing rule applies';
+    }
+    const rule = result?.rule;
     this.send(res, layout('Token Calculator', session, html`
-      <script>window.PASPESA_SETTINGS = ${raw(JSON.stringify({ shillingsPerToken: settings.shillingsPerToken, freeThreshold: 20, amountPerToken: 5 }))};</script>
-      <div class="panel">
-        <h2>Paspesa Token Calculator</h2>
-        <p class="muted">Calculate how many tokens are needed to simulate a transaction, or how much can be simulated with available tokens. Changes update in real-time.</p>
-        
-        <div style="margin: 2em 0;">
-          <h3>Shillings to Tokens</h3>
-          <p>Calculate tokens needed for a simulation</p>
-          <label for="amountToTokens">Simulation amount (KSh)</label>
-          <input id="amountToTokens" type="number" min="0" max="250000" value="100" style="width: 100%; max-width: 300px;">
-          <label for="txType">Transaction type</label>
-          <select id="txType" style="width: 100%; max-width: 300px;">
-            <option value="SEND_MONEY">Send Money</option>
-            <option value="POCHI">Pochi la Biashara</option>
-            <option value="BUY_GOODS">Buy Goods</option>
-            <option value="PAYBILL">Paybill</option>
-            <option value="AIRTIME">Airtime</option>
-            <option value="WITHDRAW">Withdraw</option>
-          </select>
-          <div id="tokensResult" style="margin-top: 1em; padding: 1em; background: #f0f0f0; border-radius: 4px;">
-            <strong>Tokens needed: <span id="tokensNeeded">-</span></strong><br>
-            <span class="muted">Cost: KSh <span id="tokensCost">-</span></span>
-          </div>
-        </div>
-        
-        <div style="margin: 2em 0;">
-          <h3>Tokens to Shillings</h3>
-          <p>Calculate how much can be simulated with tokens</p>
-          <label for="tokensAvailable">Available tokens</label>
-          <input id="tokensAvailable" type="number" min="0" value="20" style="width: 100%; max-width: 300px;">
-          <label for="txType2">Transaction type</label>
-          <select id="txType2" style="width: 100%; max-width: 300px;">
-            <option value="SEND_MONEY">Send Money</option>
-            <option value="POCHI">Pochi la Biashara</option>
-            <option value="BUY_GOODS">Buy Goods</option>
-            <option value="PAYBILL">Paybill</option>
-            <option value="AIRTIME">Airtime</option>
-            <option value="WITHDRAW">Withdraw</option>
-          </select>
-          <div id="amountResult" style="margin-top: 1em; padding: 1em; background: #f0f0f0; border-radius: 4px;">
-            <strong>Can simulate up to: KSh <span id="maxAmount">-</span></strong><br>
-            <span class="muted">Based on the pricing formula</span>
-          </div>
-        </div>
-        
-        <div style="margin: 2em 0;">
-          <h3>Current Pricing Configuration</h3>
-          <p class="muted">Global default rule (active)</p>
-          <ul class="muted">
-            <li>Formula: Full Amount</li>
-            <li>Free threshold: KSh 20</li>
-            <li>Amount per token: KSh 5</li>
-            <li>Shillings per token: ${settings.shillingsPerToken}</li>
-          </ul>
-        </div>
+      <form method="get" action="/admin/calculator" class="panel">
+        <p class="muted">Uses the pricing rules in force now (Pricing page), including account overrides when an account ID is given.</p>
+        <label for="type">Transaction type</label><select id="type" name="type">${PRICED.map((t) => html`<option value="${t}" ${t === type ? html`selected` : html``}>${t}</option>`)}</select>
+        <label for="amount">Simulation amount (KSh)</label><input id="amount" name="amount" type="number" min="0" max="${DEFAULT_CONFIG.maxOpeningBalance}" value="${amount}">
+        <label for="tokens">Tokens available</label><input id="tokens" name="tokens" type="number" min="0" value="${tokens}">
+        <label for="account">Account ID (optional)</label><input id="account" name="account" value="${accountId}" placeholder="Global rules">
+        <button>Calculate</button>
+      </form>
+      <div class="panel">${result ? html`
+        <h3>Result</h3>
+        <p>A KSh ${amount.toLocaleString('en-KE')} ${type} simulation costs <strong>${result.tokenCost} tokens</strong> (KSh ${result.shillings.toLocaleString('en-KE')} paid directly).</p>
+        <p>${tokens} tokens pay for a simulation of up to <strong>KSh ${result.maxAmount.toLocaleString('en-KE')}</strong>.</p>
+        <h3>Rule applied</h3>
+        ${rule ? html`<ul class="muted">
+          <li>${rule.id} v${rule.version} · ${rule.scopeType}${rule.transactionType ? html` · ${rule.transactionType}` : html``}</li>
+          <li>Formula: ${rule.formula} · free up to KSh ${rule.freeThreshold}${rule.amountPerToken ? html` · KSh ${rule.amountPerToken} per token` : html``}</li>
+          ${rule.tiers ? html`<li>Ranges: ${rule.tiers.map((t) => `${t.min}–${t.max ?? '∞'}: ${t.tokens}`).join(', ')}</li>` : html``}
+          <li>Shillings per token: ${settings.shillingsPerToken}</li>
+        </ul>` : html`<p class="muted">This type is not priced.</p>`}` : html`<p>${problem}</p>`}
       </div>
     `, '/admin/calculator'));
   }
@@ -839,16 +819,16 @@ export class AdminController {
         ${num('shillingsPerToken', 'Shillings per token')}${num('minimumPurchase', 'Smallest token purchase (KSh)')}${num('offlineAuthorizationDays', 'Offline authorization (days)')}
         
         <h3>Payment Provider</h3>
-        <p class="muted">Select which M-PESA payment provider to use. Only one can be active at a time. Configure keys in .env file.</p>
+        <p class="muted">The provider that sends M-PESA prompts for token purchases and single simulations. Only providers whose keys are set on the server are listed.</p>
         <label for="activePaymentProvider">Active Provider</label>
         <select id="activePaymentProvider" name="activePaymentProvider" ${mayEdit ? html`` : html`disabled`}>
           <option value="">Default (first configured)</option>
           ${providers.map(p => html`<option value="${p.name}" ${activeProvider === p.name ? html`selected` : html``}>${p.name}</option>`)}
         </select>
-        ${providers.length === 0 ? html`<p class="muted" style="color: #E92536; margin-top: 8px;">⚠ No payment providers configured. Add provider keys to .env file.</p>` : html``}
+        ${providers.length === 0 ? html`<p class="muted">No payment provider is set up on this server. Add a provider's keys to its environment.</p>` : html``}
         
         <h3>Transaction Type Controls</h3>
-        <p class="muted">Control which transaction types users can perform. Unchecked types will be disabled in the app.</p>
+        <p class="muted">Unchecked types cannot be simulated: the app hides them, and uploads of them made while they were off are held for review.</p>
         ${txCheckbox('SEND_MONEY', 'Send Money')}
         ${txCheckbox('POCHI', 'Pochi la Biashara')}
         ${txCheckbox('BUY_GOODS', 'Buy Goods (Till)')}
@@ -858,7 +838,7 @@ export class AdminController {
         ${txCheckbox('RECHARGE', 'Recharge')}
         
         <h3>Payment Method Controls</h3>
-        <p class="muted">Control which payment methods are available when payments are required.</p>
+        <p class="muted">Which ways of paying are offered when payments are required. Tokens already set aside on a phone stay usable.</p>
         ${pmCheckbox('tokensEnabled', 'Tokens payment (from device allocation + central balance)')}
         ${pmCheckbox('directPayEnabled', 'Direct pay-per-simulation (M-PESA prompt per simulation)')}
         
@@ -888,6 +868,8 @@ export class AdminController {
         directPayEnabled: form.pm_directPayEnabled === 'true',
       };
       
+      const activePaymentProvider = form.activePaymentProvider || null;
+      if (activePaymentProvider && !this.providers.byName(activePaymentProvider)) throw new Error(`Payment provider "${activePaymentProvider}" is not set up on this server`);
       await this.money.updateSettings({
         paymentRequired: form.paymentRequired === 'true',
         freeSimulationsOffline: form.freeSimulationsOffline === 'true',
@@ -896,7 +878,7 @@ export class AdminController {
         offlineAuthorizationDays: Number(form.offlineAuthorizationDays),
         transactionTypeControls,
         paymentMethodControls,
-        activePaymentProvider: form.activePaymentProvider || null,
+        activePaymentProvider,
       }, this.actor(session));
       this.back(res, '/admin/settings', 'Settings saved');
     } catch (e) {

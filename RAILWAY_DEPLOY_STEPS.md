@@ -42,8 +42,8 @@ Still in the service settings:
 ```
 PORT=3000
 HOST=0.0.0.0
-DATABASE_URL=postgresql://neondb_owner:npg_pgUViQc3rLX6@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
-PAYHERO_BASIC_TOKEN=Basic MnhSMElQZDZmZEhvQ3BaV1NlVzQ6S09CU0MwN0xxU2o0OUJoWVpzd25hZ2lGNEtCNE9sNTkzZlp3aEdDSQ==
+DATABASE_URL=postgresql://neondb_owner:<password>@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+PAYHERO_BASIC_TOKEN=Basic <your-payhero-basic-token>
 PAYHERO_CHANNEL_ID=15710
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587

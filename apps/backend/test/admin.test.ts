@@ -222,6 +222,12 @@ describe('back office', () => {
     const good = await c.post('/admin/pricing', { id: 'global-paybill', scopeType: 'GLOBAL', transactionType: 'PAYBILL', formula: 'TIERED', freeThreshold: '20', tiers: '0-20:0\n21-100:3\n101-:8', status: 'ACTIVE' });
     expect(decodeURIComponent(good.headers.get('location')!)).toMatch(/ok=Published global-paybill v1/);
     expect((await (await c.get('/admin/pricing')).text())).toContain('21–100: 3');
+    // the calculator uses the rules in force (here the new Paybill ranges), rendered on the server (no inline script)
+    const calc = await (await c.get('/admin/calculator?type=PAYBILL&amount=50&tokens=8')).text();
+    expect(calc).toContain('costs <strong>3 tokens</strong>');
+    expect(calc).toContain('up to <strong>KSh 250,000</strong>');
+    expect(calc).not.toMatch(/<script>|style="/);
+    expect(await (await c.get('/admin/settings')).text()).not.toMatch(/style="/);
     const actions = (await db.query<{ action: string }>("SELECT action FROM audit_log WHERE actor_id = 'admin:boss@example.com'")).map((r) => r.action);
     expect(actions).toEqual(expect.arrayContaining(['UPDATE_MONETIZATION_SETTINGS']));
   });

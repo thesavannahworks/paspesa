@@ -225,6 +225,7 @@ export interface OutboxEntry {
   operationId: string;
   entityType: 'ACCOUNT' | 'TRANSACTION' | 'FAVOURITE';
   entityId: string;
+  /** DELETE_ACCOUNT: legacy only (an early build queued it); never sent. Deletion is an online request. */
   operationType: 'CREATE_ACCOUNT' | 'UPDATE_ACCOUNT_SETTINGS' | 'CREATE_SIMULATION' | 'UPSERT_FAVOURITE' | 'DELETE_FAVOURITE' | 'DELETE_ACCOUNT';
   payloadVersion: number;
   createdAt: string;
@@ -245,7 +246,6 @@ export type OutboxPayload =
   | { kind: 'DETAILS'; accountName: string; phoneNumber: string }
   | { kind: 'RECHARGE_SENDER'; defaults: { name: string; phone: string } | null }
   | { kind: 'AIRTIME_RESET'; amount: number }
-  | { kind: 'DELETE_ACCOUNT'; accountId: string }
   | { favourite: Favourite }
   | { favouriteId: string };
 
@@ -275,6 +275,8 @@ export type SimulationErrorCode =
   | 'INSUFFICIENT_TOKENS'
   | 'AUTHORIZATION_EXPIRED'
   | 'AUTHORIZATION_REQUIRED'
+  /** The back office switched this transaction type off. */
+  | 'TYPE_DISABLED'
   | 'NO_ACCOUNT'
   | 'ACCOUNT_EXISTS'
   | 'OPERATION_CONFLICT'

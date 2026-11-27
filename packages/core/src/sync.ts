@@ -47,8 +47,7 @@ export type SyncOperation =
   | (OperationBase & { entityType: 'TRANSACTION'; operationType: 'CREATE_SIMULATION'; payload: { transaction: SyncTransaction; message: SyncMessage | null } })
   | (OperationBase & { entityType: 'ACCOUNT'; operationType: 'UPDATE_ACCOUNT_SETTINGS'; payload: Extract<OutboxPayload, { kind: string }> })
   | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'UPSERT_FAVOURITE'; payload: { favourite: Favourite } })
-  | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'DELETE_FAVOURITE'; payload: { favouriteId: string } })
-  | (OperationBase & { entityType: 'ACCOUNT'; operationType: 'DELETE_ACCOUNT'; payload: Extract<OutboxPayload, { kind: 'DELETE_ACCOUNT' }> });
+  | (OperationBase & { entityType: 'FAVOURITE'; operationType: 'DELETE_FAVOURITE'; payload: { favouriteId: string } });
 
 export interface SyncPushRequest {
   apiVersion: number;
@@ -70,6 +69,9 @@ export type SyncResultCode =
   | 'INSUFFICIENT_TOKENS'
   | 'AUTHORIZATION_EXPIRED'
   | 'PAYMENT_NOT_VERIFIED'
+  /** The transaction type or payment method was switched off in the back office when it happened. */
+  | 'TYPE_DISABLED'
+  | 'PAYMENT_METHOD_DISABLED'
   /** Recorded after this device was signed out by a sign-in on another device. */
   | 'SIGNED_OUT'
   /** Not processed: an earlier simulation in the same upload was held for review (retried later). */
@@ -169,10 +171,7 @@ export async function buildSyncOperation(entry: OutboxEntry, store: StoreReader)
     case 'DELETE_FAVOURITE':
       return { ...base, entityType: 'FAVOURITE', operationType: 'DELETE_FAVOURITE', payload: { favouriteId: entry.entityId } };
     case 'DELETE_ACCOUNT':
-      if (entry.payload && 'kind' in entry.payload && entry.payload.kind === 'DELETE_ACCOUNT') {
-        return { ...base, entityType: 'ACCOUNT', operationType: 'DELETE_ACCOUNT', payload: entry.payload };
-      }
-      return null;
+      return null; // legacy entry from an early build: deletion is an online request, never an upload
   }
 }
 

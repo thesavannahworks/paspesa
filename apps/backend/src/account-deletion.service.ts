@@ -1,158 +1,97 @@
-import { Logger } from '@nestjs/common';
-import type { Database } from './database.js';
-
 /**
- * Account deletion service - handles permanent account deletion with proper data handling.
- * 
- * Deletion policy:
- * - User data (simulations, messages, contacts) is permanently deleted
- * - Financial records (payments, tokens purchased) retained for 7 years per legal/tax requirements
- * - Audit logs retained permanently for security compliance
- * - Personal identifiers in retained records are anonymized
+ * Deleting an account at its holder's request (Data Protection Act 2019 s.26, s.40).
+ *
+ * The holder confirms in the app with their PIN (checked on the device, where it lives) and a one-time code
+ * sent to the account's email (checked here: the PIN never reaches the server). Then, in one transaction:
+ *
+ *  - Erased: the simulated ledger (transactions, balance movements, messages, favourites), the token wallet
+ *    and its history (unused tokens are forfeited), device allocations, uploads waiting in sync and in the
+ *    review queue, one-time codes, and the person (`users`: their email). Devices that worked on the
+ *    account are detached from it.
+ *  - Kept, without personal data: real-money payment records (amount, provider reference, status, time),
+ *    because the business must keep its financial records; the payer's phone number is removed. The
+ *    account row stays as an anonymous "tombstone" (no name, phone, email or device) so those records and
+ *    the audit log still point somewhere. Audit entries about the account keep what was done and when,
+ *    but their before/after values (which could hold a name or phone) are erased.
+ *
+ * Refused while a payment is still being processed, so no paid-for tokens or simulation are lost mid-way.
  */
+import type { Database, Queryable } from './database.js';
+
+export class AccountDeletionError extends Error {
+  constructor(readonly code: 'NOT_FOUND' | 'PAYMENT_PENDING', message: string) {
+    super(message);
+  }
+}
+
 export class AccountDeletionService {
-  private readonly logger = new Logger(AccountDeletionService.name);
+  constructor(private readonly db: Database, private readonly now: () => Date = () => new Date()) {}
 
-  constructor(private readonly db: Database) {}
+  /** Whether the account can be deleted now (nothing is changed). */
+  async check(q: Queryable, accountId: string): Promise<void> {
+    const [account] = await q.query<{ id: string }>('SELECT id FROM accounts WHERE id = $1 AND deleted_at IS NULL', [accountId]);
+    if (!account) throw new AccountDeletionError('NOT_FOUND', 'Account not found');
+    const [pending] = await q.query<{ n: string }>("SELECT count(*) AS n FROM payments WHERE owner_id = $1 AND status IN ('INITIATED', 'PENDING')", [accountId]);
+    if (Number(pending?.n ?? 0) > 0) {
+      throw new AccountDeletionError('PAYMENT_PENDING', 'A payment is still being processed. Try again once it has completed or failed (usually within a few minutes).');
+    }
+  }
 
-  /**
-   * Permanently delete an account and all associated user data.
-   * Financial and audit records are retained but anonymized per legal requirements.
-   */
-  async deleteAccount(accountId: string): Promise<{ ok: boolean; message: string }> {
-    return this.db.transaction(async (q) => {
-      // 1. Verify account exists and get details for logging
-      const [account] = await q.query<{ id: string; account_name: string; installation_id: string }>(
-        'SELECT a.id, a.account_name, a.installation_id FROM accounts a WHERE a.id = $1',
+  /** Deletes the account as described above. `requestedBy` is recorded in the audit log (no personal data). */
+  async deleteAccount(accountId: string, requestedBy: string): Promise<void> {
+    await this.db.transaction(async (q) => {
+      await q.query('SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE', [accountId]);
+      await this.check(q, accountId);
+      const [person] = await q.query<{ user_id: string | null; email: string | null }>(
+        'SELECT a.user_id, u.email FROM accounts a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = $1',
         [accountId],
       );
-      
-      if (!account) {
-        return { ok: false, message: 'Account not found' };
-      }
+      const devices = (await q.query<{ id: string }>('SELECT id FROM installations WHERE account_id = $1 OR ($2::text IS NOT NULL AND user_id = $2)', [accountId, person?.user_id ?? null])).map((d) => d.id);
 
-      this.logger.log(`Starting deletion of account ${accountId} (${account.account_name})`);
-
-      // 2. Delete simulation data (not legally required to retain)
+      // The simulated ledger.
       await q.query('DELETE FROM balance_movements WHERE account_id = $1', [accountId]);
       await q.query('DELETE FROM messages WHERE account_id = $1', [accountId]);
       await q.query('DELETE FROM transactions WHERE account_id = $1', [accountId]);
       await q.query('DELETE FROM favourites WHERE account_id = $1', [accountId]);
 
-      // 3. Delete token wallet and all related data
+      // Tokens: the wallet and everything recorded in it (unused tokens are forfeited).
       const [wallet] = await q.query<{ id: string }>('SELECT id FROM token_wallets WHERE owner_id = $1', [accountId]);
-      
       if (wallet) {
-        // Get all device allocations for this wallet
-        const allocations = await q.query<{ id: string }>('SELECT id FROM device_allocations WHERE wallet_id = $1', [wallet.id]);
-        
-        // Delete allocation lots for each allocation
-        for (const alloc of allocations) {
-          await q.query('DELETE FROM allocation_lots WHERE allocation_id = $1', [alloc.id]);
-        }
-        
-        // Delete device allocations
+        await q.query('DELETE FROM allocation_lots WHERE allocation_id IN (SELECT id FROM device_allocations WHERE wallet_id = $1)', [wallet.id]);
         await q.query('DELETE FROM device_allocations WHERE wallet_id = $1', [wallet.id]);
-        
-        // Delete token tracking data
         await q.query('DELETE FROM token_spends WHERE wallet_id = $1', [wallet.id]);
         await q.query('DELETE FROM token_ledger WHERE wallet_id = $1', [wallet.id]);
         await q.query('DELETE FROM token_lots WHERE wallet_id = $1', [wallet.id]);
         await q.query('DELETE FROM token_wallets WHERE id = $1', [wallet.id]);
       }
 
-      // 4. RETAIN payment records for legal compliance (7 years tax/accounting requirement)
-      //    but anonymize personal data
+      // Uploads: processed-operation records of its devices, and held uploads (they carry names and numbers).
+      if (devices.length) {
+        await q.query('DELETE FROM sync_operations WHERE installation_id = ANY($1)', [devices]);
+        await q.query('DELETE FROM sync_review WHERE installation_id = ANY($1)', [devices]);
+      }
+      await q.query('DELETE FROM sync_review WHERE payload::text LIKE $1', [`%${accountId}%`]);
+
+      // Real-money payments: kept for the business's records, without the payer's phone number.
+      await q.query('UPDATE payments SET payer_phone = NULL WHERE owner_id = $1', [accountId]);
+      await q.query("UPDATE payment_events SET detail = NULL WHERE payment_id IN (SELECT id FROM payments WHERE owner_id = $1) AND detail::text ~ '[0-9]{9,}'", [accountId]);
+
+      // Audit entries about the account: what was done and when stays; values that could hold personal data go.
+      await q.query("UPDATE audit_log SET before_value = NULL, after_value = NULL WHERE entity_type = 'ACCOUNT' AND entity_id = $1", [accountId]);
+
+      // Devices let go of the account; the person and their codes are erased.
+      await q.query('UPDATE installations SET account_id = NULL, user_id = NULL, signed_out_at = coalesce(signed_out_at, $2) WHERE id = ANY($1)', [devices, this.now().toISOString()]);
       await q.query(
-        "UPDATE payments SET payer_phone = '[DELETED]' WHERE owner_id = $1",
-        [accountId],
+        `UPDATE accounts SET account_name = 'Deleted account', phone_number = '', installation_id = NULL, user_id = NULL,
+           recharge_sender = NULL, deleted_at = $2, updated_at = $2 WHERE id = $1`,
+        [accountId, this.now().toISOString()],
       );
+      if (person?.email) await q.query('DELETE FROM sign_in_codes WHERE email = $1', [person.email]);
+      if (person?.user_id) await q.query('DELETE FROM users WHERE id = $1', [person.user_id]);
 
-      // Note: payment_credits and payment_events are kept as-is (tied to payments table)
-      // These records document financial transactions which must be retained
-
-      // 5. Delete sync/session data
-      const [installation] = await q.query<{ id: string }>(
-        'SELECT installation_id as id FROM accounts WHERE id = $1',
-        [accountId],
-      );
-      
-      if (installation?.id) {
-        await q.query('DELETE FROM sync_operations WHERE installation_id = $1', [installation.id]);
-        await q.query('DELETE FROM sync_review WHERE installation_id = $1', [installation.id]);
-      }
-
-      // 6. Delete authentication data
-      await q.query('DELETE FROM sign_in_codes WHERE account_id = $1', [accountId]);
-      await q.query('DELETE FROM sign_in_sessions WHERE account_id = $1', [accountId]);
-      
-      // Check if email table exists and delete if it does
-      const [emailTable] = await q.query<{ exists: boolean }>(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'emails') as exists",
-      );
-      if (emailTable?.exists) {
-        await q.query('DELETE FROM emails WHERE account_id = $1', [accountId]);
-      }
-
-      // 7. Delete the account record itself
-      //    Installation record is kept for audit trail
-      await q.query('DELETE FROM accounts WHERE id = $1', [accountId]);
-
-      // 8. Log the deletion to audit log (retained permanently)
-      await q.query(
-        'INSERT INTO audit_log (actor_id, action, entity_type, entity_id, detail) VALUES ($1, $2, $3, $4, $5)',
-        [
-          'SYSTEM',
-          'ACCOUNT_DELETED',
-          'ACCOUNT',
-          accountId,
-          JSON.stringify({
-            account_name: account.account_name,
-            deleted_at: new Date().toISOString(),
-            reason: 'User requested account deletion',
-          }),
-        ],
-      );
-
-      this.logger.log(`Successfully deleted account ${accountId}`);
-
-      return {
-        ok: true,
-        message: `Account "${account.account_name}" has been permanently deleted. Financial records have been retained and anonymized per legal requirements.`,
-      };
-    });
-  }
-
-  /**
-   * Check if an account can be safely deleted.
-   * Prevents deletion if there are pending payments or other blocking conditions.
-   */
-  async canDelete(accountId: string): Promise<{ ok: boolean; reason?: string }> {
-    return this.db.transaction(async (q) => {
-      // Check if account exists
-      const [account] = await q.query<{ id: string }>(
-        'SELECT id FROM accounts WHERE id = $1',
-        [accountId],
-      );
-      
-      if (!account) {
-        return { ok: false, reason: 'Account not found' };
-      }
-
-      // Check for pending payments
-      const [pendingPayments] = await q.query<{ count: string }>(
-        "SELECT count(*)::text as count FROM payments WHERE owner_id = $1 AND status IN ('INITIATED', 'PENDING')",
-        [accountId],
-      );
-      
-      if (pendingPayments && Number(pendingPayments.count) > 0) {
-        return {
-          ok: false,
-          reason: `You have ${pendingPayments.count} pending payment(s). Please wait for them to complete or fail before deleting your account.`,
-        };
-      }
-
-      return { ok: true };
+      await q.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, reason) VALUES ($1, $2, $3, $4, $5)', [
+        requestedBy, 'DELETE_ACCOUNT', 'ACCOUNT', accountId, 'Deleted at the account holder\'s request (confirmed with an emailed code)',
+      ]);
     });
   }
 }

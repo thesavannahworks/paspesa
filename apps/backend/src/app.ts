@@ -24,6 +24,8 @@
  *   POST /v1/auth/verify      [auth]   check the code: signs this device in (moves the account here)
  *   GET  /v1/auth/me          [auth]   signed in? signed out by a sign-in on another device?
  *   POST /v1/auth/sign-out    [auth]   this device signs out (after uploading what it has)
+ *   POST /v1/account/delete/code [auth] email a code to confirm deleting the account (PIN checked on the device)
+ *   POST /v1/account/delete   [auth]   with that code: delete the account (personal data erased, payments kept anonymised)
  *   GET  /v1/account/restore  [auth]   the account's transactions, messages and favourites (new device)
  *
  * Back office (§34–35): server-rendered pages at /admin, administrator login — see src/admin/.
@@ -65,7 +67,7 @@ import { MonetizationError, MonetizationService, type PaymentProvider } from './
 import { providerRegistry, type CallbackAware, type PaymentProviders } from './providers.js';
 import { SyncService } from './sync.service.js';
 import { SignInError, SignInService } from './signin.service.js';
-import { AccountDeletionService } from './account-deletion.service.js';
+import { AccountDeletionError, AccountDeletionService } from './account-deletion.service.js';
 import { blockFor } from './suspension.js';
 import { mailerFromEnv, type Mailer } from './mailer.js';
 import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.controller.js';
@@ -73,6 +75,9 @@ import { ADMIN_DATABASE, ADMIN_PROVIDERS, AdminController } from './admin/admin.
 export const DATABASE = Symbol('DATABASE');
 export const PAYMENT_PROVIDERS = Symbol('PAYMENT_PROVIDERS');
 const MAX_OPERATIONS = 200;
+/** Where the web app is served from (CORS_ORIGINS overrides); any localhost port is allowed for development. */
+const DEFAULT_CORS_ORIGINS = 'https://paspesa-web.vercel.app';
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 const fail = (status: HttpStatus, code: string, message: string) => new HttpException({ error: { code, message } }, status);
 const hash = (secret: string) => createHash('sha256').update(secret).digest('hex');
@@ -147,6 +152,10 @@ const SIGN_IN_STATUS: Record<SignInError['code'], HttpStatus> = {
   NOT_ACTIVE_DEVICE: HttpStatus.FORBIDDEN,
   ACCOUNT_SUSPENDED: HttpStatus.FORBIDDEN,
 };
+const deletionFail = (e: unknown) => {
+  if (e instanceof AccountDeletionError) return fail(e.code === 'NOT_FOUND' ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT, e.code, e.message);
+  return signInFail(e);
+};
 const signInFail = (e: unknown) => {
   if (e instanceof SignInError) return fail(SIGN_IN_STATUS[e.code], e.code, e.message);
   return e;
@@ -173,9 +182,10 @@ class SignInController {
 
   @Post('auth/verify')
   @HttpCode(200)
-  async verify(@Req() req: AuthedRequest, @Body() body: { email?: unknown; code?: unknown; replaceLocalAccount?: unknown }) {
+  async verify(@Req() req: AuthedRequest, @Body() body: { email?: unknown; code?: unknown; replaceLocalAccount?: unknown; termsVersion?: unknown }) {
     try {
-      return await this.signIn.verifyCode(String(body?.email ?? ''), String(body?.code ?? ''), req.installationId!, body?.replaceLocalAccount === true);
+      const terms = typeof body?.termsVersion === 'string' && /^[\w.-]{1,40}$/.test(body.termsVersion) ? body.termsVersion : null;
+      return await this.signIn.verifyCode(String(body?.email ?? ''), String(body?.code ?? ''), req.installationId!, body?.replaceLocalAccount === true, terms);
     } catch (e) {
       throw signInFail(e);
     }
@@ -202,37 +212,33 @@ class SignInController {
     }
   }
 
+  /**
+   * Account deletion, step 1: emails a 6-digit code to the account's address (the app has already checked
+   * the PIN on the device). Answers with the masked address the code went to.
+   */
+  @Post('account/delete/code')
+  @HttpCode(200)
+  async deletionCode(@Req() req: AuthedRequest) {
+    try {
+      const [account] = await this.db.query<{ id: string }>('SELECT id FROM accounts WHERE installation_id = $1 AND deleted_at IS NULL', [req.installationId!]);
+      if (account) await this.deletion.check(this.db, account.id); // say so now, before sending a code
+      return await this.signIn.requestDeletionCode(req.installationId!);
+    } catch (e) {
+      throw deletionFail(e);
+    }
+  }
+
+  /** Account deletion, step 2: with the emailed code, deletes the account (see AccountDeletionService). */
   @Post('account/delete')
   @HttpCode(200)
-  async deleteAccount(@Req() req: AuthedRequest) {
-    // Get account from installation
-    const [account] = await this.db.query<{ id: string; account_name: string }>(
-      'SELECT a.id, a.account_name FROM accounts a WHERE a.installation_id = $1',
-      [req.installationId!],
-    );
-    
-    if (!account) {
-      throw fail(HttpStatus.NOT_FOUND, 'NO_ACCOUNT', 'No account found for this device');
+  async deleteAccount(@Req() req: AuthedRequest, @Body() body: { code?: unknown }) {
+    try {
+      const { accountId } = await this.signIn.confirmDeletionCode(req.installationId!, String(body?.code ?? ''));
+      await this.deletion.deleteAccount(accountId, `installation:${req.installationId}`);
+      return { deleted: true };
+    } catch (e) {
+      throw deletionFail(e);
     }
-
-    // Check if account can be deleted
-    const canDelete = await this.deletion.canDelete(account.id);
-    if (!canDelete.ok) {
-      throw fail(HttpStatus.BAD_REQUEST, 'CANNOT_DELETE', canDelete.reason!);
-    }
-
-    // Perform deletion
-    const result = await this.deletion.deleteAccount(account.id);
-    
-    if (!result.ok) {
-      throw fail(HttpStatus.INTERNAL_SERVER_ERROR, 'DELETE_FAILED', 'Failed to delete account');
-    }
-
-    return {
-      deleted: true,
-      accountName: account.account_name,
-      message: result.message,
-    };
   }
 }
 
@@ -374,9 +380,11 @@ class PaymentsController {
     @Inject(PAYMENT_PROVIDERS) private readonly providers: PaymentProviders,
   ) {}
 
-  private pick(name: unknown): PaymentProvider {
+  /** The provider a request names, else the one chosen in the back office (Settings → Payment Provider), else the default. */
+  private async pick(name: unknown): Promise<PaymentProvider> {
     if (name !== undefined && typeof name !== 'string') throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'provider must be a name');
-    const provider = name ? this.providers.byName(name) : this.providers.default;
+    const active = (await this.money.settings()).activePaymentProvider;
+    const provider = name ? this.providers.byName(name) : (active && this.providers.byName(active)) || this.providers.default;
     if (!provider) {
       throw name
         ? fail(HttpStatus.BAD_REQUEST, 'PROVIDER_NOT_CONFIGURED', `Payment provider "${name}" is not set up on this server`)
@@ -409,7 +417,7 @@ class PaymentsController {
       || typeof body.phone !== 'string' || typeof body.idempotencyKey !== 'string' || body.idempotencyKey.length < 8 || body.idempotencyKey.length > 100) {
       throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'simulationId, type, amount, phone and idempotencyKey are required');
     }
-    const provider = this.pick(body.provider);
+    const provider = await this.pick(body.provider);
     const accountId = await this.accountId(req.installationId!);
     try {
       return await this.money.initiateDirectPayment({
@@ -435,7 +443,7 @@ class PaymentsController {
     if (typeof body?.shillings !== 'number' || typeof body.phone !== 'string' || typeof body.idempotencyKey !== 'string' || body.idempotencyKey.length < 8 || body.idempotencyKey.length > 100) {
       throw fail(HttpStatus.BAD_REQUEST, 'VALIDATION', 'shillings, phone and idempotencyKey are required');
     }
-    const provider = this.pick(body.provider);
+    const provider = await this.pick(body.provider);
     const accountId = await this.accountId(req.installationId!);
     try {
       return await this.money.initiateTokenPurchase({ accountId, shillings: body.shillings, phone: body.phone, idempotencyKey: body.idempotencyKey }, provider);
@@ -504,7 +512,16 @@ class AppModule {
 export async function createApp(db: Database, options: { paymentProvider?: PaymentProvider | null; paymentProviders?: PaymentProviders; mailer?: Mailer } = {}) {
   const providers = options.paymentProviders ?? providerRegistry(options.paymentProvider ? [options.paymentProvider] : []);
   const app = await NestFactory.create<NestExpressApplication>(AppModule.with(db, providers, options.mailer ?? mailerFromEnv(process.env)), { logger: ['error', 'warn', 'log'], bodyParser: true });
-  app.enableCors(); // the web build (another origin) talks to the API too
+  // The web build (another origin) talks to the API: only the origins we serve it from. Phones send no
+  // Origin header and are unaffected. CORS_ORIGINS (comma-separated) replaces the defaults.
+  const origins = (process.env.CORS_ORIGINS ?? DEFAULT_CORS_ORIGINS).split(',').map((o) => o.trim()).filter(Boolean);
+  app.enableCors({ origin: (origin, done) => done(null, !origin || origins.includes(origin) || LOCAL_ORIGIN.test(origin)) });
+  // Browsers that have seen the API over HTTPS keep using HTTPS (behind Railway's proxy the request
+  // arrives as http with X-Forwarded-Proto: https).
+  app.use((req: { secure?: boolean; headers: Record<string, unknown> }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
   app.useBodyParser('json', { limit: '2mb' });
   app.useBodyParser('urlencoded', { extended: false, limit: '100kb' }); // back-office forms (/admin)
   app.disable('x-powered-by');

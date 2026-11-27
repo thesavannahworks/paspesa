@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Screen, ScreenHeader, T } from '@/components/ui';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -11,9 +11,9 @@ export default function LegalIndexScreen() {
   const { colors } = useTheme();
 
   return (
-    <Screen background="page">
+    <Screen background="page" refreshable={false}>
       <ScreenHeader title="Legal" />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: s(20) }}>
+      <View style={{ paddingTop: s(12) }}>
         <T variant="heading" style={{ fontSize: s(24), marginBottom: s(12) }}>Legal Information</T>
         <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22), marginBottom: s(24) }}>
           Review our legal documents to understand how we handle your data and what terms apply when using Paspesa.
@@ -34,7 +34,7 @@ export default function LegalIndexScreen() {
           description="Your rights and how we comply with data protection laws"
           onPress={() => router.push('/legal/data-protection')}
         />
-      </ScrollView>
+      </View>
     </Screen>
   );
 }

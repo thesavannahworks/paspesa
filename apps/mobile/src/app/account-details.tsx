@@ -2,16 +2,20 @@
  * Edit the details entered when the account was set up (same layout as setup.tsx).
  * Name and phone can change; past transactions, messages and statements keep their original values.
  * The opening balance is a ledger entry and cannot be edited.
+ *
+ * Delete account (Data Protection Act 2019 s.26, s.40): online only, in three steps — what happens + the PIN
+ * (checked on this device, where it lives), then a 6-digit code emailed to the account's address (checked by
+ * the server), then the server deletes the account and this device is cleared.
  */
-import { deleteAccount, formatAmount, toLocalPhone, updateAccountDetails } from '@paspesa/core';
+import { formatAmount, toLocalPhone, updateAccountDetails, verifyPin } from '@paspesa/core';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
-import { AppModal as Modal } from '@/components/LayoutFrame';
-import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { Pressable, View } from 'react-native';
+import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, T } from '@/components/ui';
 import { ChevronRightIcon, LockIcon } from '@/icons';
-import { useAccount, useAppState } from '@/services/AppState';
 import { useApi } from '@/services/api';
+import { useAccount, useAppState } from '@/services/AppState';
+import { deleteAccountWithCode, messageOf, requestAccountDeletionCode } from '@/services/session';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
 
@@ -19,15 +23,11 @@ export default function AccountDetailsScreen() {
   const { colors } = useTheme();
   const { deps, refresh } = useAppState();
   const account = useAccount();
-  const api = useApi();
   const [name, setName] = useState(account.accountName);
   const [phone, setPhone] = useState(toLocalPhone(account.phoneNumber));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [pin, setPin] = useState('');
-  const [deleteError, setDeleteError] = useState('');
-  const [deleting, setDeleting] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const changed = name.trim() !== account.accountName || phone.replace(/\s/g, '') !== toLocalPhone(account.phoneNumber);
 
   const save = async () => {
@@ -37,45 +37,6 @@ export default function AccountDetailsScreen() {
     if (!res.ok) return setErrors(res.error.fieldErrors ?? { accountName: res.error.message });
     await refresh();
     router.back();
-  };
-
-  const handleDeleteRequest = () => {
-    setPin('');
-    setDeleteError('');
-    setShowDeleteModal(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!pin || pin.length !== 4) {
-      setDeleteError('Enter your 4-digit PIN');
-      return;
-    }
-
-    setDeleting(true);
-    setDeleteError('');
-
-    // Verify PIN locally first
-    const localCheck = await deleteAccount(deps, { pin });
-    if (!localCheck.ok) {
-      setDeleting(false);
-      setDeleteError(localCheck.error.message);
-      return;
-    }
-
-    // Call backend to delete account
-    try {
-      await api.post('/v1/account/delete', { pin });
-      // Account deleted - redirect to sign-in
-      // The backend will handle data deletion and retention
-      router.replace('/sign-in');
-    } catch (error) {
-      setDeleting(false);
-      if (error instanceof Error) {
-        setDeleteError(error.message);
-      } else {
-        setDeleteError('Failed to delete account. Please try again.');
-      }
-    }
   };
 
   return (
@@ -103,81 +64,133 @@ export default function AccountDetailsScreen() {
         <ChevronRightIcon size={20} color={colors.textSecondary} />
       </Pressable>
 
-      <View style={{ marginTop: s(40), paddingHorizontal: s(16), paddingVertical: s(20), borderRadius: s(12), backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.red }}>
-        <T variant="bodyStrong" style={{ fontSize: s(17), marginBottom: s(8), color: colors.red }}>Delete Account</T>
-        <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22), marginBottom: s(16) }}>
-          Permanently delete your Paspesa account and all data. This action cannot be undone.
+      <View style={{ marginTop: s(36), padding: s(16), borderRadius: s(12), borderWidth: 1, borderColor: colors.red }}>
+        <T variant="bodyStrong" color={colors.red} style={{ fontSize: s(17) }}>Delete account</T>
+        <T variant="body" color={colors.textSecondary} style={{ marginTop: s(8), lineHeight: s(22) }}>
+          Permanently delete your Paspesa account and the data in it. This cannot be undone.
         </T>
-        <T variant="caption" color={colors.textSecondary} style={{ marginBottom: s(16), lineHeight: s(19) }}>
-          • All simulation data will be deleted{'\n'}
-          • Financial records retained for 7 years (legal requirement){'\n'}
-          • Unused tokens will be forfeited with no refund
-        </T>
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleDeleteRequest}
-          style={{ backgroundColor: colors.red, paddingVertical: s(14), borderRadius: s(10), alignItems: 'center' }}
-        >
-          <T variant="bodyStrong" style={{ color: '#FFFFFF' }}>Request Account Deletion</T>
-        </Pressable>
+        <View style={{ marginTop: s(14) }}>
+          <OutlineButton danger title="Delete my account" onPress={() => setDeleteOpen(true)} />
+        </View>
       </View>
 
-      <Modal visible={showDeleteModal} transparent animationType="fade" onRequestClose={() => { if (!deleting) setShowDeleteModal(false); }}>
-        <View style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: s(24) }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: s(16), padding: s(24), maxWidth: 400, alignSelf: 'center', width: '100%' }}>
-            <T variant="heading" style={{ marginBottom: s(16), textAlign: 'center' }}>Delete Account</T>
-            <T variant="body" color={colors.textSecondary} style={{ marginBottom: s(20), lineHeight: s(22) }}>
-              This will permanently delete your account and all simulation data. Financial records will be retained for 7 years as required by law.
-            </T>
-            <T variant="body" color={colors.textSecondary} style={{ marginBottom: s(8), lineHeight: s(22) }}>
-              Any unused tokens will be forfeited with no refund.
-            </T>
-            <T variant="bodyStrong" style={{ marginTop: s(16), marginBottom: s(8) }}>Enter your PIN to confirm</T>
-            <Field
-              value={pin}
-              onChangeText={(v) => { setPin(v); setDeleteError(''); }}
-              placeholder="4-digit PIN"
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={4}
-              error={deleteError}
-              editable={!deleting}
-            />
-            <View style={{ flexDirection: 'row', gap: s(12), marginTop: s(24) }}>
-              <View style={{ flex: 1 }}>
-                {deleting ? (
-                  <View style={{ paddingVertical: s(14), borderRadius: s(10), borderWidth: 1.2, borderColor: colors.textSecondary, alignItems: 'center', opacity: 0.5 }}>
-                    <T variant="bodyStrong" color={colors.textSecondary}>Cancel</T>
-                  </View>
-                ) : (
-                  <OutlineButton title="Cancel" onPress={() => setShowDeleteModal(false)} />
-                )}
+      <DeleteAccountSheet visible={deleteOpen} onClose={() => setDeleteOpen(false)} pinCheck={(pin) => verifyPin(deps, pin)} />
+    </Screen>
+  );
+}
+
+type Step = 'confirm' | 'code';
+
+function DeleteAccountSheet({ visible, onClose, pinCheck }: {
+  visible: boolean;
+  onClose: () => void;
+  pinCheck: (pin: string) => Promise<{ ok: true } | { ok: false; error: { message: string } }>;
+}) {
+  const { colors } = useTheme();
+  const api = useApi();
+  const [step, setStep] = useState<Step>('confirm');
+  const [pin, setPin] = useState('');
+  const [code, setCode] = useState('');
+  const [sentTo, setSentTo] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const close = () => {
+    if (busy) return;
+    setStep('confirm');
+    setPin('');
+    setCode('');
+    setError(null);
+    onClose();
+  };
+
+  const sendCode = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const sent = await requestAccountDeletionCode();
+      setSentTo(sent.email);
+      setResendIn(sent.resendAfterSeconds);
+      setStep('code');
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async () => {
+    if (!/^\d{4}$/.test(pin)) return setError('Enter your 4-digit Paspesa PIN');
+    const checked = await pinCheck(pin);
+    if (!checked.ok) return setError(checked.error.message);
+    await sendCode();
+  };
+
+  const remove = async () => {
+    if (!/^\d{6}$/.test(code.replace(/\s/g, ''))) return setError('Enter the 6-digit code from the email');
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAccountWithCode(code);
+      // The device is cleared; the app now shows the sign-in screen with a notice.
+    } catch (e) {
+      setError(messageOf(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet visible={visible} title="Delete your account?" onClose={close}>
+      {step === 'confirm' ? (
+        <View style={{ marginTop: s(10) }}>
+          <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>When your account is deleted:</T>
+          <View style={{ marginTop: s(8) }}>
+            {[
+              'Your simulated balance, transactions, messages, statements and favourites are erased.',
+              'Your email address and sign-in history are erased, and every device is signed out.',
+              'Unused Paspesa tokens are forfeited. They are not refunded.',
+              'Records of real payments you made to Paspesa (amount, date, M-PESA reference) are kept for our accounts, without your phone number.',
+            ].map((line) => (
+              <View key={line} style={{ flexDirection: 'row', marginTop: s(6) }}>
+                <T variant="body" color={colors.textSecondary} style={{ width: s(16) }}>•</T>
+                <T variant="body" color={colors.textSecondary} style={{ flex: 1, lineHeight: s(22) }}>{line}</T>
               </View>
-              <View style={{ flex: 1 }}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={confirmDelete}
-                  disabled={deleting || !pin || pin.length !== 4}
-                  style={{
-                    backgroundColor: deleting || !pin || pin.length !== 4 ? colors.textSecondary : colors.red,
-                    paddingVertical: s(14),
-                    borderRadius: s(10),
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: s(50),
-                  }}
-                >
-                  {deleting ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <T variant="bodyStrong" style={{ color: '#FFFFFF' }}>Delete Forever</T>
-                  )}
-                </Pressable>
-              </View>
-            </View>
+            ))}
+          </View>
+          {!api.available ? (
+            <T variant="body" color={colors.red} style={{ marginTop: s(16), lineHeight: s(22) }}>
+              Deleting an account needs the Paspesa server. Connect to the internet and try again.
+            </T>
+          ) : (
+            <>
+              <Field label="Enter your Paspesa PIN to continue" value={pin} onChangeText={(v) => { setPin(v.replace(/\D/g, '').slice(0, 4)); setError(null); }}
+                placeholder="4 digits" keyboardType="number-pad" secureTextEntry maxLength={4} />
+              {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(10) }}>{error}</T> : null}
+              <PrimaryButton danger title="Continue" onPress={() => void confirm()} loading={busy} disabled={pin.length !== 4} style={{ marginTop: s(18) }} />
+            </>
+          )}
+        </View>
+      ) : (
+        <View style={{ marginTop: s(10) }}>
+          <T variant="body" color={colors.textSecondary} style={{ lineHeight: s(22) }}>
+            We sent a 6-digit code to {sentTo}. Enter it to delete your account for good.
+          </T>
+          <Field label="Code from the email" value={code} onChangeText={(v) => { setCode(v.replace(/\D/g, '').slice(0, 6)); setError(null); }}
+            placeholder="000000" keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" />
+          {error ? <T variant="caption" color={colors.red} style={{ marginTop: s(10) }}>{error}</T> : null}
+          <PrimaryButton danger title="Delete my account" onPress={() => void remove()} loading={busy} disabled={code.length !== 6} style={{ marginTop: s(18) }} />
+          <View style={{ marginTop: s(12) }}>
+            <OutlineButton title={resendIn > 0 ? `Send a new code in ${resendIn}s` : 'Send a new code'} onPress={resendIn > 0 || busy ? undefined : () => void sendCode()} />
           </View>
         </View>
-      </Modal>
-    </Screen>
+      )}
+    </Sheet>
   );
 }

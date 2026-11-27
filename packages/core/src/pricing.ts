@@ -212,3 +212,40 @@ export function priceSimulation(config: PricingConfiguration, input: { accountId
     appliedConfigAt: rule.effectiveFrom,
   };
 }
+
+/**
+ * Token Calculator (app and back office): what a simulation of `amount` costs, and the largest amount
+ * `tokens` can pay for, both under the rule that applies to this account and type now. Amounts are capped
+ * at `limit` (the largest amount Paspesa simulates).
+ */
+export function calculateTokens(
+  config: PricingConfiguration,
+  settings: Pick<MonetizationSettings, 'shillingsPerToken'>,
+  input: { accountId: string; type: SimulationType; amount: number; tokens: number; at: string; limit?: number },
+): { tokenCost: number; shillings: number; maxAmount: number; rule: PricingRule | null } {
+  const limit = input.limit ?? 250_000;
+  const amount = Math.min(Math.max(0, Math.floor(input.amount)), limit);
+  const tokens = Math.max(0, Math.floor(input.tokens));
+  if (!PRICED_TYPES.includes(input.type)) return { tokenCost: 0, shillings: 0, maxAmount: limit, rule: null };
+  const rule = resolvePricingRule(config, input);
+  const cost = (() => {
+    try {
+      return tokenCost(rule, amount);
+    } catch {
+      return 0; // an amount no range covers is not priced
+    }
+  })();
+  let maxAmount: number;
+  switch (rule.formula) {
+    case 'FULL_AMOUNT':
+      maxAmount = Math.max(rule.freeThreshold, tokens * rule.amountPerToken!);
+      break;
+    case 'EXCESS_AMOUNT':
+      maxAmount = rule.freeThreshold + tokens * rule.amountPerToken!;
+      break;
+    case 'TIERED':
+      maxAmount = Math.max(0, ...(rule.tiers ?? []).filter((t) => t.tokens <= tokens).map((t) => t.max ?? limit));
+      break;
+  }
+  return { tokenCost: cost, shillings: cost * settings.shillingsPerToken, maxAmount: Math.min(maxAmount, limit), rule };
+}

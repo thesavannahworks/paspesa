@@ -1,130 +1,121 @@
 # Terms of Service
 
-**Last updated:** November 25, 2024
+**Last updated:** 27 November 2026
 
-## Acceptance of Terms
+These terms are the agreement between you and **The Savannah Works** ("we", "us"), which makes and runs Paspesa. Please read them with the [Privacy Policy](privacy-policy.md). By signing in to Paspesa and ticking the box to accept, you agree to them. If you do not agree, do not use Paspesa.
 
-By accessing or using Paspesa, you agree to be bound by these Terms of Service and our Privacy Policy. If you do not agree to these terms, do not use Paspesa.
+**Contents**
 
-## Description of Service
+- [What Paspesa is](#what-paspesa-is)
+- [Who can use Paspesa](#who-can-use-paspesa)
+- [Your account](#your-account)
+- [Paspesa tokens](#paspesa-tokens)
+- [Paying for a single simulation](#paying-for-a-single-simulation)
+- [Refunds and charges made in error](#refunds-and-charges-made-in-error)
+- [Acceptable use](#acceptable-use)
+- [Backups and devices](#backups-and-devices)
+- [Suspension and ending your account](#suspension-and-ending-your-account)
+- [Availability and changes to Paspesa](#availability-and-changes-to-paspesa)
+- [Trademarks and ownership](#trademarks-and-ownership)
+- [Liability](#liability)
+- [Changes to these terms](#changes-to-these-terms)
+- [Law and disputes](#law-and-disputes)
+- [Contact](#contact)
 
-Paspesa is a mobile-money transaction simulator designed for educational and training purposes. It simulates M-PESA and similar mobile money services without involving real money transfers (except for Paspesa Token purchases).
+## What Paspesa is
 
-### Important: Paspesa is a simulation only
+Paspesa is a **simulator** that shows how mobile-money transactions look and feel: sending money, paying a till or a paybill, Pochi la Biashara, buying airtime, messages and statements. It is for learning, training and demonstration.
 
-- No real money is sent or received through simulated transactions
-- Simulated balances are not real and have no monetary value
-- We never ask for your actual M-PESA PIN or access to real accounts
-- Paspesa Tokens are virtual currency used only within the app
+- **No real money moves when you simulate.** Simulated balances, transactions, messages and statements are not real and have no cash value. They cannot be withdrawn, sent, exchanged or used as proof of a payment.
+- **Paspesa is not M-PESA** and is not a bank, a payment service or a mobile-money provider.
+- **Paspesa never asks for your real M-PESA PIN.** Your Paspesa PIN is a separate practice PIN.
+- The fees and messages Paspesa shows follow a reference tariff. They may differ from the real ones.
 
-## Paspesa Tokens
+The only real money involved is what you choose to pay us for [Paspesa tokens](#paspesa-tokens) or for a [single simulation](#paying-for-a-single-simulation).
 
-Paspesa Tokens are virtual credits purchased with real money to unlock simulation features:
+## Who can use Paspesa
 
-- **1 Token = 1 simulated transaction** you can initiate
-- Tokens are purchased through PayHero, a third-party payment processor
-- **All token purchases are final and non-refundable**
-- Tokens have no cash value and cannot be exchanged for real money
-- Tokens cannot be transferred between accounts
-- Unused tokens remain valid as long as your account is active
+You must be **18 or older**, or use Paspesa with the consent of your parent or guardian. You must give us a working email address that is yours.
 
-## Account Registration and Security
+## Your account
 
-To use Paspesa, you must:
+- You sign in with a one-time code sent to your email. Keep your email account secure, and never share a sign-in code: anyone who has it can sign in as you.
+- Enter honest details at setup. You can change your name and phone number in **Profile → Account Details**.
+- Your Paspesa PIN protects simulations on your phone. Do not reuse your real M-PESA PIN for it.
+- Tell us quickly at [thesavannahworks@gmail.com](mailto:thesavannahworks@gmail.com) if you think someone else has used your account.
 
-- Provide accurate and complete registration information
-- Maintain the security of your account credentials
-- Notify us immediately of any unauthorized access
-- Be at least 13 years of age
+## Paspesa tokens
 
-You are responsible for all activities that occur under your account. Never share your Paspesa PIN or sign-in codes with anyone.
+Paspesa tokens pay for simulations when payment is switched on.
 
-## Acceptable Use
+- **1 token = KSh 1.** You pay KSh N with M-PESA and receive N tokens. The smallest purchase is shown in the app.
+- **What a simulation costs** depends on its amount. The current rule is shown in the app's **Token Calculator** (for example, a KSh 100 simulation costs 20 tokens, and small amounts are free). We may change prices; a change never alters the cost of a simulation you already made.
+- **Purchased tokens do not expire** while your account exists. Promotional tokens and tokens we grant may have an expiry date, which the app shows.
+- Tokens are used only inside Paspesa. They have **no cash value**, cannot be exchanged for money and cannot be moved to another account.
+- **Tokens set aside on a phone** can pay for simulations without internet. Only that phone can use them until you return them, and a phone's offline permission lasts a limited time (shown in the app). If a phone is lost or reset before its tokens are returned, those tokens may be lost.
+- If a simulation fails, the tokens taken for it are returned.
 
-When using Paspesa, you agree **NOT** to:
+## Paying for a single simulation
 
-- Use the service for any illegal purpose
-- Attempt to circumvent token requirements or payment systems
-- Interfere with or disrupt the service or servers
-- Attempt to gain unauthorized access to any systems or data
-- Impersonate others or misrepresent your affiliation
-- Use automated systems (bots, scrapers) without permission
-- Reverse engineer, decompile, or disassemble the application
-- Misrepresent Paspesa as a real money transfer service
-- Use the service to train others to commit fraud
+Instead of tokens, you can pay for one simulation with M-PESA. The price in shillings equals its token cost. If you pay and the simulation then fails, we keep the amount for you as a credit; you can ask us to [refund it](#refunds-and-charges-made-in-error).
 
-## Intellectual Property
+## Refunds and charges made in error
 
-All content, features, and functionality of Paspesa, including but not limited to text, graphics, logos, icons, images, and software, are owned by Paspesa or its licensors and protected by copyright, trademark, and other intellectual property laws.
+- Tokens you bought and the simulations you paid for are **not refundable for a change of mind**, and unused tokens are not paid out when an account is closed.
+- If you were **charged in error**, charged twice, or paid for a simulation that failed, write to [thesavannahworks@gmail.com](mailto:thesavannahworks@gmail.com) **within 30 days** with the M-PESA confirmation code, the date and the amount. If we confirm the error, we refund it to the M-PESA number that paid, or give you tokens if you prefer.
+- These terms do not take away any right you have under Kenyan consumer law that cannot be excluded.
 
-**Paspesa is a simulator and is not affiliated with, endorsed by, or sponsored by Safaricom, M-PESA, or any mobile money service provider.** All trademarks and service marks are the property of their respective owners.
+## Acceptable use
 
-## Service Availability
+You must not:
 
-We strive to provide reliable service, but we do not guarantee that:
+- use Paspesa, its messages or its screenshots to **deceive anyone**, for example to pretend that a payment was made, to fake a receipt or a balance, or to train others to commit fraud;
+- present Paspesa as a real payment service or as M-PESA;
+- try to get around the token or payment rules, exploit an error, or create accounts to collect free tokens;
+- try to reach data or systems you are not allowed to, test our security without our written permission, or overload the service;
+- copy, resell or rebuild Paspesa, or use automated tools against it, without our permission;
+- break the law or someone else's rights.
 
-- Paspesa will be available at all times without interruption
-- The service will be error-free or secure
-- Backups will always succeed or be available
-- Token purchases will process instantly
+Using Paspesa to deceive people can be a crime. We suspend accounts that do it and may report it.
 
-We reserve the right to modify, suspend, or discontinue any part of the service at any time, with or without notice.
+## Backups and devices
 
-## Termination
+When you are signed in and online, your account and simulations are backed up to our server so you can restore them on another phone. We check simulations on our server; one that does not match the rules may be held for review and not added to your backup, and **Profile → Reload from backup** puts your phone back in line with the backup. We work to keep backups safe, but we cannot promise that a backup will always succeed. Signing out clears Paspesa from that phone.
 
-We may terminate or suspend your account and access to Paspesa immediately, without prior notice, if you:
+## Suspension and ending your account
 
-- Breach these Terms of Service
-- Engage in fraudulent or illegal activity
-- Abuse or misuse the service
+- **You** can delete your account at any time in **Profile → Account Details → Delete my account**. It is permanent: your simulations, messages, favourites, email address and tokens are erased, and unused tokens are not refunded. Records of real payments are kept, without your phone number, as the [Privacy Policy](privacy-policy.md#how-long-we-keep-data) explains.
+- **We** may suspend or close an account that breaks these terms, is used for fraud or abuse, or puts other users or the service at risk. Where it is reasonable and lawful, we will tell you why and give you a chance to respond. If we close an account without a good reason, we refund the unused tokens you bought.
+- We may stop offering Paspesa. If we do, we will give you reasonable notice and refund the unused tokens you bought.
 
-You may terminate your account at any time by signing out and ceasing use. Upon termination, your right to use Paspesa immediately ceases. Unused tokens are forfeited and no refunds will be provided.
+## Availability and changes to Paspesa
 
-## Disclaimers and Limitation of Liability
+We work to keep Paspesa running, but it may sometimes be unavailable, slow or have errors, for example during maintenance or when a provider we use has a problem. A payment may take some time to be confirmed. We may add, change or remove features.
 
-PASPESA IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
+## Trademarks and ownership
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, PASPESA SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, OR USE, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM YOUR USE OF THE SERVICE.
+Paspesa, its design and its software belong to The Savannah Works. You may use the app for your own learning, training and demonstrations.
 
-Our total liability to you for all claims arising from your use of Paspesa shall not exceed the amount you paid for Paspesa Tokens in the 12 months prior to the claim.
+**Paspesa is not affiliated with, endorsed by or sponsored by Safaricom or M-PESA.** M-PESA and other names are trademarks of their owners and are used only to describe what Paspesa simulates.
 
-## Indemnification
+## Liability
 
-You agree to defend, indemnify, and hold harmless Paspesa and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from:
+- Paspesa is a training tool provided "as is". Simulated amounts, fees and messages are not financial advice and must not be relied on for real decisions.
+- To the extent the law allows, we are not responsible for indirect losses, lost profits or lost data, and our total responsibility to you is limited to the amount you paid us in the 12 months before the claim.
+- Nothing in these terms limits responsibility that cannot be limited by law, such as for fraud or for harm caused by our gross negligence.
+- You are responsible for how you use Paspesa and for any harm that comes from using it against these terms.
 
-- Your use or misuse of Paspesa
-- Your violation of these Terms of Service
-- Your violation of any rights of another party
+## Changes to these terms
 
-## Refund Policy
+If we change these terms in a way that matters, we will tell you in the app or by email before the change takes effect and ask you to accept the new version when you next sign in. If you do not accept it, you can delete your account.
 
-**All Paspesa Token purchases are final and non-refundable.** We do not provide refunds for:
+## Law and disputes
 
-- Unused tokens
-- Account termination or suspension
-- Service interruptions or downtime
-- Change of mind after purchase
+These terms are governed by the laws of Kenya. If you have a complaint, please write to us first; most problems can be solved that way. If not, the courts of Kenya decide disputes. Complaints about personal data can also go to the Office of the Data Protection Commissioner (see the [Privacy Policy](privacy-policy.md#contact-and-complaints)).
 
-If you believe you were charged in error, contact us within 7 days at thesavannahworks@gmail.com with your transaction details.
+If a part of these terms is found invalid, the rest still applies.
 
-## Governing Law
+## Contact
 
-These Terms of Service are governed by and construed in accordance with the laws of Kenya, without regard to its conflict of law provisions. Any disputes arising from these terms or your use of Paspesa shall be subject to the exclusive jurisdiction of the courts of Kenya.
-
-## Changes to Terms
-
-We reserve the right to modify these Terms of Service at any time. We will notify you of material changes by email or through the app. Your continued use of Paspesa after changes constitutes acceptance of the modified terms.
-
-## Severability
-
-If any provision of these Terms of Service is found to be invalid or unenforceable, the remaining provisions shall remain in full force and effect.
-
-## Contact Us
-
-If you have questions about these Terms of Service, contact us at:
-
-**thesavannahworks@gmail.com**
-
----
-
-By using Paspesa, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service and our Privacy Policy.
+**Paspesa (The Savannah Works)**
+Email: [thesavannahworks@gmail.com](mailto:thesavannahworks@gmail.com)

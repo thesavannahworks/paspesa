@@ -73,6 +73,9 @@ interface PaymentRow {
 }
 
 /** How long a prompt may be "being sent" before a retry may send it again (the first send died). */
+/** Transaction types the back office can switch off (Settings → Transaction Type Controls). */
+const SWITCHABLE_TYPES = new Set(['SEND_MONEY', 'POCHI', 'BUY_GOODS', 'PAYBILL', 'AIRTIME', 'WITHDRAW', 'RECHARGE']);
+
 const SEND_GRACE_MS = 60_000;
 /** A prompt the provider never accepted is closed after this long. */
 const ABANDON_AFTER_MS = 30 * 60_000;
@@ -364,6 +367,15 @@ export class MonetizationService {
     if (!Number.isSafeInteger(next.shillingsPerToken) || next.shillingsPerToken < 1) throw new MonetizationError('VALIDATION', 'Shillings per token must be a whole number of at least 1');
     if (!Number.isSafeInteger(next.minimumPurchase) || next.minimumPurchase < 1) throw new MonetizationError('VALIDATION', 'Minimum purchase must be at least KSh 1');
     if (!Number.isSafeInteger(next.offlineAuthorizationDays) || next.offlineAuthorizationDays < 1 || next.offlineAuthorizationDays > 90) throw new MonetizationError('VALIDATION', 'Offline authorization must be 1 to 90 days');
+    const types = next.transactionTypeControls ?? {};
+    if (typeof types !== 'object' || Array.isArray(types) || Object.entries(types).some(([k, v]) => !SWITCHABLE_TYPES.has(k) || typeof v !== 'boolean')) {
+      throw new MonetizationError('VALIDATION', 'Transaction type switches must name known types and be true or false');
+    }
+    const methods = next.paymentMethodControls;
+    if (methods !== undefined && (typeof methods?.tokensEnabled !== 'boolean' || typeof methods?.directPayEnabled !== 'boolean')) {
+      throw new MonetizationError('VALIDATION', 'Payment method switches must be true or false');
+    }
+    if (next.activePaymentProvider != null && !/^[a-z][a-z0-9-]{0,39}$/.test(next.activePaymentProvider)) throw new MonetizationError('VALIDATION', 'Unknown payment provider');
     await this.db.transaction(async (q) => {
       await q.query('INSERT INTO monetization_settings (id, settings) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET settings = excluded.settings, updated_at = now()', [JSON.stringify(next)]);
       await q.query('INSERT INTO monetization_settings_history (effective_from, settings) VALUES (now(), $1)', [JSON.stringify(next)]);
@@ -406,8 +418,11 @@ export class MonetizationService {
     input: { accountId: string; simulationId: string; type: SimulationType; simulationAmount: number; phone: string; idempotencyKey: string },
     provider: PaymentProvider,
   ): Promise<{ payment: PaymentRecord; pricing: PricingSnapshot }> {
+    const settings = await this.settings();
+    if (settings.paymentMethodControls?.directPayEnabled === false) throw new MonetizationError('INVALID_STATE', 'Paying with M-PESA for a single simulation is not available at the moment');
+    if (settings.transactionTypeControls?.[input.type] === false) throw new MonetizationError('INVALID_STATE', 'This service is not available at the moment');
     const pricing = await this.quote(input.accountId, input.type, input.simulationAmount);
-    const amount = directPrice(pricing, await this.settings());
+    const amount = directPrice(pricing, settings);
     if (amount <= 0) throw new MonetizationError('VALIDATION', 'This simulation is free; no payment is needed');
     const payment = await this.startPayment(
       { accountId: input.accountId, idempotencyKey: input.idempotencyKey, type: 'DIRECT_SIMULATION', amount, tokens: null, phone: this.payer(input.phone), simulationId: input.simulationId },

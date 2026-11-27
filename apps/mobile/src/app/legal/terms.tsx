@@ -1,17 +1,9 @@
-import { Screen, ScreenHeader } from '@/components/ui';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { useLocalSearchParams } from 'expo-router';
+import { DocumentScreen } from '@/components/MarkdownViewer';
+import { DOCUMENTS } from '@/services/legal';
 
-// Import markdown as string
-const termsContent = require('../../../legal/terms-of-service.md') as string;
-
-/**
- * Terms of Service - loaded from markdown file
- */
-export default function TermsOfServiceScreen() {
-  return (
-    <Screen background="page">
-      <ScreenHeader title="Terms of Service" />
-      <MarkdownViewer content={termsContent} />
-    </Screen>
-  );
+/** Shows the document from apps/mobile/legal (see services/legal.ts); `?section=` opens it at a heading. */
+export default function TermsScreen() {
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  return <DocumentScreen doc={DOCUMENTS.terms} section={section ?? null} />;
 }

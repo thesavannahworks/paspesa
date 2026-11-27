@@ -1,17 +1,9 @@
-import { Screen, ScreenHeader } from '@/components/ui';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { useLocalSearchParams } from 'expo-router';
+import { DocumentScreen } from '@/components/MarkdownViewer';
+import { DOCUMENTS } from '@/services/legal';
 
-// Import markdown as string
-const dataProtectionContent = require('../../../legal/data-protection.md') as string;
-
-/**
- * Data Protection - loaded from markdown file
- */
+/** Shows the document from apps/mobile/legal (see services/legal.ts); `?section=` opens it at a heading. */
 export default function DataProtectionScreen() {
-  return (
-    <Screen background="page">
-      <ScreenHeader title="Data Protection" />
-      <MarkdownViewer content={dataProtectionContent} />
-    </Screen>
-  );
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  return <DocumentScreen doc={DOCUMENTS.dataProtection} section={section ?? null} />;
 }

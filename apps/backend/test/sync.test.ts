@@ -191,6 +191,30 @@ describe('synchronization', () => {
     expect((await db.query('SELECT 1 FROM sync_review WHERE installation_id = $1', [deps.installationId])).length).toBe(1);
   });
 
+  it('a transaction type switched off in the back office is held for review, judged at the time it happened', async () => {
+    // Off from 1 May to 1 July 2025 only (other tests run at later times and see everything on).
+    await db.query('INSERT INTO monetization_settings_history (effective_from, settings) VALUES ($1, $2), ($3, $4)', [
+      '2025-05-01T00:00:00Z', JSON.stringify({ transactionTypeControls: { BUY_GOODS: false } }), '2025-07-01T00:00:00Z', JSON.stringify({}),
+    ]);
+    const deps = makeDeps();
+    let t = Date.parse('2025-06-01T06:00:00.000Z');
+    deps.clock = { now: () => new Date((t += 60_000)).toISOString() };
+    // the phone had not heard of the switch yet (offline), so its engine allowed both
+    await setupAccount(deps, { operationId: randomUUID(), accountName: 'Amina Wanjiru', phoneNumber: '0798765432', openingBalance: 10_000, pin: PIN });
+    const token = await register(deps.installationId);
+    await pay(deps, { type: 'SEND_MONEY', amount: 100, counterparty: { phone: '0722000111', name: 'Peter Kamau' } });
+    await pay(deps, { type: 'BUY_GOODS', amount: 50, counterparty: { tillNumber: '453851', name: 'Shop' } });
+    const report = await syncOutbox(deps, http(token));
+    expect([report.synced, report.needsReview]).toEqual([2, 1]);
+    const reviewed = await db.query<{ code: string }>('SELECT code FROM sync_review WHERE installation_id = $1', [deps.installationId]);
+    expect(reviewed.map((r) => r.code)).toEqual(['TYPE_DISABLED']);
+
+    // and a phone that knows the switch refuses it itself
+    const knows = { ...deps, config: { ...deps.config, monetization: { ...deps.config.monetization, transactionTypeControls: { BUY_GOODS: false } } } };
+    const refused = await pay(knows, { type: 'BUY_GOODS', amount: 50, counterparty: { tillNumber: '453851', name: 'Shop' } });
+    expect(refused.ok ? null : refused.error.code).toBe('TYPE_DISABLED');
+  });
+
   it('an operation ID reused for different content is a conflict', async () => {
     const { deps, token } = await newAccount();
     const r = await pay(deps, { type: 'BUY_GOODS', amount: 10, counterparty: { tillNumber: '453851', name: 'Shop' } });

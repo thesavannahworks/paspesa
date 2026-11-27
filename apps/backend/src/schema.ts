@@ -4,7 +4,7 @@
  * primary keys and UNIQUE constraints (§25). Operations that fail validation are kept in
  * `sync_review`, never silently dropped (§24.4).
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -431,4 +431,16 @@ ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS payment_method_contro
 ALTER TABLE monetization_settings ADD COLUMN IF NOT EXISTS active_payment_provider TEXT;
 -- Admin session timeout reduced from 8h to 2h (max 2 hours, owner decision)
 -- Existing sessions exceeding 2h will naturally expire
+-- NOTE: the three columns above are not used: these settings live in monetization_settings.settings (JSON)
+-- with every other monetization setting, so they are versioned in monetization_settings_history too.
+
+-- ---------------------------------------------------------------- v11: account deletion, terms acceptance
+-- A deleted account keeps an anonymous row ("tombstone") so retained payment records still point somewhere;
+-- everything personal around it is erased (see account-deletion.service.ts).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+-- One-time codes have a purpose: a sign-in code can never confirm a deletion, or the reverse.
+ALTER TABLE sign_in_codes ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'SIGN_IN';
+-- Which version of the Privacy Policy / Terms the person accepted, and when (proof of consent, DPA s.32).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
 `;

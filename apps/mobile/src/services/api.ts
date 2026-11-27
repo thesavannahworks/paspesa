@@ -16,9 +16,7 @@ const TIMEOUT_MS = 20_000;
 
 export const apiUrl = (): string | null => {
   const url = process.env.EXPO_PUBLIC_PASPESA_API_URL?.trim();
-  const result = url ? url.replace(/\/+$/, '') : null;
-  console.log('[Paspesa API] URL configured:', result || 'OFFLINE MODE');
-  return result;
+  return url ? url.replace(/\/+$/, '') : null;
 };
 
 export class ApiError extends Error {
@@ -43,7 +41,6 @@ const pathOf = (url: string) => {
 };
 
 export async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
-  console.log('[Paspesa API] Requesting:', url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const path = pathOf(url);
@@ -51,7 +48,6 @@ export async function request<T>(url: string, init: RequestInit = {}): Promise<T
   const authed = !!(init.headers as Record<string, string> | undefined)?.authorization;
   try {
     const res = await fetch(url, { ...init, signal: controller.signal, headers: { 'content-type': 'application/json', ...(init.headers ?? {}) } });
-    console.log('[Paspesa API] Response:', res.status, res.ok);
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
       const code = body?.error?.code ?? null;
@@ -64,7 +60,6 @@ export async function request<T>(url: string, init: RequestInit = {}): Promise<T
     if (authed) suspensionListener({ kind: 'OK', authPath });
     return (await res.json()) as T;
   } catch (e) {
-    console.log('[Paspesa API] Error:', e instanceof Error ? e.message : e);
     if (e instanceof Error && e.name === 'AbortError') throw new ApiError('The server did not respond in time', 'TIMEOUT', 0);
     if (e instanceof ApiError) throw e;
     throw new ApiError('Could not reach the Paspesa server. Check your internet connection.', 'OFFLINE', 0);

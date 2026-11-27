@@ -82,7 +82,7 @@ Copy `DATABASE_URL` from `.env.local` to `apps/backend/.env`:
 
 ```bash
 # apps/backend/.env
-DATABASE_URL=postgresql://neondb_owner:npg_pgUViQc3rLX6@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+DATABASE_URL=postgresql://neondb_owner:<password>@ep-mute-sea-bhf35jlr-pooler.c-10.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
 ```
 
 ### Step 5: Verify Local Connection

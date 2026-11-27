@@ -322,6 +322,14 @@ export class SyncService {
     if (clash) return review('VALIDATION', 'transaction ID or reference already used');
     // A reviewer applying a held simulation still charges its tokens (from wherever they are now); only the
     // "payment required" rule for unpaid ones and an unverified direct payment can be waived.
+    if (!options.reviewed) {
+      const switches = await this.money.settingsAt(q, t.completedAt);
+      if (switches.transactionTypeControls?.[t.type] === false) return review('TYPE_DISABLED', `${t.type} was switched off when this simulation was made`);
+      // Tokens already set aside on a device stay usable; only new spending from the central balance is refused.
+      if (switches.paymentMethodControls?.tokensEnabled === false && tokenSplit(t).central > 0) {
+        return review('PAYMENT_METHOD_DISABLED', 'Paying with tokens from the balance was switched off when this simulation was made');
+      }
+    }
     const paid = await this.verifyPayment(q, installationId, account.id, t, !!options.reviewed);
     if (paid) return paid;
 

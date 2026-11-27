@@ -17,6 +17,7 @@ import {
 import { useSyncExternalStore } from 'react';
 import { ApiError, setSuspensionListener, type PaspesaApi, type Suspension } from './api';
 import type { KeyValueStore } from './kvTypes';
+import { LEGAL_VERSION } from './legal';
 
 const EMAIL_KEY = 'auth.email';
 const SUSPENDED_KEY = 'auth.suspended';
@@ -114,7 +115,7 @@ export async function verifyCode(email: string, code: string, replaceLocal = fal
   const c = need();
   let result: SignInResult;
   try {
-    result = await c.api.post<SignInResult>('/v1/auth/verify', { email, code, replaceLocalAccount: replaceLocal });
+    result = await c.api.post<SignInResult>('/v1/auth/verify', { email, code, replaceLocalAccount: replaceLocal, termsVersion: LEGAL_VERSION });
   } catch (e) {
     if (e instanceof ApiError && e.code === 'ACCOUNT_CONFLICT') return { kind: 'CONFLICT', message: e.message };
     throw e;
@@ -193,9 +194,25 @@ export async function checkSignedInElsewhere(pushSaidSignedOut = false): Promise
   }
 }
 
-async function wipe(notice: string | null, alsoTell: () => Promise<unknown> = async () => undefined) {
+/**
+ * Account deletion (Profile → Account Details): step 1 emails a confirmation code to the account's address
+ * (the screen checks the PIN first, on the device); step 2 deletes with that code and clears this device.
+ * Answers with the masked address the code went to.
+ */
+export async function requestAccountDeletionCode(): Promise<{ email: string; resendAfterSeconds: number }> {
+  return need().api.post<{ email: string; resendAfterSeconds: number }>('/v1/account/delete/code');
+}
+
+export async function deleteAccountWithCode(code: string): Promise<void> {
   const c = need();
-  const account = await c.deps.store.getAccount();
+  await c.api.post('/v1/account/delete', { code: code.replace(/\s/g, '') });
+  // The account, its tokens and this device's link to it are gone on the server: clear the device.
+  await wipe('Your Paspesa account was deleted. Thank you for using Paspesa.', async () => undefined, false);
+}
+
+async function wipe(notice: string | null, alsoTell: () => Promise<unknown> = async () => undefined, returnTokens = true) {
+  const c = need();
+  const account = returnTokens ? await c.deps.store.getAccount() : null;
   // Tokens set aside here go back to the balance (everything spent here is uploaded by now), and the
   // server hears about the sign-out — both at once, each with a short limit.
   await Promise.all([

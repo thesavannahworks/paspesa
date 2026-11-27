@@ -14,7 +14,7 @@ import { apiUrl, refreshServerConfig, request, ensureToken, type PaspesaApi } fr
 import { checkSignedInElsewhere } from './session';
 import type { KeyValueStore } from './kvTypes';
 
-const INTERVAL_MS = 15_000; // Check for settings changes every 15 seconds (was 60s)
+const INTERVAL_MS = 60_000; // background upload; settings are re-read separately every CONFIG_POLL_MS
 const DEBOUNCE_MS = 1_500;
 /** Back-office settings (payment switch, pricing) are re-read this often while the app is open. */
 const CONFIG_POLL_MS = 15_000;

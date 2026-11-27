@@ -157,6 +157,10 @@ export function quoteSimulation(
   request: Omit<SimulationRequest, 'operationId' | 'pin'>,
   options: QuoteOptions = {},
 ): QuoteResult {
+  // Back-office switch (Settings → Transaction Type Controls): a type switched off cannot be simulated.
+  if (config.monetization.transactionTypeControls?.[request.type] === false) {
+    return fail('TYPE_DISABLED', 'This service is not available at the moment.');
+  }
   const definition = getDefinition(request.type);
   const paymentMethod = request.paymentMethod ?? 'UNMETERED';
 

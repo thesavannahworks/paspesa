@@ -143,49 +143,6 @@ document.querySelectorAll('form[data-dirty]').forEach(function (f) {
   f.addEventListener('change', update);
   update();
 });
-// Token calculator: real-time calculations (Calculator page)
-(function() {
-  var amountInput = document.getElementById('amountToTokens');
-  var tokensInput = document.getElementById('tokensAvailable');
-  if (!amountInput && !tokensInput) return;
-  
-  var settings = window.PASPESA_SETTINGS || { shillingsPerToken: 1, freeThreshold: 20, amountPerToken: 5 };
-  
-  function calculateTokens() {
-    var amount = parseInt(amountInput.value) || 0;
-    var tokens = 0;
-    if (amount <= settings.freeThreshold) {
-      tokens = 0;
-    } else {
-      tokens = Math.ceil(amount / settings.amountPerToken);
-    }
-    document.getElementById('tokensNeeded').textContent = tokens;
-    document.getElementById('tokensCost').textContent = (tokens * settings.shillingsPerToken).toFixed(2);
-  }
-  
-  function calculateAmount() {
-    var tokens = parseInt(tokensInput.value) || 0;
-    var maxAmount = 0;
-    if (tokens === 0) {
-      maxAmount = settings.freeThreshold;
-    } else {
-      maxAmount = tokens * settings.amountPerToken;
-    }
-    document.getElementById('maxAmount').textContent = maxAmount;
-  }
-  
-  if (amountInput) {
-    amountInput.addEventListener('input', calculateTokens);
-    document.getElementById('txType').addEventListener('change', calculateTokens);
-    calculateTokens();
-  }
-  
-  if (tokensInput) {
-    tokensInput.addEventListener('input', calculateAmount);
-    document.getElementById('txType2').addEventListener('change', calculateAmount);
-    calculateAmount();
-  }
-})();
 `;
 
 export const ADMIN_CSS = `

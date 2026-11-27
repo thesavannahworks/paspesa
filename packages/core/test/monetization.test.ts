@@ -6,6 +6,7 @@ import {
   mayRunOfflineWithoutAllocation,
   tokensForShillings,
   DEFAULT_PRICING_RULE,
+  calculateTokens,
   canMovePayment,
   canMoveRefund,
   needsRefund,
@@ -158,5 +159,29 @@ describe('owner decisions of 2026-11-17', () => {
     expect(mayRunOfflineWithoutAllocation(free, DEFAULT_MONETIZATION_SETTINGS)).toBe(true);
     expect(mayRunOfflineWithoutAllocation(free, { ...DEFAULT_MONETIZATION_SETTINGS, freeSimulationsOffline: false })).toBe(false);
     expect(mayRunOfflineWithoutAllocation(paid, DEFAULT_MONETIZATION_SETTINGS)).toBe(false);
+  });
+});
+
+describe('token calculator', () => {
+  const settings = DEFAULT_MONETIZATION_SETTINGS;
+  const calc = (config: PricingConfiguration, amount: number, tokens: number, type: 'SEND_MONEY' | 'RECHARGE' = 'SEND_MONEY') =>
+    calculateTokens(config, settings, { accountId: 'a', type, amount, tokens, at: AT });
+
+  it('uses the pricing rule in force, both ways', () => {
+    expect(calc(DEFAULT_PRICING, 100, 20)).toMatchObject({ tokenCost: 20, shillings: 20, maxAmount: 100 });
+    expect(calc(DEFAULT_PRICING, 20, 0)).toMatchObject({ tokenCost: 0, maxAmount: 20 }); // free up to the threshold
+    expect(calc(DEFAULT_PRICING, 999_999, 1_000_000).maxAmount).toBe(250_000); // capped
+    expect(calc(DEFAULT_PRICING, 5_000, 0, 'RECHARGE')).toMatchObject({ tokenCost: 0, rule: null });
+  });
+
+  it('follows a changed rule (not fixed numbers)', () => {
+    const excess: PricingConfiguration = { ...DEFAULT_PRICING, rules: [rule({ formula: 'EXCESS_AMOUNT', freeThreshold: 50, amountPerToken: 10 })] };
+    expect(calc(excess, 100, 3)).toMatchObject({ tokenCost: 5, maxAmount: 80 });
+    const tiered: PricingConfiguration = {
+      ...DEFAULT_PRICING,
+      rules: [rule({ formula: 'TIERED', amountPerToken: null, tiers: [{ min: 0, max: 100, tokens: 0 }, { min: 101, max: 1_000, tokens: 5 }, { min: 1_001, max: null, tokens: 20 }] })],
+    };
+    expect(calc(tiered, 500, 5)).toMatchObject({ tokenCost: 5, maxAmount: 1_000 });
+    expect(calc(tiered, 5_000, 20)).toMatchObject({ tokenCost: 20, maxAmount: 250_000 });
   });
 });

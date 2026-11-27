@@ -20,6 +20,15 @@ const RESEND_SECONDS = 60;
 const PER_EMAIL_PER_DAY = 10;
 const PER_DEVICE_PER_DAY = 20;
 
+/** What a one-time code is for: a sign-in code can never confirm a deletion, or the reverse. */
+export type CodePurpose = 'SIGN_IN' | 'DELETE_ACCOUNT';
+
+/** Hides most of an email for display: "jo***@example.com". */
+export const maskEmail = (email: string) => {
+  const [user = '', domain = ''] = email.split('@');
+  return `${user.slice(0, 2)}${'*'.repeat(Math.max(1, Math.min(3, user.length - 2)))}@${domain}`;
+};
+
 export class SignInError extends Error {
   constructor(readonly code: 'VALIDATION' | 'WRONG_CODE' | 'CODE_EXPIRED' | 'TOO_MANY' | 'ACCOUNT_CONFLICT' | 'NOT_SIGNED_IN' | 'NOT_ACTIVE_DEVICE' | 'ACCOUNT_SUSPENDED', message: string) {
     super(message);
@@ -48,9 +57,46 @@ export class SignInService {
     if (!isValidEmail(email)) throw new SignInError('VALIDATION', 'Enter a valid email address');
     const suspended = await emailSuspended(this.db, email);
     if (suspended) throw new SignInError('ACCOUNT_SUSPENDED', suspended);
+    return this.issueCode(email, installationId, 'SIGN_IN');
+  }
+
+  /**
+   * Sends a code to the email of the account active on this device, to confirm deleting it (the app also
+   * asks for the PIN first, but the PIN never reaches the server: the code proves it is the account holder).
+   */
+  async requestDeletionCode(installationId: string): Promise<{ sent: true; resendAfterSeconds: number; email: string }> {
+    const email = await this.activeEmail(installationId);
+    const sent = await this.issueCode(email, installationId, 'DELETE_ACCOUNT');
+    return { ...sent, email: maskEmail(email) };
+  }
+
+  /** Checks a deletion code (a wrong try is counted and kept). Returns the account to delete. */
+  async confirmDeletionCode(installationId: string, code: string): Promise<{ accountId: string; email: string }> {
+    const email = await this.activeEmail(installationId);
+    const given = String(code ?? '').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(given)) throw new SignInError('VALIDATION', 'Enter the 6-digit code from the email');
+    const outcome = await this.db.transaction((q) => this.takeCode(q, email, installationId, 'DELETE_ACCOUNT', given, this.now()));
+    if (outcome) throw outcome;
+    const [a] = await this.db.query<{ id: string }>('SELECT id FROM accounts WHERE installation_id = $1 AND deleted_at IS NULL', [installationId]);
+    if (!a) throw new SignInError('NOT_SIGNED_IN', 'This device has no account to delete');
+    return { accountId: a.id, email };
+  }
+
+  /** The email of the account active on this device. */
+  private async activeEmail(installationId: string): Promise<string> {
+    const [row] = await this.db.query<{ email: string }>(
+      'SELECT u.email FROM accounts a JOIN users u ON u.id = a.user_id WHERE a.installation_id = $1 AND a.deleted_at IS NULL',
+      [installationId],
+    );
+    if (!row) throw new SignInError('NOT_SIGNED_IN', 'Sign in on this device first');
+    return row.email;
+  }
+
+  private async issueCode(email: string, installationId: string, purpose: CodePurpose): Promise<{ sent: true; resendAfterSeconds: number }> {
     const now = this.now();
     const dayAgo = new Date(now.getTime() - 86_400_000).toISOString();
-    const [recent] = await this.db.query<{ created_at: Date }>('SELECT created_at FROM sign_in_codes WHERE email = $1 ORDER BY created_at DESC LIMIT 1', [email]);
+    // One code a minute per purpose; the daily limits below count every code.
+    const [recent] = await this.db.query<{ created_at: Date }>('SELECT created_at FROM sign_in_codes WHERE email = $1 AND purpose = $2 ORDER BY created_at DESC LIMIT 1', [email, purpose]);
     if (recent && now.getTime() - new Date(recent.created_at).getTime() < RESEND_SECONDS * 1000) {
       throw new SignInError('TOO_MANY', 'A code was just sent. Wait a minute before asking for another.');
     }
@@ -61,23 +107,50 @@ export class SignInService {
     }
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const salt = randomBytes(12).toString('hex');
-    await this.db.query('INSERT INTO sign_in_codes (email, installation_id, code_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)', [
-      email, installationId, codeHash(salt, email, code), now.toISOString(), new Date(now.getTime() + CODE_MINUTES * 60_000).toISOString(),
+    await this.db.query('INSERT INTO sign_in_codes (email, installation_id, code_hash, created_at, expires_at, purpose) VALUES ($1, $2, $3, $4, $5, $6)', [
+      email, installationId, codeHash(salt, email, code), now.toISOString(), new Date(now.getTime() + CODE_MINUTES * 60_000).toISOString(), purpose,
     ]);
-    await this.mailer.send({
+    await this.mailer.send(purpose === 'SIGN_IN' ? {
       to: email,
       subject: `${code} is your Paspesa sign-in code`,
       text: `Your Paspesa sign-in code is ${code}\n\nIt expires in ${CODE_MINUTES} minutes. If you didn't ask for it, ignore this email.\n\nPaspesa is a simulator: it never asks for your real M-PESA PIN.`,
       html: `<p>Your Paspesa sign-in code is</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p><p>It expires in ${CODE_MINUTES} minutes. If you didn't ask for it, ignore this email.</p><p style="color:#666">Paspesa is a simulator: it never asks for your real M-PESA PIN.</p>`,
+    } : {
+      to: email,
+      subject: `${code} is your code to delete your Paspesa account`,
+      text: `Someone asked to permanently delete the Paspesa account for this email. If it was you, enter this code in the app:\n\n${code}\n\nIt expires in ${CODE_MINUTES} minutes. If it wasn't you, ignore this email: nothing is deleted without the code.`,
+      html: `<p>Someone asked to <b>permanently delete</b> the Paspesa account for this email. If it was you, enter this code in the app:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p><p>It expires in ${CODE_MINUTES} minutes. If it wasn't you, ignore this email: nothing is deleted without the code.</p>`,
     });
     return { sent: true, resendAfterSeconds: RESEND_SECONDS };
+  }
+
+  /**
+   * Takes the newest unused code of this purpose for this email on this device and marks it used when it
+   * matches; a wrong try is counted. Returns the refusal instead of throwing it, so the caller's transaction
+   * commits the counted try.
+   */
+  private async takeCode(q: Queryable, email: string, installationId: string, purpose: CodePurpose, given: string, now: Date): Promise<SignInError | null> {
+    const [row] = await q.query<{ id: string; code_hash: string; attempts: number; expires_at: Date }>(
+      `SELECT id, code_hash, attempts, expires_at FROM sign_in_codes
+       WHERE email = $1 AND installation_id = $2 AND purpose = $3 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [email, installationId, purpose],
+    );
+    if (!row || new Date(row.expires_at).getTime() <= now.getTime()) return new SignInError('CODE_EXPIRED', 'That code has expired. Ask for a new one.');
+    if (row.attempts >= MAX_TRIES) return new SignInError('TOO_MANY', 'Too many wrong tries. Ask for a new code.');
+    if (!codeMatches(row.code_hash, email, given)) {
+      await q.query('UPDATE sign_in_codes SET attempts = attempts + 1 WHERE id = $1', [row.id]);
+      const left = MAX_TRIES - row.attempts - 1;
+      return new SignInError(left > 0 ? 'WRONG_CODE' : 'TOO_MANY', left > 0 ? `Wrong code. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Too many wrong tries. Ask for a new code.');
+    }
+    await q.query('UPDATE sign_in_codes SET used_at = $2 WHERE id = $1', [row.id, now.toISOString()]);
+    return null;
   }
 
   /**
    * Checks the code and signs this device in. `replaceLocalAccount`: this device has its own account that
    * isn't the email's — the user chose to drop it and use the email's account instead.
    */
-  async verifyCode(emailRaw: string, code: string, installationId: string, replaceLocalAccount = false): Promise<SignInResult> {
+  async verifyCode(emailRaw: string, code: string, installationId: string, replaceLocalAccount = false, termsVersion: string | null = null): Promise<SignInResult> {
     const email = normalizeEmail(emailRaw ?? '');
     const given = String(code ?? '').replace(/\s/g, '');
     if (!isValidEmail(email) || !/^\d{6}$/.test(given)) throw new SignInError('VALIDATION', 'Enter the 6-digit code from the email');
@@ -86,20 +159,14 @@ export class SignInService {
     const now = this.now();
     // A wrong try is counted in its own committed step (an error inside the sign-in transaction would undo it).
     const outcome = await this.db.transaction(async (q): Promise<SignInResult | SignInError> => {
-      const [row] = await q.query<{ id: string; code_hash: string; attempts: number; expires_at: Date }>(
-        `SELECT id, code_hash, attempts, expires_at FROM sign_in_codes
-         WHERE email = $1 AND installation_id = $2 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-        [email, installationId],
-      );
-      if (!row || new Date(row.expires_at).getTime() <= now.getTime()) throw new SignInError('CODE_EXPIRED', 'That code has expired. Ask for a new one.');
-      if (row.attempts >= MAX_TRIES) throw new SignInError('TOO_MANY', 'Too many wrong tries. Ask for a new code.');
-      if (!codeMatches(row.code_hash, email, given)) {
-        await q.query('UPDATE sign_in_codes SET attempts = attempts + 1 WHERE id = $1', [row.id]);
-        const left = MAX_TRIES - row.attempts - 1;
-        return new SignInError(left > 0 ? 'WRONG_CODE' : 'TOO_MANY', left > 0 ? `Wrong code. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Too many wrong tries. Ask for a new code.');
+      const refused = await this.takeCode(q, email, installationId, 'SIGN_IN', given, now);
+      if (refused) return refused; // a counted wrong try is committed
+      const result = await this.bind(q, email, installationId, replaceLocalAccount, now);
+      // Proof of consent (DPA s.32): which version of the Privacy Policy and Terms was accepted, and when.
+      if (termsVersion) {
+        await q.query('UPDATE users SET terms_version = $2, terms_accepted_at = $3 WHERE email = $1', [email, termsVersion.slice(0, 40), now.toISOString()]);
       }
-      await q.query('UPDATE sign_in_codes SET used_at = $2 WHERE id = $1', [row.id, now.toISOString()]);
-      return this.bind(q, email, installationId, replaceLocalAccount, now);
+      return result;
     });
     if (outcome instanceof SignInError) throw outcome;
     return outcome;

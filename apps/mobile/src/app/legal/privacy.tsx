@@ -1,17 +1,9 @@
-import { Screen, ScreenHeader } from '@/components/ui';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
+import { useLocalSearchParams } from 'expo-router';
+import { DocumentScreen } from '@/components/MarkdownViewer';
+import { DOCUMENTS } from '@/services/legal';
 
-// Import markdown as string
-const privacyPolicyContent = require('../../../legal/privacy-policy.md') as string;
-
-/**
- * Privacy Policy - loaded from markdown file
- */
+/** Shows the document from apps/mobile/legal (see services/legal.ts); `?section=` opens it at a heading. */
 export default function PrivacyPolicyScreen() {
-  return (
-    <Screen background="page">
-      <ScreenHeader title="Privacy Policy" />
-      <MarkdownViewer content={privacyPolicyContent} />
-    </Screen>
-  );
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  return <DocumentScreen doc={DOCUMENTS.privacy} section={section ?? null} />;
 }

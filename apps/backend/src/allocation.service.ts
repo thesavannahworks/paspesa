@@ -88,6 +88,7 @@ export class AllocationService {
   /** Reserves `quantity` more tokens for the device (creating its allocation if needed). Online only. */
   async allocate(deviceId: string, quantity: number): Promise<ServerAllocation> {
     if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new MonetizationError('VALIDATION', 'Choose how many tokens to set aside');
+    if ((await this.money.settings()).paymentMethodControls?.tokensEnabled === false) throw new MonetizationError('INVALID_STATE', 'Paying with tokens is not available at the moment');
     return this.db.transaction(async (q) => {
       const accountId = await this.accountOf(q, deviceId);
       const walletId = await this.money.lockWallet(q, accountId);

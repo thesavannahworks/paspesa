@@ -31,17 +31,20 @@ apps/mobile     @paspesa/mobile — Expo app (Android / iOS / web from one codeb
 apps/backend    @paspesa/backend — NestJS + PostgreSQL: account persistence and synchronization API
 ```
 
-## Legal Documents
+## Documents (legal, help, about)
 
-Legal documents are stored as markdown files in `apps/mobile/legal/`:
+One Markdown source per document in `apps/mobile/legal/`, shown in the app and on the web app by
+`components/MarkdownViewer.tsx` (routes in `services/legal.ts`):
 
-- **Privacy Policy** (`privacy-policy.md`) - Data collection and usage
-- **Terms of Service** (`terms-of-service.md`) - User agreement and acceptable use
-- **Data Protection** (`data-protection.md`) - GDPR/Kenya DPA compliance
-- **Help & User Guide** (`help.md`) - Complete user documentation
-- **About App** (`about.md`) - App information and mission
+- `privacy-policy.md` → `/legal/privacy` · `terms-of-service.md` → `/legal/terms`
+- `data-protection.md` → `/legal/data-protection` (Kenya Data Protection Act, 2019)
+- `help.md` → `/help` · `about.md` → `/about`
 
-These are rendered in-app via `/legal/*`, `/help`, and `/about` routes. Users must accept legal terms before signing in.
+Links between documents use the file name (`terms-of-service.md#refunds-and-charges-made-in-error`);
+`#section` anchors are the heading in lower case with spaces as hyphens. The public URLs (for the Play
+Store listing) are the web app's routes, e.g. `https://paspesa-web.vercel.app/legal/privacy`.
+**When the Privacy Policy, Terms or Data Protection Notice change in substance, bump `LEGAL_VERSION`** in
+`services/legal.ts`; the server records the version each person accepted at sign-in.
 
 ## Getting started
 
@@ -123,6 +126,11 @@ npm test -w @paspesa/backend        # sync API tests (in-memory PostgreSQL)
   authenticator app (recovery codes included), and see or end your other sessions.
 - **Debugging a test session:** `npm run admin -- trace you@example.com` prints that account's recent
   history in order — sign-ins, transactions, uploads, review items and settings changes.
+- **Account deletion:** Profile → Account Details → Delete my account (PIN, then a code emailed to the
+  account). The server erases the account's personal data in one transaction, keeps real-money payment
+  records without the phone number, and detaches every device. Refused while a payment is in progress.
+- **Back-office switches** (Settings): transaction types and payment methods switched off are hidden in
+  the app, refused by the server, and uploads made while they were off are held for review.
 - **Suspending misuse:** Devices and each account page have **Suspend** (with a reason shown to the user)
   and **Reinstate**. A suspended phone or account is blocked until reinstated; nothing is deleted.
 - **Uncharged simulations** (stored by the review queue's Apply before the 2026-11-18 fix):

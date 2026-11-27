@@ -1,176 +1,116 @@
 /**
- * Token Calculator — Calculate tokens needed for a simulation or how much can be simulated with tokens.
- * Owner requirement (notes.md, item 6): help users understand token costs.
+ * Token Calculator: what a simulation costs in tokens, and how much a number of tokens can pay for.
+ * Uses the pricing delivered by the server (deps.config.pricing, the same rules that charge simulations),
+ * resolved for this account and transaction type — never fixed numbers.
  */
+import { calculateTokens, formatAmount, type PricingRule, type SimulationType } from '@paspesa/core';
 import { useState } from 'react';
-import { View, TextInput, ScrollView, StyleSheet } from 'react-native';
-import { EdgeCard, Screen, ScreenHeader, T } from '@/components/ui';
+import { StyleSheet, View } from 'react-native';
+import { EdgeCard, Field, Screen, ScreenHeader, SegmentedTabs, T } from '@/components/ui';
+import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
-import { useAppState } from '@/services/AppState';
+
+const TYPES: { key: SimulationType; label: string }[] = [
+  { key: 'SEND_MONEY', label: 'Send' },
+  { key: 'BUY_GOODS', label: 'Till' },
+  { key: 'PAYBILL', label: 'Paybill' },
+  { key: 'POCHI', label: 'Pochi' },
+  { key: 'AIRTIME', label: 'Airtime' },
+];
+
+const whole = (v: string) => Number.parseInt(v.replace(/\D/g, ''), 10) || 0;
+/** Whole shillings or tokens with thousands separators (formatAmount adds ".00"). */
+const num = (n: number) => formatAmount(n).slice(0, -3);
+const plural = (n: number) => `${num(n)} token${n === 1 ? '' : 's'}`;
+
+/** The rule in plain words. */
+function describe(rule: PricingRule | null): string {
+  if (!rule) return 'This type of transaction is free.';
+  const free = rule.freeThreshold > 0 ? `Up to Ksh ${num(rule.freeThreshold)} is free. ` : '';
+  switch (rule.formula) {
+    case 'FULL_AMOUNT':
+      return `${free}Above that, 1 token for every Ksh ${rule.amountPerToken} of the amount (rounded up).`;
+    case 'EXCESS_AMOUNT':
+      return `${free}Above that, 1 token for every Ksh ${rule.amountPerToken} over Ksh ${num(rule.freeThreshold)} (rounded up).`;
+    case 'TIERED':
+      return (rule.tiers ?? [])
+        .map((t) => `Ksh ${num(t.min)}${t.max === null ? ' and above' : ` – ${num(t.max)}`}: ${plural(t.tokens)}`)
+        .join('\n');
+  }
+}
 
 export default function Calculator() {
   const { colors } = useTheme();
   const { deps } = useAppState();
+  const account = useAccount();
+  const [type, setType] = useState<SimulationType>('SEND_MONEY');
   const [amount, setAmount] = useState('100');
   const [tokens, setTokens] = useState('20');
 
-  // Simple pricing calculation based on FULL_AMOUNT formula
-  const FREE_THRESHOLD = 20;
-  const AMOUNT_PER_TOKEN = 5;
-  const shillingsPerToken = deps.config.monetization.shillingsPerToken;
-
-  const calculateTokens = (amountValue: number): { tokens: number; cost: number } => {
-    if (amountValue <= FREE_THRESHOLD) {
-      return { tokens: 0, cost: 0 };
+  const [at] = useState(() => deps.clock.now());
+  const calc = (() => {
+    try {
+      return calculateTokens(deps.config.pricing, deps.config.monetization, {
+        accountId: account.id, type, amount: whole(amount), tokens: whole(tokens), at, limit: deps.config.maxOpeningBalance,
+      });
+    } catch {
+      return null; // no pricing rule delivered yet
     }
-    const tokensNeeded = Math.ceil(amountValue / AMOUNT_PER_TOKEN);
-    return { tokens: tokensNeeded, cost: tokensNeeded * shillingsPerToken };
-  };
-
-  const calculateAmount = (tokenValue: number): number => {
-    if (tokenValue === 0) {
-      return FREE_THRESHOLD;
-    }
-    return tokenValue * AMOUNT_PER_TOKEN;
-  };
-
-  const amountNum = parseInt(amount) || 0;
-  const tokensNum = parseInt(tokens) || 0;
-  const { tokens: neededTokens, cost } = calculateTokens(amountNum);
-  const maxAmount = calculateAmount(tokensNum);
+  })();
 
   return (
     <Screen>
       <ScreenHeader title="Token Calculator" />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: s(16) }}>
-        {/* Header */}
-        <T variant="body" color={colors.textSecondary} style={{ marginBottom: s(24), lineHeight: s(22) }}>
-          Calculate how many tokens you need for a simulation, or how much you can simulate with your tokens.
+      <T variant="body" color={colors.textSecondary} style={{ marginTop: s(12), lineHeight: s(22) }}>
+        See what a simulation costs in tokens, or how much you can simulate with the tokens you have.
+      </T>
+
+      <View style={{ marginTop: s(18) }}>
+        <SegmentedTabs compact tabs={TYPES} value={type} onChange={setType} />
+      </View>
+
+      {!calc ? (
+        <T variant="body" color={colors.textSecondary} style={{ marginTop: s(20) }}>
+          Prices are not available yet. Connect to the internet and try again.
         </T>
+      ) : (
+        <>
+          <EdgeCard style={{ marginTop: s(18) }}>
+            <T variant="bodyStrong" style={{ fontSize: s(17) }}>What does it cost?</T>
+            <Field label="Simulation amount" value={amount} onChangeText={(v) => setAmount(v.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad" placeholder="0" right={<T variant="body">Ksh</T>} />
+            <View style={[styles.result, { backgroundColor: colors.greenSoft }]}>
+              <T variant="amount" color={colors.green} style={{ fontSize: s(26) }}>{plural(calc.tokenCost)}</T>
+              <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(4) }}>
+                {calc.tokenCost === 0 ? 'Free' : `or Ksh ${num(calc.shillings)} paid with M-PESA`}
+              </T>
+            </View>
+          </EdgeCard>
 
-        {/* Shillings to Tokens */}
-        <EdgeCard style={{ marginTop: s(8) }}>
-          <T variant="heading" style={{ fontSize: s(18), marginBottom: s(8) }}>
-            Shillings to Tokens
-          </T>
-          <T variant="caption" color={colors.textSecondary} style={{ marginBottom: s(16) }}>
-            Calculate tokens needed for a simulation
-          </T>
+          <EdgeCard style={{ marginTop: s(16) }}>
+            <T variant="bodyStrong" style={{ fontSize: s(17) }}>How much can I simulate?</T>
+            <Field label="Tokens" value={tokens} onChangeText={(v) => setTokens(v.replace(/\D/g, '').slice(0, 7))}
+              keyboardType="number-pad" placeholder="0" />
+            <View style={[styles.result, { backgroundColor: colors.greenSoft }]}>
+              <T variant="amount" color={colors.green} style={{ fontSize: s(26) }}>Ksh {num(calc.maxAmount)}</T>
+              <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(4) }}>largest amount in one simulation</T>
+            </View>
+          </EdgeCard>
 
-          <T variant="label" style={{ marginBottom: s(8) }}>
-            Simulation Amount (KSh)
-          </T>
-          <TextInput
-            style={[styles.input, { color: colors.text, borderColor: colors.inputBorder, backgroundColor: colors.raised }]}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="numeric"
-            placeholder="Enter amount"
-            placeholderTextColor={colors.textSecondary}
-          />
-
-          <View style={[styles.result, { backgroundColor: colors.greenSoft, marginTop: s(16) }]}>
-            <T variant="amount" color={colors.green} style={{ fontSize: s(28) }}>
-              {neededTokens}
-            </T>
-            <T variant="label" color={colors.green} style={{ marginTop: s(4) }}>
-              {neededTokens === 1 ? 'token' : 'tokens'} needed
-            </T>
-            <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(8) }}>
-              Cost: KSh {cost.toFixed(2)}
+          <View style={{ marginTop: s(20), marginBottom: s(12) }}>
+            <T variant="bodyStrong">How it is priced</T>
+            <T variant="body" color={colors.textSecondary} style={{ marginTop: s(6), lineHeight: s(22) }}>{describe(calc.rule)}</T>
+            <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(8), lineHeight: s(19) }}>
+              1 token = Ksh {deps.config.monetization.shillingsPerToken}. Recharging your simulated balance is always free.
             </T>
           </View>
-        </EdgeCard>
-
-        {/* Tokens to Shillings */}
-        <EdgeCard style={{ marginTop: s(16) }}>
-          <T variant="heading" style={{ fontSize: s(18), marginBottom: s(8) }}>
-            Tokens to Shillings
-          </T>
-          <T variant="caption" color={colors.textSecondary} style={{ marginBottom: s(16) }}>
-            Calculate how much you can simulate with your tokens
-          </T>
-
-          <T variant="label" style={{ marginBottom: s(8) }}>
-            Available Tokens
-          </T>
-          <TextInput
-            style={[styles.input, { color: colors.text, borderColor: colors.inputBorder, backgroundColor: colors.raised }]}
-            value={tokens}
-            onChangeText={setTokens}
-            keyboardType="numeric"
-            placeholder="Enter tokens"
-            placeholderTextColor={colors.textSecondary}
-          />
-
-          <View style={[styles.result, { backgroundColor: colors.greenSoft, marginTop: s(16) }]}>
-            <T variant="amount" color={colors.green} style={{ fontSize: s(28) }}>
-              KSh {maxAmount}
-            </T>
-            <T variant="label" color={colors.green} style={{ marginTop: s(4) }}>
-              Maximum simulation amount
-            </T>
-            <T variant="caption" color={colors.textSecondary} style={{ marginTop: s(8) }}>
-              Based on full amount pricing
-            </T>
-          </View>
-        </EdgeCard>
-
-        {/* Pricing Info */}
-        <EdgeCard style={{ marginTop: s(16), marginBottom: s(32) }}>
-          <T variant="heading" style={{ fontSize: s(18), marginBottom: s(8) }}>
-            Current Pricing
-          </T>
-          <T variant="caption" color={colors.textSecondary} style={{ marginBottom: s(12) }}>
-            Global default pricing rule
-          </T>
-          <View style={styles.infoRow}>
-            <T variant="caption" color={colors.textSecondary}>
-              Formula:
-            </T>
-            <T variant="body">Full Amount</T>
-          </View>
-          <View style={styles.infoRow}>
-            <T variant="caption" color={colors.textSecondary}>
-              Free threshold:
-            </T>
-            <T variant="body">KSh {FREE_THRESHOLD}</T>
-          </View>
-          <View style={styles.infoRow}>
-            <T variant="caption" color={colors.textSecondary}>
-              Amount per token:
-            </T>
-            <T variant="body">KSh {AMOUNT_PER_TOKEN}</T>
-          </View>
-          <View style={styles.infoRow}>
-            <T variant="caption" color={colors.textSecondary}>
-              Shillings per token:
-            </T>
-            <T variant="body">{shillingsPerToken}</T>
-          </View>
-        </EdgeCard>
-      </ScrollView>
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderRadius: s(8),
-    padding: s(12),
-    fontSize: s(16),
-  },
-  result: {
-    borderRadius: s(8),
-    padding: s(20),
-    alignItems: 'center',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: s(8),
-    paddingVertical: s(4),
-  },
+  result: { marginTop: s(16), borderRadius: s(8), padding: s(16), alignItems: 'center' },
 });

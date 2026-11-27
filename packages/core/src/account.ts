@@ -205,31 +205,6 @@ export async function removeFavourite(deps: EngineDeps, favouriteId: string): Pr
   });
 }
 
-/**
- * Permanently delete the user's account and all data. This action cannot be undone.
- * Financial records are retained on the server for 7 years per legal requirements.
- * Requires PIN confirmation.
- */
-export async function deleteAccount(
-  deps: EngineDeps,
-  input: { pin: string },
-): Promise<{ ok: true } | Failure> {
-  return deps.store.runAtomic(async (tx) => {
-    const account = await tx.getAccount();
-    if (!account) return fail('NO_ACCOUNT', 'No account found');
-    
-    // Verify PIN before deletion
-    const failure = await checkPin({ ...deps, config: { ...deps.config, pinMode: 'USER_PIN' } }, account, input.pin);
-    if (failure) return failure;
-
-    // Queue server deletion request
-    const now = deps.clock.now();
-    await tx.enqueueOutbox(outboxEntry(deps.ids, deps.installationId, deps.ids.uuid(), 'ACCOUNT', account.id, 'DELETE_ACCOUNT', now, { kind: 'DELETE_ACCOUNT', accountId: account.id }));
-    
-    return { ok: true as const };
-  });
-}
-
 export interface FavouriteSuggestion {
   type: SimulationType;
   key: string;

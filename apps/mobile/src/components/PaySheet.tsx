@@ -75,7 +75,11 @@ export function PaySheet({
   const onPhone = allocation && !expired ? allocation.remaining : 0;
   const [order] = usePreference<TokenOrder>(TOKEN_ORDER_KEY, 'PHONE_FIRST');
   // Online, the central balance counts too (less what is already chosen to be paid from it but not uploaded yet).
-  const { transactions } = useAppState();
+  const { transactions, deps } = useAppState();
+  // Back-office switches (Settings → Payment Method Controls); the server enforces them too.
+  const methods = deps.config.monetization.paymentMethodControls;
+  const tokensAllowed = methods?.tokensEnabled !== false;
+  const directAllowed = methods?.directPayEnabled !== false;
   const [central, setCentral] = useState<number | null>(null);
   const pendingCentral = transactions.filter((t) => t.syncStatus !== 'SYNCED').reduce((n, t) => n + tokenSplit(t).central, 0);
   const centralAvailable = central === null ? null : Math.max(0, central - pendingCentral);
@@ -86,7 +90,7 @@ export function PaySheet({
     return () => { live = false; };
   }, [visible, api]);
   const plan = planTokens(tokenCost, onPhone, centralAvailable, order);
-  const tokensOk = !!plan;
+  const tokensOk = tokensAllowed && !!plan;
   // Tokens when they cover it, else M-PESA; the user may switch.
   const [picked, setMethod] = useState<'TOKENS' | 'DIRECT' | null>(null);
   const method = picked ?? (tokensOk ? 'TOKENS' : 'DIRECT');
@@ -103,7 +107,8 @@ export function PaySheet({
 
   const plural = (n: number) => `${n} token${n === 1 ? '' : 's'}`;
   const have = [onPhone > 0 ? `${onPhone} on this phone` : null, centralAvailable ? `${centralAvailable} in your balance` : null].filter(Boolean).join(' + ');
-  const tokensSub = plan
+  const tokensSub = !tokensAllowed ? 'Not available at the moment'
+    : plan
     ? (plan.device > 0 && plan.central > 0 ? `${plan.device} from this phone + ${plan.central} from your balance`
       : plan.central > 0 ? `From your balance: ${plural(centralAvailable ?? 0)} available`
       : `From this phone: ${plural(onPhone)} set aside`)
@@ -194,13 +199,13 @@ export function PaySheet({
           />
           <Option
             selected={method === 'DIRECT'}
-            disabled={!api.available}
+            disabled={!api.available || !directAllowed}
             onPress={() => setMethod('DIRECT')}
             icon={<MoneyMethodIcon size={30} />}
             title="M-PESA"
-            sub={api.available ? `Pay ${formatKsh(tokenCost)} · prompt to ${phoneOk ? toLocalPhone(normalizeKenyanPhone(payPhone)!) : 'the number below'}` : 'Needs the Paspesa server'}
+            sub={!directAllowed ? 'Not available at the moment' : api.available ? `Pay ${formatKsh(tokenCost)} · prompt to ${phoneOk ? toLocalPhone(normalizeKenyanPhone(payPhone)!) : 'the number below'}` : 'Needs the Paspesa server'}
           />
-          {method === 'DIRECT' && api.available ? (
+          {method === 'DIRECT' && api.available && directAllowed ? (
             <Field
               label="M-PESA number to receive the prompt"
               value={payPhone}
@@ -210,13 +215,13 @@ export function PaySheet({
               error={payPhone && !phoneOk ? 'Enter a valid M-PESA number' : undefined}
             />
           ) : null}
-          {!tokensOk && api.available ? (
+          {!tokensOk && tokensAllowed && api.available ? (
             <Pressable accessibilityRole="link" onPress={() => { close(); router.push('/wallet'); }} style={{ marginTop: s(12), alignSelf: 'center' }}>
               <T variant="label" color={colors.green}>Set aside tokens from your balance</T>
             </Pressable>
           ) : null}
           {error ? <T variant="caption" color={colors.red} center style={{ marginTop: s(12) }}>{error}</T> : null}
-          <PrimaryButton title="Continue" onPress={onContinue} loading={sending} disabled={method === 'TOKENS' ? !tokensOk : !api.available || !phoneOk} style={{ marginTop: s(22) }} />
+          <PrimaryButton title="Continue" onPress={onContinue} loading={sending} disabled={method === 'TOKENS' ? !tokensOk : !api.available || !directAllowed || !phoneOk} style={{ marginTop: s(22) }} />
         </View>
       ) : (
         <View style={{ alignItems: 'center', paddingVertical: s(26) }}>
