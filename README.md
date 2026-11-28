@@ -97,6 +97,26 @@ npx eas-cli@latest build -p android --profile preview
 `eas.json` has the profiles: `preview` makes an APK for testers, `production` a Play Store bundle. The Android
 package name is `app.paspesa.simulator` (it cannot change once published on the Play Store).
 
+**Updates without a new APK (EAS Update).** Installed apps check for an update each time they open; with a
+connection they start straight into it (they wait up to 5 seconds, otherwise it applies on the next open).
+Publish screens, text, documents and other JavaScript changes with:
+
+```bash
+cd apps/mobile
+npm run update:preview      # APKs built with --profile preview
+npm run update:production   # builds from --profile production
+```
+
+An update only reaches APKs with the same *runtime version* (`runtimeVersion: fingerprint` in `app.json`): any
+native change — a new Expo/native package, a permission, the icon or name, an SDK upgrade — produces a new
+fingerprint, so those need a new APK, and older APKs simply keep their version instead of crashing. The server
+address for updates comes from the EAS environment (`eas env:list --environment preview`), not from `eas.json`.
+Backend changes (Railway variables, email provider, payment provider, prices, settings) never need an app update.
+
+**Devices in the back office.** Every install, browser and web address registers as its own device, even before
+anyone signs in. Unused ones (nobody signed in, nothing uploaded, no tokens) are removed automatically after 30
+idle days, or straight away from **Devices → Unused devices**; an app opened again simply registers anew.
+
 ### Run the backend (optional, no cloud host needed)
 
 ```bash

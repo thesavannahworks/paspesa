@@ -13,7 +13,7 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'r
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserAvatar } from '@/components/UserAvatar';
-import { Field, PrimaryButton, SegmentedTabs, Sheet, T } from '@/components/ui';
+import { Field, PrimaryButton, SegmentedTabs, Sheet, T, goBack } from '@/components/ui';
 import { CameraOffArt, ChevronLeftIcon, DownloadIcon, FlashOffIcon, FlashOnIcon, GalleryIcon, PochiWalletIcon } from '@/icons';
 import { useAccount } from '@/services/AppState';
 import { saveQr } from '@/services/saveQr';
@@ -36,7 +36,7 @@ export default function ScanToPayScreen() {
       {live ? <Scanner st={st} camera={camera} /> : null}
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.header} pointerEvents="box-none">
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={12}
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={goBack} hitSlop={12}
             style={[styles.back, tab === 'mine' && { backgroundColor: colors.mode === 'dark' ? '#F7F2FA' : colors.raised }]}>
             <ChevronLeftIcon color={tab === 'mine' && colors.mode === 'dark' ? '#121212' : live ? '#FFFFFF' : colors.text} size={26} />
           </Pressable>

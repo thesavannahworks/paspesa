@@ -85,11 +85,20 @@ export function CircleButton({ onPress, children, size = 50, label }: { onPress?
   );
 }
 
+/**
+ * Back, or home when there is nothing to go back to: a screen opened straight from its address (a reload,
+ * a shared link, a new browser tab) has no history, and router.back() would fail.
+ */
+export function goBack() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/');
+}
+
 export function ScreenHeader({ title, onBack, right }: { title?: string; onBack?: () => void; right?: ReactNode }) {
   const { colors } = useTheme();
   return (
     <View style={styles.header}>
-      <CircleButton label="Back" onPress={onBack ?? (() => router.back())}>
+      <CircleButton label="Back" onPress={onBack ?? goBack}>
         <ChevronLeftIcon color={colors.text} size={26} />
       </CircleButton>
       <T variant="title" style={styles.headerTitle} numberOfLines={1}>{title ?? ''}</T>

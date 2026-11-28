@@ -11,6 +11,7 @@ import { MonetizationService } from '../monetization.service.js';
 import { SyncService } from '../sync.service.js';
 import { SuspensionService } from '../suspension.js';
 import { FeeService } from '../fees.service.js';
+import { AUTO_REMOVE_AFTER_DAYS, countUnusedDevices, removeUnusedDevices } from '../devices.js';
 import { REPORT_PERIODS, buildReport, reportCsv, reportHtml, type ReportPeriod } from './reports.js';
 import type { PaymentProviders } from '../providers.js';
 import QRCode from 'qrcode';
@@ -438,17 +439,25 @@ export class AdminController {
     const rows = await this.db.query<Record<string, unknown>>(
       `SELECT i.id, i.platform, i.status, i.suspended_at, i.suspended_reason, i.last_seen_at, a.id AS account_id, a.account_name,
               d.allocated_quantity, d.spent_quantity, d.released_quantity, d.forfeited_quantity, d.authorization_expires_at
-       FROM installations i LEFT JOIN accounts a ON a.installation_id = i.id
+       FROM installations i LEFT JOIN accounts a ON a.id = coalesce(i.account_id, (SELECT x.id FROM accounts x WHERE x.installation_id = i.id))
        LEFT JOIN device_allocations d ON d.device_id = i.id AND d.status = 'ACTIVE' ORDER BY i.last_seen_at DESC NULLS LAST LIMIT 300`,
     );
     const history = await this.db.query<Record<string, unknown>>('SELECT device_id, status, allocated_quantity, spent_quantity, released_quantity, forfeited_quantity, created_at, released_at FROM device_allocations ORDER BY created_at DESC LIMIT 50');
     const mayMark = can(session.admin.role, 'MARK_DEVICE_LOST');
+    const unused = await countUnusedDevices(this.db, 0);
     this.send(res, layout('Devices', session, html`${this.flash(q)}
+      <div class="panel"><h2>Unused devices</h2>
+        <p class="muted">Every app install, browser and web address the app is opened from registers as its own device, even before anyone signs in.
+        A device is unused when nobody is signed in on it and it never uploaded anything or held tokens. Unused devices idle for ${AUTO_REMOVE_AFTER_DAYS} days are removed automatically; if one is opened again it simply registers anew.</p>
+        <p><strong>${unused}</strong> unused device${unused === 1 ? '' : 's'} now.</p>
+        ${mayMark && unused ? html`<form method="post" action="/admin/devices/clear-unused">${csrf(session)}
+          <label>Remove unused devices idle for at least</label><select name="days"><option value="0">15 minutes</option><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
+          <button>Remove unused devices</button></form>` : html``}</div>
       <div class="panel"><table><tr><th>Device</th><th>Account</th><th>Status</th><th>Last seen</th><th class="num">On device</th><th>Authorized until</th><th></th></tr>
       ${rows.map((r) => {
         const left = r.allocated_quantity === null ? null : Number(r.allocated_quantity) - Number(r.spent_quantity) - Number(r.released_quantity) - Number(r.forfeited_quantity);
         return html`<tr><td>${r.platform ?? '—'}<div class="muted">${String(r.id).slice(0, 8)}…</div></td>
-          <td>${r.account_id ? html`<a href="/admin/accounts/${r.account_id}">${r.account_name}</a>` : html`<span class="muted">not synced</span>`}</td>
+          <td>${r.account_id ? html`<a href="/admin/accounts/${r.account_id}">${r.account_name}</a>` : html`<span class="muted">not signed in</span>`}</td>
           <td>${r.suspended_at ? html`<span class="pill bad">SUSPENDED</span><div class="muted">${r.suspended_reason}</div>` : html`<span class="pill ${r.status === 'ACTIVE' ? 'ok' : 'bad'}">${r.status}</span>`}</td><td>${fmtDate(r.last_seen_at)}</td>
           <td class="num">${left ?? '—'}</td><td>${r.authorization_expires_at ? fmtDate(r.authorization_expires_at) : '—'}</td>
           <td>${r.status === 'ACTIVE' ? this.suspendForm(session, 'devices', String(r.id), !!r.suspended_at, 'device', 'The app on it stops working until reinstated; its data stays.') : html``}
@@ -459,6 +468,24 @@ export class AdminController {
       <div class="panel"><h2>Allocation history</h2><table><tr><th>Device</th><th>Status</th><th class="num">Allocated</th><th class="num">Spent</th><th class="num">Returned</th><th class="num">Forfeited</th><th>Created</th><th>Closed</th></tr>
       ${history.map((h) => html`<tr><td class="muted">${String(h.device_id).slice(0, 8)}…</td><td>${h.status}</td><td class="num">${h.allocated_quantity}</td><td class="num">${h.spent_quantity}</td><td class="num">${h.released_quantity}</td><td class="num">${h.forfeited_quantity}</td><td>${fmtDate(h.created_at)}</td><td>${fmtDate(h.released_at)}</td></tr>`)}
       </table></div>`, '/admin/devices'));
+  }
+
+  @Post('devices/clear-unused')
+  async clearUnused(@Req() req: Req, @Res() res: Res, @Body() form: Form) {
+    const session = await this.session(req, res);
+    if (!session) return;
+    try {
+      this.guard(session, form, 'MARK_DEVICE_LOST');
+    } catch (e) {
+      return this.denied(res, session, e);
+    }
+    const days = Number(form.days);
+    if (![0, 1, 7, 30].includes(days)) return this.back(res, '/admin/devices', 'Choose how long the devices have been idle', true);
+    const removed = await removeUnusedDevices(this.db, days);
+    await this.db.query('INSERT INTO audit_log (actor_id, action, entity_type, entity_id, after_value) VALUES ($1, $2, $3, $4, $5)', [
+      this.actor(session), 'REMOVE_UNUSED_DEVICES', 'DEVICE', 'unused', JSON.stringify({ idleDays: days, removed }),
+    ]);
+    this.back(res, '/admin/devices', removed ? `Removed ${removed} unused device${removed === 1 ? '' : 's'}` : 'No unused devices were idle that long');
   }
 
   @Post('devices/:id/suspend')

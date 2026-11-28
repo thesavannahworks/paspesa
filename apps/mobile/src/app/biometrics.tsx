@@ -4,11 +4,10 @@
  * unlock the app and approve anything that asks for the PIN. Turning it off needs no PIN.
  */
 import { verifyPin } from '@paspesa/core';
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { PinView, type PinAuth } from '@/components/journey';
-import { CircleButton, Screen, T, Toggle } from '@/components/ui';
+import { CircleButton, Screen, T, Toggle, goBack } from '@/components/ui';
 import { ChevronLeftIcon, FingerprintIcon, ShieldBugIcon } from '@/icons';
 import { useAppState } from '@/services/AppState';
 import { confirmBiometric, supportMessage, useBiometrics } from '@/services/biometrics';
@@ -73,7 +72,7 @@ export default function BiometricsScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <CircleButton label="Back" size={52} onPress={() => router.back()}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
+        <CircleButton label="Back" size={52} onPress={goBack}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
         <T variant="title" color={dark ? '#E4E4E4' : colors.text} style={styles.title}>Biometrics</T>
       </View>
 

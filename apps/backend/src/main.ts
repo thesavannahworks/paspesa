@@ -21,6 +21,7 @@ try {
 import { MonetizationService } from './monetization.service.js';
 import { providersFromEnv } from './providers.js';
 import { mailerFromEnv } from './mailer.js';
+import { AUTO_REMOVE_AFTER_DAYS, removeUnusedDevices } from './devices.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -46,7 +47,13 @@ if (paymentProviders.all.length) {
       .finally(() => { sweeping = false; });
   }, 5_000);
 }
-console.log(`[paspesa] payments: ${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
+// Unused device records (never signed in, never uploaded, long idle) are cleared at start-up and daily.
+const clearDevices = () => removeUnusedDevices(db, AUTO_REMOVE_AFTER_DAYS)
+  .then((n) => { if (n) console.log(`[paspesa] removed ${n} unused device record${n === 1 ? '' : 's'}`); })
+  .catch((e) => console.warn('[paspesa] clearing unused devices failed', e));
+void clearDevices();
+setInterval(() => void clearDevices(), 86_400_000).unref();
+console.log(`[paspesa] payments:${paymentProviders.all.length ? `${paymentProviders.all.map((p) => p.name).join(', ')} (default ${paymentProviders.default?.name})` : 'not configured'}`);
 console.log(`[paspesa] sign-in emails: ${
   mailer.kind === 'sendgrid' ? `SendGrid (${process.env.MAIL_FROM || 'noreply@example.com'})` :
   mailer.kind === 'resend' ? `Resend API (${process.env.MAIL_FROM || 'onboarding@resend.dev'})` :

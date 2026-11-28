@@ -1,8 +1,7 @@
 import { toLocalPhone, updateRechargeSenderDefaults } from '@paspesa/core';
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable } from 'react-native';
-import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
+import { Field, PrimaryButton, Screen, ScreenHeader, T, goBack } from '@/components/ui';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -27,7 +26,7 @@ export default function RechargeSenderScreen() {
       return;
     }
     await refresh();
-    router.back();
+    goBack();
   };
 
   return (

@@ -4,10 +4,9 @@
  */
 import { normalizeKenyanPhone, parseWholeShillings, toLocalPhone } from '@paspesa/core';
 import * as Crypto from 'expo-crypto';
-import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
+import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, T, goBack } from '@/components/ui';
 import { ApiError, useApi } from '@/services/api';
 import { useAccount } from '@/services/AppState';
 import { useRemote, type PaymentView } from '@/services/wallet';
@@ -80,7 +79,7 @@ export default function BuyTokensScreen() {
 
   if (phase === 'done' && payment) {
     return (
-      <Screen footer={<PrimaryButton title="Done" onPress={() => router.back()} />}>
+      <Screen footer={<PrimaryButton title="Done" onPress={goBack} />}>
         <ScreenHeader title="Buy Tokens" />
         <View style={{ alignItems: 'center', marginTop: s(80) }}>
           <Text maxFontSizeMultiplier={FIXED_TEXT} style={{ fontSize: s(56) }}>🎉</Text>
@@ -109,7 +108,7 @@ export default function BuyTokensScreen() {
             M-PESA has not confirmed this payment yet. If you paid, your {payment.tokens} tokens are added automatically as soon as it does — you can leave this page.
           </T>
           <PrimaryButton title="Check again" onPress={() => { setPhase('waiting'); poll(payment.id, POLL_TRIES); }} style={{ marginTop: s(24), alignSelf: 'stretch' }} />
-          <View style={{ marginTop: s(12), alignSelf: 'stretch' }}><OutlineButton title="Done" onPress={() => router.back()} /></View>
+          <View style={{ marginTop: s(12), alignSelf: 'stretch' }}><OutlineButton title="Done" onPress={goBack} /></View>
         </View>
       ) : (
         <>

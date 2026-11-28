@@ -1,7 +1,6 @@
 import { setPin } from '@paspesa/core';
-import { router } from 'expo-router';
 import { useState } from 'react';
-import { Field, PrimaryButton, Screen, ScreenHeader, T } from '@/components/ui';
+import { Field, PrimaryButton, Screen, ScreenHeader, T, goBack } from '@/components/ui';
 import { useAccount, useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
 import { s } from '@/theme/scale';
@@ -27,7 +26,7 @@ export default function ChangePinScreen() {
     setBusy(false);
     if (!res.ok) return setError(res.error.message);
     await refresh();
-    router.back();
+    goBack();
   };
 
   return (

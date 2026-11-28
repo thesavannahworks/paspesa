@@ -8,7 +8,7 @@ import { router, type Href } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Avatar, CircleButton, Inert, T, WEB_NO_OUTLINE } from '@/components/ui';
+import { Avatar, CircleButton, Inert, T, WEB_NO_OUTLINE, goBack } from '@/components/ui';
 import {
   AirtimeIcon, BellIcon, BundlesIcon, ChevronLeftIcon, ChevronRightIcon, GiftIcon, HomeInternetIcon, LipaIcon, PochiWalletIcon,
   ReceiptIcon, ScanIcon, SearchIcon, SendMoneyIcon, WithdrawIcon,
@@ -56,7 +56,7 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.screen }} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <CircleButton label="Back" onPress={() => router.back()}><ChevronLeftIcon color={colors.text} size={26} /></CircleButton>
+        <CircleButton label="Back" onPress={goBack}><ChevronLeftIcon color={colors.text} size={26} /></CircleButton>
         <View style={[styles.box, { borderColor: colors.border, backgroundColor: colors.surface }]}>
           <SearchIcon size={24} />
           <TextInput

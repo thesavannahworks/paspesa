@@ -98,7 +98,7 @@ class InstallationAuthGuard implements CanActivate {
     const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     if (!token) throw fail(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Missing installation token');
     const [row] = await this.db.query<{ id: string }>('SELECT id FROM installations WHERE token_hash = $1', [hash(token)]);
-    if (!row) throw fail(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Unknown installation token');
+    if (!row) throw fail(HttpStatus.UNAUTHORIZED, 'UNKNOWN_INSTALLATION', 'Unknown installation token');
     req.installationId = row.id;
     await this.db.query('UPDATE installations SET last_seen_at = now() WHERE id = $1', [row.id]);
     const block = await blockFor(this.db, row.id);

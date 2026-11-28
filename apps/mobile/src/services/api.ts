@@ -100,8 +100,18 @@ export function createApi(deps: EngineDeps, kv: KeyValueStore, platform: string)
   const base = apiUrl();
   const call = async <T>(path: string, init: RequestInit): Promise<T> => {
     if (!base) throw new ApiError('Online features are not set up in this version of the app.', 'NOT_CONFIGURED', 0);
-    const token = await ensureToken(kv, base, deps.installationId, platform);
-    return request<T>(`${base}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+    const send = async () => {
+      const token = await ensureToken(kv, base, deps.installationId, platform);
+      return request<T>(`${base}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+    };
+    try {
+      return await send();
+    } catch (e) {
+      // The server removed this installation as unused (it never signed in or uploaded): register again, once.
+      if (!(e instanceof ApiError && e.code === 'UNKNOWN_INSTALLATION')) throw e;
+      await kv.remove(REGISTERED_KEY);
+      return send();
+    }
   };
   current = {
     available: !!base,

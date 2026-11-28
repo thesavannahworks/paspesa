@@ -11,7 +11,7 @@ import { formatAmount, toLocalPhone, updateAccountDetails, verifyPin } from '@pa
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, T } from '@/components/ui';
+import { Field, OutlineButton, PrimaryButton, Screen, ScreenHeader, Sheet, T, goBack } from '@/components/ui';
 import { ChevronRightIcon, LockIcon } from '@/icons';
 import { useApi } from '@/services/api';
 import { useAccount, useAppState } from '@/services/AppState';
@@ -36,7 +36,7 @@ export default function AccountDetailsScreen() {
     setBusy(false);
     if (!res.ok) return setErrors(res.error.fieldErrors ?? { accountName: res.error.message });
     await refresh();
-    router.back();
+    goBack();
   };
 
   return (

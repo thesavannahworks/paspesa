@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode
 import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppModal as Modal, toAppPoint, useLayoutFrame } from '@/components/LayoutFrame';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Inert, Sheet, T } from '@/components/ui';
+import { Inert, Sheet, T, goBack } from '@/components/ui';
 import { ArrowDownToLineIcon, CheckIcon, ChevronLeftIcon, CloseIcon, PersonFilledIcon, StarFilledIcon, TrashIcon } from '@/icons';
 import { useAppState } from '@/services/AppState';
 import { usePreference } from '@/services/preferences';
@@ -268,7 +268,7 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} hitSlop={12} style={styles.headerBack}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={goBack} hitSlop={12} style={styles.headerBack}>
             <ChevronLeftIcon size={30} color={pal.text} strokeWidth={1.5} />
           </Pressable>
           <View style={[styles.senderAvatar, { backgroundColor: pal.bubble }]}>

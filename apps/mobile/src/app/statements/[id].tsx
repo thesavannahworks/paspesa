@@ -13,10 +13,10 @@ import {
   type SimulationType,
 } from '@paspesa/core';
 import * as Clipboard from 'expo-clipboard';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Avatar, BadgeCard, CircleButton, Inert, Screen, T } from '@/components/ui';
+import { Avatar, BadgeCard, CircleButton, Inert, Screen, T, goBack } from '@/components/ui';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, CopyIcon, ExportIcon, ReceiptIcon, ReverseIcon, StarFilledIcon, StarIcon } from '@/icons';
 import { useAppState } from '@/services/AppState';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -46,7 +46,7 @@ export default function TransactionDetailScreen() {
 
   const header = (
     <View style={{ paddingTop: s(21) }}>
-      <CircleButton label="Back" size={52} onPress={() => router.back()}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
+      <CircleButton label="Back" size={52} onPress={goBack}><ChevronLeftIcon color={colors.text} size={28} /></CircleButton>
     </View>
   );
 

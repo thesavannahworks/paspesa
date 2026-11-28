@@ -235,7 +235,7 @@ describe('synchronization', () => {
     const b = await newAccount();
     const noAuth = await fetch(`${baseUrl}/v1/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(noAuth.status).toBe(401);
-    expect(((await noAuth.json()) as Json).error.code).toBe('UNAUTHORIZED');
+    expect(((await noAuth.json()) as Json).error.code).toBe('UNAUTHORIZED'); // no token at all
     // b's token cannot push a's operations
     const res = await fetch(`${baseUrl}/v1/sync/push`, {
       method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${b.token}` },
