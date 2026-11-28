@@ -12,7 +12,8 @@
       "env": {
         "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "autoIncrement": true
     },
     "production": {
       "android": {
@@ -22,7 +23,8 @@
       "env": {
         "EXPO_PUBLIC_PASPESA_API_URL": "https://paspesa-production.up.railway.app"
       },
-      "channel": "production"
+      "channel": "production",
+      "autoIncrement": true
     }
   }
 }

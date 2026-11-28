@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { AppModal as Modal } from './LayoutFrame';
 import { backupRefreshControl } from './BackupRefresh';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,6 +51,9 @@ export function Screen({
   const bg = background === 'page' ? colors.page : colors.screen;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'bottom']}>
+      {/* The window does not resize for the keyboard (edge-to-edge): shrink the screen above it instead, so the
+          field being edited and the footer button stay visible. */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'web' ? undefined : 'padding'} enabled={Platform.OS !== 'web'} style={{ flex: 1 }}>
       {scroll ? (
         <ScrollView
           contentContainerStyle={[{ paddingHorizontal: s(21), paddingBottom: s(24) }, contentStyle]}
@@ -63,6 +66,7 @@ export function Screen({
         <View style={[{ flex: 1, paddingHorizontal: s(21) }, contentStyle]}>{children}</View>
       )}
       {footer ? <View style={{ paddingHorizontal: s(21), paddingBottom: s(12) }}>{footer}</View> : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

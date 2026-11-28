@@ -84,7 +84,7 @@ export default function ProfileScreen() {
       </View>
 
       <T variant="label" color={colors.textSecondary} style={{ marginTop: s(30) }}>
-        App Version {Constants.expoConfig?.version ?? '1.0.0'}
+        App Version {Constants.expoConfig?.version ?? '1.1.0'}
       </T>
       <SyncLine />
       <SignOutSection />

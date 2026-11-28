@@ -180,8 +180,14 @@ export class AdminController {
     res.status(200).send(ADMIN_JS);
   }
 
+  /** A live session from the cookie (no redirects): the login pages send a signed-in admin to the dashboard. */
+  private signedIn(req: Req) {
+    return this.auth.session(readCookie(req.headers.cookie as string | undefined, SESSION_COOKIE));
+  }
+
   @Get('login')
-  loginPage(@Res() res: Res, @Query('err') err?: string) {
+  async loginPage(@Req() req: Req, @Res() res: Res, @Query('err') err?: string) {
+    if (await this.signedIn(req)) return res.redirect(303, '/admin');
     this.send(res, layout('Sign in', null, html`${notice(err, 'error')}
       <form method="post" action="/admin/login" class="panel">
         <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required>
@@ -192,6 +198,7 @@ export class AdminController {
 
   @Post('login')
   async login(@Body() form: Form, @Req() req: Req, @Res() res: Res) {
+    if (await this.signedIn(req)) return res.redirect(303, '/admin');
     const result = await this.auth.login(form?.email ?? '', form?.password ?? '', String(req.headers['user-agent'] ?? ''));
     if (!result.ok) return this.back(res, '/admin/login', result.message, true);
     const secure = !!req.secure || req.headers['x-forwarded-proto'] === 'https';
@@ -205,7 +212,8 @@ export class AdminController {
 
   /** 2-step sign-in: the code from the authenticator app (or a recovery code). */
   @Get('login/code')
-  codePage(@Req() req: Req, @Res() res: Res, @Query('err') err?: string) {
+  async codePage(@Req() req: Req, @Res() res: Res, @Query('err') err?: string) {
+    if (await this.signedIn(req)) return res.redirect(303, '/admin');
     if (!readCookie(req.headers.cookie as string | undefined, PENDING_COOKIE)) return res.redirect(303, '/admin/login');
     this.send(res, layout('2-step sign-in', null, html`${notice(err, 'error')}
       <form method="post" action="/admin/login/code" class="panel">
@@ -221,6 +229,12 @@ export class AdminController {
     const pending = readCookie(req.headers.cookie as string | undefined, PENDING_COOKIE);
     const result = await this.auth.completeLogin(pending, form?.code ?? '', String(req.headers['user-agent'] ?? ''));
     if (!result.ok) {
+      // The same form sent twice (autofill and Continue, a double tap): the first one signed in and used up
+      // the pending step, so this one fails. Go to the dashboard instead of showing "Sign in again".
+      if (await this.signedIn(req)) {
+        res.setHeader('Set-Cookie', clearPendingCookie());
+        return res.redirect(303, '/admin');
+      }
       if (result.restart) {
         res.setHeader('Set-Cookie', clearPendingCookie());
         return this.back(res, '/admin/login', result.message, true);

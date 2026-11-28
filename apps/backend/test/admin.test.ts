@@ -318,6 +318,15 @@ describe('my account', () => {
     const ok = await codeForm(totpAt(secret, currentStep() + 1)); // the next code (the current one was used to confirm)
     expect(ok.headers.get('location')).toBe('/admin');
     expect(ok.headers.get('set-cookie')).toContain('paspesa_admin=');
+    // the same form sent a second time (autofill plus Continue): already signed in → dashboard, not "Sign in again"
+    const session = /paspesa_admin=[^;]+/.exec(ok.headers.get('set-cookie')!)![0];
+    const dup = form({ code: totpAt(secret, currentStep() + 1) });
+    const second = await fetch(`${base}/admin/login/code`, { ...dup, headers: { ...dup.headers, cookie: `${pending}; ${session}` } });
+    expect(second.headers.get('location')).toBe('/admin');
+    // and the sign-in pages send a signed-in admin to the dashboard
+    for (const path of ['/admin/login', '/admin/login/code']) {
+      expect((await fetch(`${base}${path}`, { redirect: 'manual', headers: { cookie: session } })).headers.get('location')).toBe('/admin');
+    }
 
     // a recovery code works once
     const again = await fetch(`${base}/admin/login`, form({ email: 'twofa@example.com', password: PASSWORD }));

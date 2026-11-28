@@ -9,7 +9,7 @@
  * dashboard and every other page is a centred card at the width the screens are designed for.
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { Modal, Platform, useWindowDimensions, View, type ModalProps } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, useWindowDimensions, View, type ModalProps } from 'react-native';
 import { REFERENCE_WIDTH } from '@/theme/scale';
 import { useTheme } from '@/theme/ThemeProvider';
 
@@ -115,7 +115,15 @@ export function toAppPoint(frame: LayoutFrame, pageX: number, pageY: number): { 
 export function AppModal({ children, transparent, ...props }: ModalProps) {
   const frame = useLayoutFrame();
   const { colors } = useTheme();
-  if (!frame.wide) return <Modal transparent={transparent} {...props}>{children}</Modal>;
+  // Phones: the window does not resize for the keyboard (edge-to-edge), so the content is lifted above it —
+  // a bottom sheet's fields stay visible while typing.
+  if (!frame.wide) {
+    return (
+      <Modal transparent={transparent} {...props}>
+        {Platform.OS === 'web' ? children : <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>{children}</KeyboardAvoidingView>}
+      </Modal>
+    );
+  }
   const w = frame.contentWidth;
   const h = frame.contentHeight;
   // Scaling happens about the box's centre: shift it so the scaled box lands on the phone's screen.

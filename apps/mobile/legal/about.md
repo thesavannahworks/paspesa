@@ -55,5 +55,5 @@ Questions, problems with a payment, bug reports and ideas are all welcome at [th
 
 ---
 
-**Version 1.0.0** · Android and web
+**Version 1.1.0** · Android and web
 © 2026 The Savannah Works

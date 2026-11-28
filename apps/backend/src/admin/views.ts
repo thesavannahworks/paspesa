@@ -91,6 +91,17 @@ export const ADMIN_JS = `document.querySelectorAll('.pw-toggle').forEach(functio
   });
   b.setAttribute('aria-label', 'Show password');
 });
+// A form is sent once: a second submit (double tap, autofill plus Enter) is ignored. Coming back to the
+// page with the browser's Back button allows sending again.
+document.querySelectorAll('form').forEach(function (f) {
+  f.addEventListener('submit', function (e) {
+    if (f.getAttribute('data-sent')) { e.preventDefault(); return; }
+    f.setAttribute('data-sent', '1');
+  });
+});
+window.addEventListener('pageshow', function () {
+  document.querySelectorAll('form[data-sent]').forEach(function (f) { f.removeAttribute('data-sent'); });
+});
 // Phones: the navigation opens from the top bar's Menu button.
 (function () {
   var btn = document.querySelector('.menu-btn');
